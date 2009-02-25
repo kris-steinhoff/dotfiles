@@ -1,0 +1,17 @@
+[user]
+	name = Kris Steinhoff
+	email = steinhof@umich.edu
+[color]
+	diff = auto
+	status = auto
+	branch = auto
+[core]
+	excludesfile = /afs/umich.edu/user/s/t/steinhof/.gitexcludes
+[alias]
+        st = status
+        ci = commit
+        br = branch
+        co = checkout
+        lg = log -p
+[merge]
+        tool = vimdiff
