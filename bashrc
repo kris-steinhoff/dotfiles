@@ -56,7 +56,7 @@ COLOR_NONE="\e[0m"
 case `uname` in
     Darwin)
         test -r /sw/bin/init.sh && . /sw/bin/init.sh
-         
+
         # Sets up colorized ls
         export TERM=xterm-color
         export CLICOLOR=true
@@ -80,13 +80,11 @@ esac
 # }}} END Operating System specific settings
 
 # {{{ Prompts
-
 if [ $UID -eq 0 ]; then
     export PROMPT_CHAR="#"
 else
     export PROMPT_CHAR="$"
 fi
-
 
 tinyPrompt()
 {
