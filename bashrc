@@ -5,10 +5,9 @@ fi
 export PATH="/bin:/sbin:/usr/bin:/usr/sbin:/usr/X11/bin"
 export MANPATH="/usr/share/man:/usr/X11R6/man"
 
-export HGUSER="Kris Steinhoff <steinhof@umich.edu>"
-export VISUAL="/usr/bin/vim"
-export EDITOR="/usr/bin/vim"
-export CVS_RSH="/usr/bin/ssh"
+export VISUAL="vim"
+export EDITOR="vim"
+export CVS_RSH="ssh"
 
 export PATH=${HOME}/bin:${PATH}
 
