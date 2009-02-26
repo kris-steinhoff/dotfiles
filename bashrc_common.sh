@@ -1,6 +1,13 @@
+## to use, include this line in your .bashrc file
+#
+# test -e ${HOME}/.bashrc_common.sh && source ${HOME}/.bashrc_common.sh
+#
+
 if [ "${BASH-no}" != "no" ]; then
 	[ -r /etc/bashrc ] && . /etc/bashrc
 fi
+
+export PROMPT_COMMAND=bigPrompt
 
 export PATH="/bin:/sbin:/usr/bin:/usr/sbin:/usr/X11/bin"
 export MANPATH="/usr/share/man:/usr/X11R6/man"
@@ -219,6 +226,7 @@ creds () {
 }
 
 attach () {
+   titleset
    ssh-agent-grab-env && screen -dR $*
 }
 
@@ -246,5 +254,13 @@ titleset()
     fi
 
     echo -ne "\033]0;${TITLE}\007"
+}
+
+dotfilesupdate()
+{
+    for DOTFILE in .bashrc .inputrc .screenrc .vimrc .gitrc; do
+        cp -v ${HOME}/${DOTFILE} ${HOME}/${DOTFILE}.bak
+        scp sftp.web.itd.umich.edu:${DOTFILE} ${HOME}/{$DOTFILE}
+    done
 }
 # }}} END Misc helper functions
