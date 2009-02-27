@@ -135,13 +135,20 @@ scmPrompt()
         git branch &> /dev/null; rc=$?;
         if [ $rc -eq 0 ]; then
             BRANCH=`git branch --no-color | grep ^\* | sed s/\*\ //g`
+            if [ "x${BRANCH}" = "xmaster" ]; then
+                INFO=""
+            else
+                INFO="${BRANCH}:"
+            fi
+            COMMIT=`git log -1 | head -1 | awk '{print $2}' | cut -c 1-7`
+            INFO=${INFO}${COMMIT};
             git status 2> /dev/null | tail -n1 | grep 'working directory clean' &> /dev/null; rc=$?
             if [ $rc -eq 0 ]; then
                 STATE_COLOR=${COLOR_PROMPT_GREEN}
             else
                 STATE_COLOR=${COLOR_PROMPT_RED}
             fi
-            PS1="${PS1} ${STATE_COLOR}[${BRANCH}]${COLOR_PROMPT_NONE}"
+            PS1="${PS1} ${STATE_COLOR}[${INFO}]${COLOR_PROMPT_NONE}"
         fi
 
         if test $PREV_RET_VAL -eq 0
