@@ -151,6 +151,18 @@ scmPrompt()
             PS1="${PS1} ${STATE_COLOR}[${INFO}]${COLOR_PROMPT_NONE}"
         fi
 
+        svn info &> /dev/null; rc=$?
+        if [ $rc -eq 0 ]; then
+            REV=`svn info | grep '^Revision: '| awk -F': ' '{print $2}'`
+            lines=`svn st | wc | awk '{print $1}'`
+            if [ $lines -eq 0 ]; then
+                STATE_COLOR=${COLOR_PROMPT_GREEN}
+            else
+                STATE_COLOR=${COLOR_PROMPT_RED}
+            fi
+            PS1="${PS1} ${STATE_COLOR}[${REV}]${COLOR_PROMPT_NONE}"
+        fi
+
         if test $PREV_RET_VAL -eq 0
         then
             PS1="${PS1}\n${COLOR_PROMPT_GREEN}${PROMPT_CHAR}${COLOR_PROMPT_NONE} "
