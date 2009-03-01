@@ -6,3 +6,7 @@ caption always
 caption string ' %H: %3n %t'
 defscrollback 10000
 zombie dr
+
+# make backspace work:
+bindkey -d ^? stuff ^H
+bindkey -d ^@ stuff ^H
