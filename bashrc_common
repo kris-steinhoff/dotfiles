@@ -246,7 +246,11 @@ creds () {
 
 attach () {
    titleset
-   ssh-agent-grab-env && screen -dR $*
+   if [ "x$*" = "x" ]; then
+       screen -ls
+   else
+       ssh-agent-grab-env && screen -dR $*
+   fi
 }
 
 huh()
