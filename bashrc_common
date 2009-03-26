@@ -1,6 +1,6 @@
 ## to use, include this line in your .bashrc file
 #
-# test -e ${HOME}/.bashrc_common.sh && source ${HOME}/.bashrc_common.sh
+# test -e ${HOME}/.bashrc_common && source ${HOME}/.bashrc_common
 #
 
 if [ "${BASH-no}" != "no" ]; then
