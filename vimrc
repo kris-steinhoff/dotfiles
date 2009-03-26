@@ -20,6 +20,8 @@ set expandtab
 
 set wrap linebreak textwidth=0
 
+set backspace=indent,eol,start
+
 " Set colors
 hi clear
 if exists("syntax_on")
