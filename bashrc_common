@@ -9,9 +9,6 @@ fi
 
 export PROMPT_COMMAND=bigPrompt
 
-export PATH="/bin:/sbin:/usr/bin:/usr/sbin:/usr/X11/bin"
-export MANPATH="/usr/share/man:/usr/X11R6/man"
-
 export VISUAL="vim"
 export EDITOR="vim"
 export CVS_RSH="ssh"
