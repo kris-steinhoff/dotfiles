@@ -232,6 +232,7 @@ ssh-agent-fix () {
 
     test -r ${AGENT_ENV} && source ${AGENT_ENV} && cat ${AGENT_ENV}
 }
+alias sshfix=ssh-agent-fix
 # }}} END SSH helpers functions
 
 # {{{ Misc helper functions
