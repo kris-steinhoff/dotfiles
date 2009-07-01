@@ -243,10 +243,10 @@ creds () {
 }
 
 attach () {
-   titleset
    if [ "x$*" = "x" ]; then
        screen -ls
    else
+       titleset $USER@`hostname` $*
        ssh-agent-grab-env && screen -dR $*
    fi
 }
