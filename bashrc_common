@@ -131,13 +131,15 @@ scmPrompt()
 
         git branch &> /dev/null; rc=$?;
         if [ $rc -eq 0 ]; then
-            BRANCH=`git branch --no-color | grep ^\* | sed s/\*\ //g`
+            BRANCH=`git branch --no-color 2> /dev/null | grep ^\* | sed s/\*\ //g`
             if [ "x${BRANCH}" = "xmaster" ]; then
                 INFO=""
+            elif [ "x${BRANCH}" = "x" ]; then
+                INFO="(no branch found)"
             else
                 INFO="${BRANCH}:"
             fi
-            COMMIT=`git log -1 | head -1 | awk '{print $2}' | cut -c 1-7`
+            COMMIT=`git log -1 2> /dev/null | head -1 | awk '{print $2}' | cut -c 1-7`
             INFO=${INFO}${COMMIT};
             git status 2> /dev/null | tail -n1 | grep 'working directory clean' &> /dev/null; rc=$?
             if [ $rc -eq 0 ]; then
