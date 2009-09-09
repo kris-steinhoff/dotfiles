@@ -244,13 +244,58 @@ creds () {
     ssh-add -l || ssh-agent-start
 }
 
-attach () {
-   if [ "x$*" = "x" ]; then
-       screen -ls
-   else
-       titleset $USER@`hostname` $*
-       ssh-agent-grab-env && screen -dR $*
-   fi
+attach ()
+{
+    ssh-agent-grab-env
+
+    name=${*}
+    file=${HOME}/.screenrcs/${name}
+
+    if [ "x$name" = "x" ]; then
+        screen -ls
+    else
+        screen -ls ${name} | head -1 | grep '^No Sockets found' > /dev/null; rc=$?
+        if [ $rc -ne 0 ]; then
+            titleset $USER@`hostname` $name
+            screen -dr $name
+            titleset
+        else
+            res=`prompt "Socket $name not found. Start? [Y/n]" Y`
+            if [ "$res" = "Y" -o "$res" = "y" ]; then
+                if [ ! -e "${file}" ]; then
+                    res=`prompt "Config file for $name not found. Create? [y/N]" N`
+                    if [ "$res" = "Y" -o "$res" = "y" ]; then
+                        echo "
+source ${HOME}/.screenrc
+caption string ' %H ($name): %5n %t'
+screen -t bash 0 bash
+screen -t bash 1 bash
+select 0
+        " > ${file}
+                        screen -S $name -c ${file}
+                    else
+                        screen -S $name
+                    fi
+                else
+                    screen -S $name -c ${file}
+                fi
+            fi
+        fi
+    fi
+}
+
+prompt ()
+{
+    prompt=${1}
+    default=${2}
+
+    read -p "$prompt " prompt_name
+
+    if [ "x$prompt_name" != "x" ]; then
+        echo $prompt_name
+    else
+        echo $default
+    fi
 }
 
 huh()
