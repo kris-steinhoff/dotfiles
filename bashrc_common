@@ -265,6 +265,9 @@ attach ()
                 if [ ! -e "${file}" ]; then
                     res=`prompt "Config file for $name not found. Create? [y/N]" N`
                     if [ "$res" = "Y" -o "$res" = "y" ]; then
+                        if [ ! -d "`dirname $file`" ]; then
+                            mkdir "`dirname $file`"
+                        fi
                         echo "
 source ${HOME}/.screenrc
 caption string ' %H ($name): %5n %t'
