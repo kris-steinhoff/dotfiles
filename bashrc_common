@@ -127,7 +127,7 @@ scmPrompt()
     PS1=""
 
         PS1="${PS1}${COLOR_PROMPT_YELLOW}\u${COLOR_PROMPT_NONE}"
-        PS1="${PS1}@${COLOR_PROMPT_RED}\h${COLOR_PROMPT_NONE}:${COLOR_PROMPT_YELLOW}\w${COLOR_PROMPT_NONE}"
+        PS1="${PS1}@${COLOR_PROMPT_RED}\h${COLOR_PROMPT_NONE}:${COLOR_PROMPT_YELLOW}\w${COLOR_PROMPT_NONE} ${COLOR_PROMPT_CYAN}\t${COLOR_NONE}"
 
         git branch &> /dev/null; rc=$?;
         if [ $rc -eq 0 ]; then
