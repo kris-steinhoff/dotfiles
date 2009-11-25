@@ -239,7 +239,12 @@ alias sshfix=ssh-agent-fix
 
 # {{{ Misc helper functions
 creds () {
-    klist -5 || kinit
+    if [ "x${1}" = "x-k" ]; then
+        kdestroy
+        ssh-agent -k
+    fi
+
+    klist -5 || kinit -f -l 10h
     echo ""
     ssh-add -l || ssh-agent-start
 }

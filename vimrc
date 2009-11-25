@@ -1,5 +1,8 @@
-syntax on
+set nocompatible
+filetype on
+filetype indent on
 filetype plugin on
+compiler ruby
 
 set showmode
 set ruler
@@ -37,3 +40,5 @@ hi PreProc      ctermfg=magenta cterm=none      gui=none
 hi type         ctermfg=yellow  cterm=none      gui=none
 hi Underlinedr  cterm=underline term=underline  gui=none
 " end Set colors
+
+syntax on
