@@ -254,10 +254,10 @@ attach ()
     if [ "x$name" = "x" ]; then
         screen -ls
     else
-        screen -ls ${name} | head -1 | grep '^No Sockets found' > /dev/null; rc=$?
+        SCREENSESSION=$name screen -ls ${name} | head -1 | grep '^No Sockets found' > /dev/null; rc=$?
         if [ $rc -ne 0 ]; then
             titleset $USER@`hostname` $name
-            screen -dr $name
+            SCREENSESSION=$name screen -dr $name
             titleset
         else
             res=`prompt "Socket $name not found. Start? [Y/n]" Y`
@@ -270,17 +270,16 @@ attach ()
                         fi
                         echo "
 source ${HOME}/.screenrc
-caption string ' %H ($name): %5n %t'
 screen -t bash 0 bash
 screen -t bash 1 bash
 select 0
         " > ${file}
-                        screen -S $name -c ${file}
+                        SCREENSESSION=$name screen -S $name -c ${file}
                     else
-                        screen -S $name
+                        SCREENSESSION=$name screen -S $name
                     fi
                 else
-                    screen -S $name -c ${file}
+                    SCREENSESSION=$name screen -S $name -c ${file}
                 fi
             fi
         fi
