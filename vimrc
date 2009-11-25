@@ -25,6 +25,8 @@ set wrap linebreak textwidth=0
 
 set backspace=indent,eol,start
 
+syntax on
+
 " Set colors
 hi clear
 if exists("syntax_on")
@@ -40,5 +42,3 @@ hi PreProc      ctermfg=magenta cterm=none      gui=none
 hi type         ctermfg=yellow  cterm=none      gui=none
 hi Underlinedr  cterm=underline term=underline  gui=none
 " end Set colors
-
-syntax on
