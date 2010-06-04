@@ -221,11 +221,13 @@ ssh-agent-start () {
     rm ${TMP}
 }
 
-SSHVARS="SSH_CLIENT SSH_TTY SSH_AUTH_SOCK SSH_CONNECTION DISPLAY"
+ssh-agent-grab-env () {
+    SSHVARS="SSH_CLIENT SSH_TTY SSH_AUTH_SOCK SSH_CONNECTION DISPLAY"
 
-for x in ${SSHVARS} ; do
-    (eval echo $x=\$$x) | sed 's/=/="/' | sed 's/$/"/' | sed 's/^/export /'
-done 1>~/.ssh/agent-env
+    for x in ${SSHVARS} ; do
+        (eval echo $x=\$$x) | sed 's/=/="/' | sed 's/$/"/' | sed 's/^/export /'
+    done 1>~/.ssh/agent-env
+}
 
 ssh-agent-fix () {
     AGENT_ENV=~/.ssh/agent-env
@@ -249,6 +251,8 @@ creds () {
 
 attach ()
 {
+    ssh-agent-grab-env
+
     name=${*}
     file=${HOME}/.screenrcs/${name}
 
