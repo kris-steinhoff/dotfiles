@@ -58,8 +58,6 @@ COLOR_NONE="\e[0m"
 # {{{ Operating System specific settings
 case `uname` in
     Darwin)
-        test -r /sw/bin/init.sh && . /sw/bin/init.sh
-
         # Sets up colorized ls
         export TERM=xterm-color
         export CLICOLOR=true
