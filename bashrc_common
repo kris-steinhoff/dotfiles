@@ -121,6 +121,7 @@ bigPrompt()
 scmPrompt()
 {
     PREV_RET_VAL=$?;
+    test -r ${HOME}/.ssh/agent-env && source ${HOME}/.ssh/agent-env
 
     PS1=""
 
@@ -220,7 +221,7 @@ ssh-agent-start () {
 }
 
 ssh-agent-grab-env () {
-    SSHVARS="SSH_CLIENT SSH_TTY SSH_AUTH_SOCK SSH_CONNECTION DISPLAY"
+    SSHVARS="SSH_AUTH_SOCK"
 
     for x in ${SSHVARS} ; do
         (eval echo $x=\$$x) | sed 's/=/="/' | sed 's/$/"/' | sed 's/^/export /'
@@ -230,7 +231,7 @@ ssh-agent-grab-env () {
 ssh-agent-fix () {
     AGENT_ENV=~/.ssh/agent-env
 
-    test -r ${AGENT_ENV} && source ${AGENT_ENV} && cat ${AGENT_ENV}
+    test -r ${AGENT_ENV} && source ${AGENT_ENV}
 }
 alias sshfix=ssh-agent-fix
 # }}} END SSH helpers functions
@@ -247,60 +248,6 @@ creds () {
     ssh-add -l || ssh-agent-start
 }
 
-attach ()
-{
-    ssh-agent-grab-env
-
-    name=${*}
-    file=${HOME}/.screenrcs/${name}
-
-    if [ "x$name" = "x" ]; then
-        screen -ls
-    else
-        SCREENSESSION=$name screen -ls ${name} | head -1 | grep '^No Sockets found' > /dev/null; rc=$?
-        if [ $rc -ne 0 ]; then
-            titleset $USER@`hostname` $name
-            SCREENSESSION=$name screen -dr $name
-            titleset
-        else
-            res=`prompt "Socket $name not found. Start? [Y/n]" Y`
-            if [ "$res" = "Y" -o "$res" = "y" ]; then
-                if [ ! -e "${file}" ]; then
-                    res=`prompt "Config file for $name not found. Create? [y/N]" N`
-                    if [ "$res" = "Y" -o "$res" = "y" ]; then
-                        if [ ! -d "`dirname $file`" ]; then
-                            mkdir "`dirname $file`"
-                        fi
-                        echo "
-source ${HOME}/.screenrc
-screen -t bash 0 bash
-screen -t bash 1 bash
-select 0
-        " > ${file}
-                        SCREENSESSION=$name screen -S $name -c ${file}
-                    else
-                        SCREENSESSION=$name screen -S $name
-                    fi
-                else
-                    SCREENSESSION=$name screen -S $name -c ${file}
-                fi
-            fi
-        fi
-    fi
-}
-
-_attach_complete ()
-{
-    screens=`screen -ls | while read s dump; do echo $s | grep '[0-9]\..*' &> /dev/null; rc=$?; if [ ${rc} -eq 0 ]; then echo $s | awk -F. '{ print $2 }'; fi; done`
-    local curw
-    COMPREPLY=()
-    curw=${COMP_WORDS[COMP_CWORD]}
-    COMPREPLY=($(compgen -W "${screens}" -- $curw))
-    return 0
-}
-
-complete -F _attach_complete attach
-
 prompt ()
 {
     prompt=${1}
@@ -315,18 +262,6 @@ prompt ()
     fi
 }
 
-huh()
-{
-    date=`date`
-    echo -e "\e[32mTime:\e[0m \e[33m${date}\e[0m"
-    echo -e "\e[32mUser:\e[0m \e[33m${USER}\e[0m"
-    echo -e "\e[32mHost:\e[0m \e[33m`hostname`\e[0m"
-    echo -e " \e[32mPWD:\e[0m \e[33m`pwd`\e[0m"
-
-    # Set terminal window's title to user@hostname
-    echo -ne "\033]0;${USER}@`hostname -s`\007"
-}
-
 titleset()
 {
     if [ "${*}" ]; then
@@ -339,13 +274,5 @@ titleset()
     fi
 
     echo -ne "\033]0;${TITLE}\007"
-}
-
-dotfilesupdate()
-{
-    for DOTFILE in .bashrc .inputrc .screenrc .vimrc .gitrc; do
-        cp -v ${HOME}/${DOTFILE} ${HOME}/${DOTFILE}.bak
-        scp sftp.web.itd.umich.edu:${DOTFILE} ${HOME}/{$DOTFILE}
-    done
 }
 # }}} END Misc helper functions
