@@ -211,8 +211,8 @@ ssh-agent-start () {
         cat ${TMP}
         ssh-add
     else
-        ssh-agent -t 86400 > ~/.ssh/agent-init.sh
-        source ~/.ssh/agent-init.sh
+        ssh-agent -t 86400 > ~/.ssh/agent-env
+        source ~/.ssh/agent-env
         echo The ssh-agent has been started.
         ssh-add
     fi
