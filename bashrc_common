@@ -121,7 +121,7 @@ bigPrompt()
 scmPrompt()
 {
     PREV_RET_VAL=$?;
-    test -r ${HOME}/.ssh/agent-env && source ${HOME}/.ssh/agent-env
+    test -r ${HOME}/.ssh/agent-env && source ${HOME}/.ssh/agent-env 1> /dev/null
 
     PS1=""
 
