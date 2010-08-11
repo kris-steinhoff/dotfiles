@@ -1,15 +1,8 @@
 #!/bin/sh
 
-if [ "x${1}" = "x-h" ]; then
-    echo "usage: `basename ${0}` [ host ] [ file ]"
+if [ "x${1}" = "x-h" -o "x${1}" = "x" ]; then
+    echo "usage: `basename ${0}` host [ file1 [ file2 ]]"
     exit 1
-elif [ "x${1}" = "x" ]; then
-    cmd=cp
-    dest="${HOME}/"
-elif [ "x${1}" = "x-" ]; then
-    shift;
-    cmd=cp
-    dest="${HOME}/"
 else
     cmd=scp
     dest="${1}:"
@@ -23,5 +16,6 @@ else
 fi
 
 for dotfile in ${files}; do
+    echo Copying ${dotfile} to ${dest}.${dotfile}
     ${cmd} ${dotfile} ${dest}.${dotfile}
 done
