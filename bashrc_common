@@ -219,7 +219,7 @@ ssh-agent-start () {
 }
 
 ssh-agent-grab-env () {
-    SSHVARS="SSH_CLIENT"
+    SSHVARS="SSH_CLIENT SSH_AUTH_AGENT"
 
     for x in ${SSHVARS} ; do
         (eval echo $x=\$$x) | sed 's/=/="/' | sed 's/$/"/' | sed 's/^/export /'
@@ -250,7 +250,7 @@ creds () {
 
 attach ()
 {
-    ssh-agent-grab-env
+    #ssh-agent-grab-env
 
     name=${*}
     file=${HOME}/.screenrcs/${name}
