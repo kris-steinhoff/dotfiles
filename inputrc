@@ -1,2 +1,2 @@
 set completion-ignore-case on
-set mark-directories off
+set mark-directories on
