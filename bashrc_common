@@ -131,9 +131,7 @@ scmPrompt()
         git branch &> /dev/null; rc=$?;
         if [ $rc -eq 0 ]; then
             BRANCH=`git branch --no-color 2> /dev/null | grep ^\* | sed s/\*\ //g`
-            if [ "x${BRANCH}" = "xmaster" ]; then
-                INFO=""
-            elif [ "x${BRANCH}" = "x" ]; then
+            if [ "x${BRANCH}" = "x" ]; then
                 INFO="(no branch found)"
             else
                 INFO="${BRANCH}:"
