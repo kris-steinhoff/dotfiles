@@ -9,8 +9,11 @@ fi
 
 export PROMPT_COMMAND=bigPrompt
 
-export VISUAL="vim"
-export EDITOR="vim"
+which vim >& /dev/null; rc=$?
+if [ $rc -eq 0 ]; then
+    export VISUAL="vim"
+    export EDITOR="vim"
+fi
 export CVS_RSH="ssh"
 
 export PATH=${HOME}/bin:${PATH}
