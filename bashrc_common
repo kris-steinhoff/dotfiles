@@ -148,6 +148,13 @@ scmPrompt()
                 STATE_COLOR=${COLOR_PROMPT_RED}
             fi
             PS1="${PS1} ${STATE_COLOR}[${INFO}]${COLOR_PROMPT_NONE}"
+
+            for remote in `git remote`; do
+                remote_branch=`git remote show -n $remote | grep -A1 "while on branch ${BRANCH}" | grep '^    .*$' | sed 's/^[ \t]*//;s/[ \t]*$//'`
+                if [ "x$remote_branch" != "x" ]; then
+                    PS1="${PS1} ${COLOR_PROMPT_MAGENTA}${remote}/${remote_branch}${COLOR_PROMPT_NONE}"
+                fi
+            done
         fi
 
         svn info &> /dev/null; rc=$?
