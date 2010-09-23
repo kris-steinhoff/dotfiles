@@ -150,7 +150,7 @@ scmPrompt()
             PS1="${PS1} ${STATE_COLOR}[${INFO}]${COLOR_PROMPT_NONE}"
 
             for remote in `git remote`; do
-                remote_branch=`git remote show -n $remote | grep -A1 "while on branch ${BRANCH}" | grep '^    .*$' | sed 's/^[ \t]*//;s/[ \t]*$//'`
+                remote_branch=`git remote show -n ${remote} | grep "${BRANCH} *merges with remote" | awk -F" merges with remote " '{print $2}'`
                 if [ "x$remote_branch" != "x" ]; then
                     PS1="${PS1} ${COLOR_PROMPT_MAGENTA}${remote}/${remote_branch}${COLOR_PROMPT_NONE}"
                 fi
