@@ -12,6 +12,6 @@
         ci = commit
         br = branch
         co = checkout
-        lg = log -p
+        lg = log --graph --pretty=oneline --abbrev-commit --decorate
 [merge]
         tool = vimdiff
