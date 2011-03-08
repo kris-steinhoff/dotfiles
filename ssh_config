@@ -1,0 +1,11 @@
+ForwardAgent yes
+
+# Host whisper whisper.web.itd.umich.edu
+#     PreferredAuthentications password
+
+# Host login login.itd.umich.edu sftp sftp.itd.umich.edu
+#     PreferredAuthentications password
+
+# Host octopussy octopussy.nefu casinoroyale casinoroyale.nefu licencetokill licencetokill.nefu
+#     User steinhof
+#     EscapeChar none
