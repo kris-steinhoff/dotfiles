@@ -3,6 +3,8 @@
 # test -e ${HOME}/.bashrc_common && source ${HOME}/.bashrc_common
 #
 
+echo -ne "\033]0;`hostname | cut -d. -f1`\007"
+
 which vim >& /dev/null; rc=$?
 if [ $rc -eq 0 ]; then
     export VISUAL="vim"
