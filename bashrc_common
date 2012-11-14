@@ -37,45 +37,9 @@ case `uname` in
         export HOST=${HOSTNAME}
     ;;
 esac
-# }}} END Operating System specific settings
 
-# {{{ Misc helper functions
-creds () {
-    if [ "x${1}" = "x-k" ]; then
-        kdestroy
-        ssh-agent -k
-    fi
-
-    klist -5 || kinit -f -l 10h
-    echo ""
-    ssh-add -l || ssh-agent-start
-}
-
-prompt ()
-{
-    prompt=${1}
-    default=${2}
-
-    read -p "$prompt " prompt_name
-
-    if [ "x$prompt_name" != "x" ]; then
-        echo $prompt_name
-    else
-        echo $default
-    fi
-}
 
 titleset()
 {
-    if [ "${*}" ]; then
-        TITLE="${*}"
-    else
-        if [ ! ${HOST} ]; then
-           HOST=`hostname`
-        fi
-        TITLE=${USER}@${HOST}
-    fi
-
-    echo -ne "\033]0;${TITLE}\007"
+    echo -ne "\033]0;${*}\007"
 }
-# }}} END Misc helper functions
