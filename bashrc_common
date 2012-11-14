@@ -3,7 +3,7 @@
 # test -e ${HOME}/.bashrc_common && source ${HOME}/.bashrc_common
 #
 
-echo -ne "\033]0;`hostname | cut -d. -f1`\007"
+export WINDOW_TITLE=`hostname | cut -d. -f1`
 
 which vim >& /dev/null; rc=$?
 if [ $rc -eq 0 ]; then
@@ -43,5 +43,9 @@ esac
 
 titleset()
 {
-    echo -ne "\033]0;${*}\007"
+    if [ "x" != "x${*}" ]; then
+        export WINDOW_TITLE="${*}"
+    fi
+
+    echo -ne "\033]0;${WINDOW_TITLE}\007"
 }
