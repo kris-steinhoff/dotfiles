@@ -1,6 +1,5 @@
 [user]
 	name = Kris Steinhoff
-	email = steinhof@umich.edu
 [color]
 	diff = auto
 	status = auto
@@ -13,3 +12,8 @@
         lg = log --pretty=format:'%C(yellow)%h%Creset%x09%an%x09%ad%x09%C(cyan)%d%Creset %s' --graph --date=short
 [merge]
         tool = vimdiff
+[core]
+        excludesfile = ~/.gitexcludes
+[push]
+        default = simple
+
