@@ -1,19 +1,20 @@
 [user]
-	name = Kris Steinhoff
+    name = Kris Steinhoff
+    email = steinhof@umich.edu
 [color]
-	diff = auto
-	status = auto
-	branch = auto
+    diff = auto
+    status = auto
+    branch = auto
 [alias]
-        st = status
-        ci = commit
-        br = branch
-        co = checkout
-        lg = log --pretty=format:'%C(yellow)%h%Creset%x09%an%x09%ad%x09%C(cyan)%d%Creset %s' --graph --date=short
+    st = status
+    ci = commit
+    br = branch
+    co = checkout
+    lg = log --pretty=format:'%C(yellow)%h%Creset%x09%an%x09%ad%x09%C(cyan)%d%Creset %s' --graph --date=short
 [merge]
-        tool = vimdiff
+    tool = vimdiff
 [core]
-        excludesfile = ~/.gitexcludes
-[push]
-        default = simple
+    excludesfile = ~/.gitexcludes
+#[push]
+#   default = simple
 
