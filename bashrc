@@ -44,10 +44,17 @@ prompt_window_title()
     fi
 }
 
+prompt_virtualenv()
+{
+    if [ "x" != "x$VIRTUAL_ENV" ]; then
+        echo "${COLOR_PROMPT_BLUE}(`basename ${VIRTUAL_ENV}`)${COLOR_PROMPT_NONE} "
+    fi
+}
+
 fancy_prompt()
 {
     PREV_RET_VAL=$?;
-    PS1="`prompt_context`\n`prompt_rc`${COLOR_PROMPT_YELLOW}${PROMPT_CHAR}${COLOR_PROMPT_NONE} "
+    PS1="`prompt_virtualenv``prompt_context`\n`prompt_rc`${COLOR_PROMPT_YELLOW}${PROMPT_CHAR}${COLOR_PROMPT_NONE} "
     prompt_window_title
 }
 
