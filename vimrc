@@ -1,3 +1,4 @@
+
 execute pathogen#infect()
 
 set nocompatible
@@ -6,14 +7,16 @@ filetype indent on
 filetype plugin on
 compiler ruby
 
+set exrc
 set showmode
+" set number
 set ruler
 set showcmd
 
 set incsearch
 set nowrapscan
 set showmatch
-"set hlsearch
+" set hlsearch
 set ignorecase
 set smartcase
 
@@ -29,5 +32,5 @@ set backspace=indent,eol,start
 
 syntax on
 
+set background=dark
 set laststatus=2
-
