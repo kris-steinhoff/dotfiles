@@ -2,7 +2,6 @@
 export ZSH=${HOME}/.oh-my-zsh
 
 ZSH_THEME="kris"
-ZSH_CUSTOM=${HOME}/.dotfiles/oh-my-zsh/custom
 
 COMPLETION_WAITING_DOTS="true"
 
