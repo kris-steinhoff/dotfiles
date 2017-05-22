@@ -1,3 +1,5 @@
+execute pathogen#infect()
+
 set nocompatible
 filetype on
 filetype indent on
@@ -27,18 +29,5 @@ set backspace=indent,eol,start
 
 syntax on
 
-" Set colors
-hi clear
-if exists("syntax_on")
-    syntax reset
-endif
+set laststatus=2
 
-hi Comment      ctermfg=cyan    cterm=none      gui=none
-hi Constant     ctermfg=green   cterm=none      gui=none
-hi Special      ctermfg=magenta cterm=none      gui=none
-hi Identifier   ctermfg=red     cterm=none      gui=none
-hi Statement    ctermfg=yellow  cterm=none      gui=none
-hi PreProc      ctermfg=magenta cterm=none      gui=none
-hi type         ctermfg=yellow  cterm=none      gui=none
-hi Underlinedr  cterm=underline term=underline  gui=none
-" end Set colors
