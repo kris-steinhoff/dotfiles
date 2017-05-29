@@ -4,7 +4,7 @@ export PATH=${HOME}/bin:/usr/local/bin:${PATH}
 export ZSH=${HOME}/.oh-my-zsh
 
 ZSH_THEME="kris"
-ZSH_CUSTOM=${HOME}/.dotfiles/oh-my-zsh/custom
+ZSH_CUSTOM=${HOME}/.oh-my-zsh-custom
 
 COMPLETION_WAITING_DOTS="true"
 
