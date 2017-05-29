@@ -1,5 +1,5 @@
 export PATH=${HOME}/bin:/usr/local/bin:${PATH}
-alias dotfiles='/usr/bin/git --git-dir=$HOME/.dotfiles/ --work-tree=$HOME'
+alias dotfiles='$(which git) --git-dir=$HOME/.dotfiles/ --work-tree=$HOME'
 
 # Path to your oh-my-zsh installation.
 export ZSH=${HOME}/.oh-my-zsh
