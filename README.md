@@ -1,7 +1,6 @@
 ```
 git init --bare $HOME/.dotfiles
-alias dotfiles='$(which git) --git-dir=$HOME/.dotfiles/ --work-tree=$HOME'
-dotfiles config status.showUntrackedFiles no
+alias dotfiles='$(which git) -c status.showUntrackedFiles=no --git-dir=$HOME/.dotfiles/ --work-tree=$HOME'
 dotfiles remote add origin git@github.com:{{ site.github.repository_nwo }}.git
 dotfiles pull origin master
 dotfiles branch --set-upstream-to=origin/master master
