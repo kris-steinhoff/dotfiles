@@ -12,7 +12,7 @@ COMPLETION_WAITING_DOTS="true"
 # DISABLE_UNTRACKED_FILES_DIRTY="true"
 
 
-plugins=(git git-prompt django python tmux)
+plugins=(git git-prompt virtualenv django python tmux)
 
 export ZSH_TMUX_ITERM2=true
 source $ZSH/oh-my-zsh.sh
