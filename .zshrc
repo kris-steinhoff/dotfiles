@@ -1,6 +1,10 @@
 export PATH=${HOME}/bin:/usr/local/bin:${PATH}
 alias dotfiles='$(which git) -c status.showUntrackedFiles=no --git-dir=$HOME/.dotfiles/ --work-tree=$HOME'
 
+alias tacc='tmux -CC attach -t'
+alias tadcc='tmux -CC attach -d -t'
+alias tscc='tmux -CC new-session -s'
+
 # Path to your oh-my-zsh installation.
 export ZSH=${HOME}/.oh-my-zsh
 
