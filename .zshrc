@@ -5,6 +5,9 @@ alias tacc='tmux -CC attach -t'
 alias tadcc='tmux -CC attach -d -t'
 alias tscc='tmux -CC new-session -s'
 
+# who and where am i:
+alias wwami='echo "$(whoami)@$(hostname):$(pwd)"'
+
 # Path to your oh-my-zsh installation.
 export ZSH=${HOME}/.oh-my-zsh
 
