@@ -38,3 +38,5 @@ export EDITOR='vim'
 # ZSH_THEME_GIT_PROMPT_UNTRACKED="%{…%G%}"
 # ZSH_THEME_GIT_PROMPT_CLEAN="%{$fg_bold[green]%}%{✔%G%}"
 
+
+test -e "${HOME}/.iterm2_shell_integration.zsh" && source "${HOME}/.iterm2_shell_integration.zsh"
