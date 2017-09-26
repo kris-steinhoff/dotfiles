@@ -1,4 +1,4 @@
-export PATH=${HOME}/bin:/usr/local/bin:${PATH}
+export PATH=${HOME}/bin:/usr/local/bin:/opt/bin:${PATH}
 alias dotfiles='$(which git) -c status.showUntrackedFiles=no --git-dir=$HOME/.dotfiles/ --work-tree=$HOME'
 
 alias tacc='tmux -CC attach -t'
