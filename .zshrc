@@ -20,7 +20,7 @@ DISABLE_AUTO_UPDATE="true"
 # DISABLE_UNTRACKED_FILES_DIRTY="true"
 
 
-plugins=(git git-prompt virtualenv django python tmux)
+plugins=(git git-prompt virtualenv django python tmux vagrant)
 
 export ZSH_TMUX_ITERM2=true
 source $ZSH/oh-my-zsh.sh
