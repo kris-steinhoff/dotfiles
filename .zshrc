@@ -8,6 +8,9 @@ alias tscc='tmux -CC new-session -s'
 # who and where am i:
 alias wwami='echo "$(whoami)@$(hostname):$(pwd)"'
 
+# activate a python virtualenv
+alias activate=". ./venv/bin/activate"
+
 # Path to your oh-my-zsh installation.
 export ZSH=${HOME}/.oh-my-zsh
 
