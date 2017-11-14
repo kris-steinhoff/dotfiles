@@ -9,7 +9,32 @@ alias tscc='tmux -CC new-session -s'
 alias wwami='echo "$(whoami)@$(hostname):$(pwd)"'
 
 # activate a python virtualenv
-alias activate=". ./venv/bin/activate"
+function activate() {
+    if [ ! -z "${VIRTUAL_ENV}" ]; then
+      echo "Already active ${VIRTUAL_ENV}"
+      return 0
+    fi
+
+    external_venv="${HOME}/.virtualenvs/$(basename $(pwd))"
+    internal_venv="venv"
+    if [ -d "${internal_venv}" ]; then
+        venv=${internal_venv}
+    elif [ -d "${external_venv}" ]; then
+        venv=${external_venv}
+    else
+        echo "Could not find a virtualenv in ./${internal_venv} or ${external_venv}"
+        return 1
+    fi
+
+    activate="${venv}/bin/activate"
+    if [ -f "${activate}" ]; then
+        source "${activate}" &&
+            echo "Activated ${venv}"
+    else
+        echo "${activate} does not exist"
+        return 1
+    fi
+}
 
 # Path to your oh-my-zsh installation.
 export ZSH=${HOME}/.oh-my-zsh
