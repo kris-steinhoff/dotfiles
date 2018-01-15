@@ -36,6 +36,22 @@ function activate() {
     fi
 }
 
+
+# set docker-machine env variables
+function docker-env() {
+   VARS=`docker-machine env`;
+   if [ $? -ne 0 ]; then
+       echo -e '\nCould not set Docker variables.'
+       return 1
+   else
+       eval ${VARS}
+       print ${VARS}
+       echo -e '\nDocker variables set.'
+       return 0
+   fi
+}
+
+
 # Path to your oh-my-zsh installation.
 export ZSH=${HOME}/.oh-my-zsh
 
