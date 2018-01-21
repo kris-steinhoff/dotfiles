@@ -5,6 +5,7 @@ set nocompatible
 filetype on
 filetype indent on
 filetype plugin on
+set omnifunc=syntaxcomplete#Complete
 compiler ruby
 
 set exrc
