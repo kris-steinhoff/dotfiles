@@ -5,7 +5,7 @@ set nocompatible
 filetype on
 filetype indent on
 filetype plugin on
-set omnifunc=syntaxcomplete#Complete
+" set omnifunc=syntaxcomplete#Complete
 compiler ruby
 
 set exrc
@@ -35,3 +35,9 @@ syntax on
 
 set background=dark
 set laststatus=2
+
+set noshowmode shortmess+=c
+set completeopt-=preview
+set completeopt+=longest,menuone,noinsert,noselect
+let g:jedi#popup_on_dot = 0  " It may be 1 as well
+let g:mucomplete#enable_auto_at_startup = 1
