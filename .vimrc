@@ -30,6 +30,8 @@ set wrap linebreak textwidth=0
 
 set backspace=indent,eol,start
 
+set foldlevelstart=20
+
 syntax on
 
 set background=dark
