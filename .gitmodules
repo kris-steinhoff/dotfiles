@@ -25,3 +25,6 @@
 [submodule ".vim/bundle/SimpylFold"]
 	path = .vim/bundle/SimpylFold
 	url = https://github.com/tmhedberg/SimpylFold
+[submodule ".bash_it"]
+	path = .bash_it
+	url = https://github.com/Bash-it/bash-it
