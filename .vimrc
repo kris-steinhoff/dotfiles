@@ -44,9 +44,10 @@ endtry
 
 set noshowmode
 set completeopt-=preview
+set completeopt+=menuone
 
 try
-    set completeopt+=longest,menuone,noinsert,noselect
+    set completeopt+=longest,noinsert,noselect
 catch /E474: Invalid argument/
 endtry
 
