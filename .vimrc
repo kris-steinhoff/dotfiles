@@ -52,3 +52,7 @@ catch /E474: Invalid argument/
 endtry
 
 let g:mucomplete#enable_auto_at_startup = 1
+
+" Set 2-space tabs for YAML
+autocmd FileType yaml setlocal ts=2 sts=2 sw=2 expandtab
+
