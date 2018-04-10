@@ -73,4 +73,4 @@ unsetopt share_history
 test -e "${HOME}/.iterm2_shell_integration.zsh" && source "${HOME}/.iterm2_shell_integration.zsh"
 
 # added by travis gem
-[ -f /Users/steinhof/.travis/travis.sh ] && source /Users/steinhof/.travis/travis.sh
+[ -f ${HOME}/.travis/travis.sh ] && source ${HOME}/.travis/travis.sh
