@@ -1,3 +1,11 @@
+# dotfiles
+
+I use this technique to manage my dotfiles accross all of my \*nix environments. It makes my home directory a git repository, and creates a `dotfiles` alias that is a git command with some flags to sets the repo directory and uses a flag to ignore untracked files.
+
+### Requirements
+- git 1.8
+
+
 ## Initialize
 
 To set up a user with these dot files:
