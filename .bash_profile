@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+test -f "${HOME}/.utils.sh" && source "${HOME}/.utils.sh"
+
 # Path to the bash it configuration
 export BASH_IT="${HOME}/.bash_it"
 
