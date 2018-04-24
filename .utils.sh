@@ -1,6 +1,11 @@
 export PATH=${HOME}/bin:/usr/local/bin:/opt/bin:${PATH}
 alias dotfiles='$(which git) -c status.showUntrackedFiles=no --git-dir=$HOME/.dotfiles/ --work-tree=$HOME'
 
+alias dotfiles-update-submodules-and-push='cd ~ && dotfiles submodule update --recursive --remote && dotfiles add .oh-my-zsh .vim/bundle && dotfiles ci -m "Update submodules" && dotfiles push'
+
+alias dotfiles-pull-submodules-and-merge='cd ~ && dotfiles pull && dotfiles submodule update --init --merge'
+
+
 alias tacc='tmux -CC attach -t'
 alias tadcc='tmux -CC attach -d -t'
 alias tscc='tmux -CC new-session -s'
