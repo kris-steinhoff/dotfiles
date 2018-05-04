@@ -1,4 +1,5 @@
 export PATH=${HOME}/bin:/usr/local/bin:/opt/bin:${PATH}
+export PATH=${PATH}:/${HOME}/go/bin
 alias dotfiles='$(which git) -c status.showUntrackedFiles=no --git-dir=$HOME/.dotfiles/ --work-tree=$HOME'
 
 alias dotfiles-update-submodules-and-push='cd ~ && dotfiles submodule update --recursive --remote && dotfiles add .oh-my-zsh .vim/bundle && dotfiles ci -m "Update submodules" && dotfiles push'
@@ -61,3 +62,5 @@ function docker-env() {
 }
 
 test -f "${HOME}/.travis/travis.sh" && source "${HOME}/.travis/travis.sh"
+
+test -f "${HOME}/.local.sh" && source "${HOME}/.local.sh"
