@@ -7,6 +7,9 @@ filetype indent on
 filetype plugin on
 compiler ruby
 
+set mouse=a
+set clipboard=unnamed
+
 set exrc
 set showmode
 " set number
@@ -58,4 +61,3 @@ autocmd FileType yaml setlocal ts=2 sts=2 sw=2 expandtab
 
 " Less intrusive paren matching
 highlight MatchParen cterm=bold ctermbg=none
-
