@@ -8,7 +8,6 @@ filetype plugin on
 compiler ruby
 
 set mouse=a
-set clipboard=unnamed
 
 set exrc
 set showmode
