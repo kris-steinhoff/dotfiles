@@ -66,3 +66,5 @@ autocmd FileType yaml setlocal ts=2 sts=2 sw=2 expandtab
 
 " Less intrusive paren matching
 highlight MatchParen cterm=bold ctermbg=none
+
+autocmd FileType python setlocal nonumber
