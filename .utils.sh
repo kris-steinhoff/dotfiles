@@ -4,7 +4,7 @@ alias dotfiles='$(which git) -c status.showUntrackedFiles=no --git-dir=$HOME/.do
 
 alias dotfiles-update-submodules-and-push='cd ~ && dotfiles submodule update --recursive --remote && dotfiles add .oh-my-zsh .bash_it .vim/bundle && dotfiles ci -m "Update submodules" && dotfiles push'
 
-alias dotfiles-pull-submodules-and-merge='cd ~ && dotfiles pull && dotfiles submodule update --init --merge'
+alias dotfiles-pull-submodules-and-merge='cd ~ && dotfiles pull && dotfiles submodule update --recursive --init --merge'
 
 
 alias tacc='tmux -CC attach -t'
