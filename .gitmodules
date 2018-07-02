@@ -28,3 +28,6 @@
 [submodule ".bash_it"]
 	path = .bash_it
 	url = https://github.com/Bash-it/bash-it
+[submodule ".vim/bundle/python-mode"]
+	path = .vim/bundle/python-mode
+	url = https://github.com/python-mode/python-mode.git
