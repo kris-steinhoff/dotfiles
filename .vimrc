@@ -68,3 +68,6 @@ autocmd FileType yaml setlocal ts=2 sts=2 sw=2 expandtab
 highlight MatchParen cterm=bold ctermbg=none
 
 autocmd FileType python setlocal nonumber
+
+" set colorcolun to grey in pythomode
+hi ColorColumn ctermbg=8
