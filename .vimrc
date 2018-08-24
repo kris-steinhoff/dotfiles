@@ -7,11 +7,11 @@ filetype indent on
 filetype plugin on
 compiler ruby
 
-set mouse+=a
-if &term =~ '^screen'
-    " tmux knows the extended mouse mode
-    set ttymouse=xterm2
-endif
+" set mouse+=a
+" if &term =~ '^screen'
+"     " tmux knows the extended mouse mode
+"     set ttymouse=xterm2
+" endif
 set fillchars+=vert:\ 
 
 
