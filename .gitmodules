@@ -34,6 +34,6 @@
 [submodule ".vim/bundle/salt-vim"]
 	path = .vim/bundle/salt-vim
 	url = https://github.com/saltstack/salt-vim.git
-[submodule "/Users/steinhof/.vim/bundle/tabulous"]
-	path = /Users/steinhof/.vim/bundle/tabulous
+[submodule ".vim/bundle/tabulous"]
+	path = .vim/bundle/tabulous
 	url = https://github.com/webdevel/tabulous.git
