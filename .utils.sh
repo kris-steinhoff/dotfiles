@@ -61,6 +61,21 @@ function docker-env() {
    fi
 }
 
+
+function ls_or_page() {
+    TARGET=${1:-'.'}
+
+    if [ -d "${TARGET}" ]; then
+        ls -la "${TARGET}"
+    elif [ -f "${TARGET}" ]; then
+        ${PAGER:-"cat"} "${TARGET}"
+    else
+        echo "ERROR: could not ls or ${PAGER:-'cat'} ${TARGET}"
+    fi
+}
+
+alias c=ls_or_page
+
 test -f "${HOME}/.travis/travis.sh" && source "${HOME}/.travis/travis.sh"
 
 test -f "${HOME}/.local.sh" && source "${HOME}/.local.sh"
