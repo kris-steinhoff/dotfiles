@@ -76,3 +76,5 @@ hi ColorColumn ctermbg=8
 " remove tabeline 'X'
 let tabulousCloseStr = ''
 let tabulousLabelModifiedStr = '+ '
+let tabulousLabelNameOptions = ''
+
