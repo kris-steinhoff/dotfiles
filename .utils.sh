@@ -76,6 +76,19 @@ function ls_or_page() {
 
 alias c=ls_or_page
 
+function tcc() {
+    SESSION="$(basename $(pwd))"
+    tmux list-sessions | grep -q "^${SESSION}"; rc=$?
+    echo $rc
+    if [ ${rc} -eq 0 ]; then
+        echo attach
+        tmux -CC attach-session -d -t "${SESSION}"
+    else
+        echo new
+        tmux -CC new-session -s "${SESSION}"
+    fi
+}
+
 test -f "${HOME}/.travis/travis.sh" && source "${HOME}/.travis/travis.sh"
 
 test -f "${HOME}/.local.sh" && source "${HOME}/.local.sh"
