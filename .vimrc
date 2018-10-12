@@ -72,6 +72,7 @@ autocmd FileType python setlocal nonumber
 
 " set colorcolun to grey in pythomode
 hi ColorColumn ctermbg=8
+let g:pymode_rope = 0
 
 " remove tabeline 'X'
 let tabulousCloseStr = ''
