@@ -1,5 +1,7 @@
 
-execute pathogen#infect()
+if v:version < 800
+    execute pathogen#infect()
+endif
 
 set nocompatible
 filetype on

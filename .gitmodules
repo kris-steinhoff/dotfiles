@@ -37,3 +37,6 @@
 [submodule ".vim/bundle/tabulous"]
 	path = .vim/bundle/tabulous
 	url = https://github.com/webdevel/tabulous.git
+[submodule ".vim/pack/plugins/start/completor.vim"]
+	path = .vim/pack/plugins/start/completor.vim
+	url = git@github.com:maralla/completor.vim.git
