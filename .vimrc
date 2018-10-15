@@ -81,3 +81,11 @@ let tabulousCloseStr = ''
 let tabulousLabelModifiedStr = '+ '
 let tabulousLabelNameOptions = ''
 
+" Update linting when exiting insert mode
+let g:ale_lint_on_text_changed = 'normal'
+let g:ale_lint_on_insert_leave = 1
+
+" [completor.vim] Use Tab to select completion
+inoremap <expr> <Tab> pumvisible() ? "\<C-n>" : "\<Tab>"
+inoremap <expr> <S-Tab> pumvisible() ? "\<C-p>" : "\<S-Tab>"
+inoremap <expr> <cr> pumvisible() ? "\<C-y>\<cr>" : "\<cr>"
