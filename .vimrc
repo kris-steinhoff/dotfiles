@@ -85,6 +85,9 @@ let tabulousLabelNameOptions = ''
 let g:ale_lint_on_text_changed = 'normal'
 let g:ale_lint_on_insert_leave = 1
 
+" to workaround a bug (https://github.com/w0rp/ale/issues/1334)
+let g:ale_echo_cursor = 0
+
 " [completor.vim] Use Tab to select completion
 inoremap <expr> <Tab> pumvisible() ? "\<C-n>" : "\<Tab>"
 inoremap <expr> <S-Tab> pumvisible() ? "\<C-p>" : "\<S-Tab>"
