@@ -76,17 +76,20 @@ function ls_or_page() {
 
 alias c=ls_or_page
 
-function tcc() {
-    SESSION="$(basename $(pwd))"
-    tmux list-sessions | grep -q "^${SESSION}"; rc=$?
-    echo $rc
+function t() {
+    DEFAULT_SESSION=$(basename $(pwd))
+    SESSION="${*:-${DEFAULT_SESSION}}"
+    tmux list-sessions | grep -q "^${SESSION}" > /dev/null; rc=$?
     if [ ${rc} -eq 0 ]; then
-        echo attach
-        tmux -CC attach-session -d -t "${SESSION}"
+        tmux ${TMUX_OPTIONS} attach-session -d -t "${SESSION}"
     else
-        echo new
-        tmux -CC new-session -s "${SESSION}"
+        tmux ${TMUX_OPTIONS} new-session -s "${SESSION}"
     fi
+}
+
+function tcc() {
+    TMUX_OPTIONS='-CC'
+    t ${*}
 }
 
 test -f "${HOME}/.travis/travis.sh" && source "${HOME}/.travis/travis.sh"
