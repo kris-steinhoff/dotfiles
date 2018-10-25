@@ -91,6 +91,6 @@ inoremap <expr> <S-Tab> pumvisible() ? "\<C-p>" : "\<S-Tab>"
 inoremap <expr> <cr> pumvisible() ? "\<C-y>\<cr>" : "\<cr>"
 
 try
-    source .vimrc.local
+    source ~/.vimrc.local
 catch /E484/
 endtry
