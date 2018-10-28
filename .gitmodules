@@ -39,10 +39,10 @@
 	url = https://github.com/webdevel/tabulous.git
 [submodule ".vim/pack/plugins/start/completor.vim"]
 	path = .vim/pack/plugins/start/completor.vim
-	url = git@github.com:maralla/completor.vim.git
+	url = https://github.com/maralla/completor.vim.git
 [submodule ".vim/pack/plugins/start/ale"]
 	path = .vim/pack/plugins/start/ale
-	url = git@github.com:w0rp/ale.git
+	url = https://github.com/w0rp/ale.git
 [submodule ".vim/pack/plugins/start/vim-fugitive"]
 	path = .vim/pack/plugins/start/vim-fugitive
-	url = git@github.com:tpope/vim-fugitive.git
+	url = https://github.com/tpope/vim-fugitive.git
