@@ -19,8 +19,8 @@ export EDITOR='vim'
 # activate a python virtualenv
 function activate() {
     if [ ! -z "${VIRTUAL_ENV}" ]; then
-      echo "Already active ${VIRTUAL_ENV}"
-      return 0
+      echo "Already active ${VIRTUAL_ENV}, unsetting VIRTUAL_ENV] ..."
+      unset VIRTUAL_ENV
     fi
 
     dir="$(pwd)"

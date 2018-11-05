@@ -94,6 +94,8 @@ inoremap <expr> <cr> pumvisible() ? "\<C-y>\<cr>" : "\<cr>"
 nmap <silent> <leader>aj :ALENext<cr>
 nmap <silent> <leader>ak :ALEPrevious<cr>
 
+" Disable completor.vim preview
+let g:completor_complete_options='menuone,noselect'
 
 try
     source ~/.vimrc.local
