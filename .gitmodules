@@ -34,9 +34,6 @@
 [submodule ".vim/bundle/salt-vim"]
 	path = .vim/bundle/salt-vim
 	url = https://github.com/saltstack/salt-vim.git
-[submodule ".vim/bundle/tabulous"]
-	path = .vim/bundle/tabulous
-	url = https://github.com/webdevel/tabulous.git
 [submodule ".vim/pack/plugins/start/completor.vim"]
 	path = .vim/pack/plugins/start/completor.vim
 	url = https://github.com/maralla/completor.vim.git

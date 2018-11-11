@@ -80,11 +80,6 @@ autocmd FileType python setlocal nonumber
 hi ColorColumn ctermbg=8
 let g:pymode_rope = 0
 
-" remove tabeline 'X'
-let tabulousCloseStr = ''
-let tabulousLabelModifiedStr = '+ '
-let tabulousLabelNameOptions = ''
-
 " Update linting when exiting insert mode
 let g:ale_lint_on_text_changed = 'normal'
 let g:ale_lint_on_insert_leave = 1
