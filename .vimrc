@@ -4,6 +4,7 @@ if v:version < 800
 endif
 
 set nocompatible
+set hidden
 filetype on
 filetype indent on
 filetype plugin on
