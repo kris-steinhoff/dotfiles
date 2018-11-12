@@ -98,12 +98,10 @@ nmap <silent> <leader>ak :ALEPrevious<cr>
 let g:completor_complete_options='menuone,noselect'
 
 " Tab navigation with Ctrl-h and -l
-nnoremap <C-h>  :tabprevious<CR>
-nnoremap <C-l>  :tabnext<CR>
-nnoremap <C-t>  :tabnew<CR>
-inoremap <C-h>  <Esc>:tabprevious<CR>i
-inoremap <C-l>  <Esc>:tabnext<CR>i
-inoremap <C-t>  <Esc>:tabnew<CR>
+nnoremap <C-S-h>  :tabprevious<CR>
+nnoremap <C-S-l>  :tabnext<CR>
+inoremap <C-S-h>  <Esc>:tabprevious<CR>i
+inoremap <C-S-l>  <Esc>:tabnext<CR>i
 
 try
     source ~/.vimrc.local
