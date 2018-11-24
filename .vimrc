@@ -56,9 +56,10 @@ endtry
 set noshowmode
 set completeopt-=preview
 set completeopt+=menuone
+set completeopt+=noselect
 
 try
-    set completeopt+=longest,noinsert
+    set completeopt+=noinsert
 catch /E474: Invalid argument/
 endtry
 
@@ -95,7 +96,7 @@ nmap <silent> <leader>aj :ALENext<cr>
 nmap <silent> <leader>ak :ALEPrevious<cr>
 
 " Disable completor.vim preview
-let g:completor_complete_options='menuone,noselect'
+let g:completor_complete_options='menuone,noselect,noinsert'
 
 " Tab navigation with Ctrl-h and -l
 nnoremap <C-S-h>  :tabprevious<CR>
