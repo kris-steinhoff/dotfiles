@@ -43,6 +43,3 @@
 [submodule ".vim/pack/plugins/start/vim-fugitive"]
 	path = .vim/pack/plugins/start/vim-fugitive
 	url = https://github.com/tpope/vim-fugitive.git
-[submodule ".vim/bundle/vim-ctrlspace"]
-	path = .vim/bundle/vim-ctrlspace
-	url = https://github.com/vim-ctrlspace/vim-ctrlspace.git
