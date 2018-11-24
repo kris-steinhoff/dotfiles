@@ -120,6 +120,8 @@ nmap <leader>9 <Plug>AirlineSelectTab9
 nmap <leader>- <Plug>AirlineSelectPrevTab
 nmap <leader>+ <Plug>AirlineSelectNextTab
 
+nmap <leader>  :tabedit %<CR>
+
 try
     source ~/.vimrc.local
 catch /E484/
