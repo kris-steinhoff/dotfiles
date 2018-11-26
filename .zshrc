@@ -10,7 +10,7 @@ ZSH_CUSTOM=${HOME}/.oh-my-zsh-custom
 COMPLETION_WAITING_DOTS="true"
 DISABLE_AUTO_UPDATE="true"
 
-plugins=(git git-prompt virtualenv django python tmux vagrant kubectl minikube docker)
+plugins=(vi-mode git git-prompt virtualenv django python tmux vagrant kubectl minikube docker)
 
 export ZSH_TMUX_ITERM2=true
 source $ZSH/oh-my-zsh.sh
@@ -19,4 +19,3 @@ unsetopt share_history
 
 test -f "${HOME}/.iterm2_shell_integration.zsh" && source "${HOME}/.iterm2_shell_integration.zsh"
 
-bindkey -v
