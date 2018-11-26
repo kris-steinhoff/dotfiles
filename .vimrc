@@ -98,11 +98,10 @@ nmap <silent> <leader>ak :ALEPrevious<cr>
 " Disable completor.vim preview
 let g:completor_complete_options='menuone,noselect,noinsert'
 
-" Tab navigation with Ctrl-h and -l
-nnoremap <C-S-h>  :tabprevious<CR>
-nnoremap <C-S-l>  :tabnext<CR>
-inoremap <C-S-h>  <Esc>:tabprevious<CR>i
-inoremap <C-S-l>  <Esc>:tabnext<CR>i
+noremap <C-S-h>  <Plug>AirlineSelectPrevTab
+noremap <C-S-l>  <Plug>AirlineSelectNextTab
+" inoremap <C-S-h>  <Esc>:tabprevious<CR> i
+" inoremap <C-S-l>  <Esc>:tabnext<CR> i
 
 nnoremap <C-b>    :CtrlPBuffer<CR>
 
@@ -117,8 +116,12 @@ nmap <leader>6 <Plug>AirlineSelectTab6
 nmap <leader>7 <Plug>AirlineSelectTab7
 nmap <leader>8 <Plug>AirlineSelectTab8
 nmap <leader>9 <Plug>AirlineSelectTab9
-nmap <leader>- <Plug>AirlineSelectPrevTab
-nmap <leader>+ <Plug>AirlineSelectNextTab
+
+" Tab/buffer navigation with Ctrl-Shift-h and -l
+nmap <C-S-h>  <Plug>AirlineSelectPrevTab
+nmap <C-S-l>  <Plug>AirlineSelectNextTab
+imap <C-S-h>  <Esc> <Plug>AirlineSelectPrevTab i
+imap <C-S-l>  <Esc> <Plug>AirlineSelectNextTab i
 
 nmap <leader>  :tabedit %<CR>
 
