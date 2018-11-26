@@ -1,3 +1,4 @@
+
 test -f "${HOME}/.utils.sh" && source "${HOME}/.utils.sh"
 
 # Path to your oh-my-zsh installation.
@@ -18,3 +19,4 @@ unsetopt share_history
 
 test -f "${HOME}/.iterm2_shell_integration.zsh" && source "${HOME}/.iterm2_shell_integration.zsh"
 
+bindkey -v

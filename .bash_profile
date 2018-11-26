@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+set -o vi
+
 test -f "${HOME}/.utils.sh" && source "${HOME}/.utils.sh"
 
 # Path to the bash it configuration
