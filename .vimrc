@@ -105,6 +105,9 @@ noremap <C-S-l>  <Plug>AirlineSelectNextTab
 
 nnoremap <C-b>    :CtrlPBuffer<CR>
 
+let g:airline#extensions#tabline#show_close_button = 0
+let g:airline#extensions#tabline#formatter = 'unique_tail_improved'
+let g:airline#extensions#tabline#tab_nr_type = 2
 let g:airline#extensions#tabline#enabled = 1
 let g:airline#extensions#tabline#buffer_idx_mode = 1
 nmap <leader>1 <Plug>AirlineSelectTab1
