@@ -20,7 +20,9 @@ set fillchars+=vert:\
 
 set exrc
 set showmode
-" set number
+set number
+highlight LineNr ctermfg=darkgrey
+
 set ruler
 set showcmd
 
@@ -76,7 +78,6 @@ highlight MatchParen cterm=bold ctermbg=none
 hi SpellBad ctermbg=darkgrey
 hi SpellCap ctermbg=darkgrey
 
-autocmd FileType python setlocal nonumber
 
 " set colorcolun to grey in pythomode
 hi ColorColumn ctermbg=8
@@ -126,7 +127,7 @@ nmap <C-S-l>  <Plug>AirlineSelectNextTab
 imap <C-S-h>  <Esc> <Plug>AirlineSelectPrevTab i
 imap <C-S-l>  <Esc> <Plug>AirlineSelectNextTab i
 
-nmap <leader>  :tabedit %<CR>
+nmap <leader>z  :tabedit %<CR>:set nonumber<CR>
 
 try
     source ~/.vimrc.local
