@@ -105,6 +105,9 @@ noremap <C-S-l>  <Plug>AirlineSelectNextTab
 " inoremap <C-S-l>  <Esc>:tabnext<CR> i
 
 nnoremap <C-b>    :CtrlPBuffer<CR>
+let g:ctrlp_custom_ignore = {
+    \ 'dir':  'venv$\|\.egg-info$',
+    \ 'file': 'Session.vim' }
 
 let g:airline#extensions#tabline#show_close_button = 0
 let g:airline#extensions#tabline#formatter = 'unique_tail_improved'
