@@ -61,3 +61,6 @@
 [submodule ".vim/bundle/vim-test"]
 	path = .vim/bundle/vim-test
 	url = https://github.com/janko-m/vim-test
+[submodule ".vim/bundle/vim-commentary"]
+	path = .vim/bundle/vim-commentary
+	url = https://github.com/tpope/vim-commentary
