@@ -130,7 +130,7 @@ nmap <C-S-l>  <Plug>AirlineSelectNextTab
 imap <C-S-h>  <Esc> <Plug>AirlineSelectPrevTab i
 imap <C-S-l>  <Esc> <Plug>AirlineSelectNextTab i
 
-nmap <leader>z  :tabedit %<CR>:set nonumber<CR>
+nmap <leader>z  :tabedit %<CR>:set nonumber<CR>:set signcolumn=no<CR>
 
 try
     source ~/.vimrc.local
