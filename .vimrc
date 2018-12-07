@@ -92,9 +92,9 @@ inoremap <expr> <Tab> pumvisible() ? "\<C-n>" : "\<Tab>"
 inoremap <expr> <S-Tab> pumvisible() ? "\<C-p>" : "\<S-Tab>"
 inoremap <expr> <cr> pumvisible() ? "\<C-y>\<cr>" : "\<cr>"
 
-" map Ale previous and next errors
-nmap <silent> <leader>aj :ALENext<cr>
-nmap <silent> <leader>ak :ALEPrevious<cr>
+" map linter previous and next errors
+nmap <silent> <leader>lj :ALENext<cr>
+nmap <silent> <leader>lk :ALEPrevious<cr>
 
 " Disable completor.vim preview
 let g:completor_complete_options='menuone,noselect,noinsert'
