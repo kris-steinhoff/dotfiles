@@ -132,6 +132,8 @@ imap <C-S-l>  <Esc> <Plug>AirlineSelectNextTab i
 
 nmap <leader>z  :tabedit %<CR>:set nonumber<CR>:set signcolumn=no<CR>
 
+set signcolumn=yes
+
 try
     source ~/.vimrc.local
 catch /E484/
