@@ -1,7 +1,45 @@
+" Plugins will be downloaded under the specified directory.
+call plug#begin('~/.vim/plugged')
+
+" Declare the list of plugins.
+Plug 'tpope/vim-sensible'
+
+Plug 'vim-airline/vim-airline'
+Plug 'vim-airline/vim-airline-themes'
+
+Plug 'ctrlpvim/ctrlp.vim'
+Plug 'scrooloose/nerdtree'
+
+Plug 'saltstack/salt-vim'
+
+Plug 'Quramy/tsuquyomi'
+Plug 'leafgarland/typescript-vim'
+
+Plug 'tpope/vim-commentary'
+
+Plug 'tpope/vim-obsession'
+
+Plug 'tpope/vim-fugitive'
+Plug 'airblade/vim-gitgutter'
+
+Plug 'Vimjas/vim-python-pep8-indent'
+Plug 'tmhedberg/SimpylFold'
+
+Plug 'mhinz/vim-startify'
 
 if v:version < 800
-    execute pathogen#infect()
+    Plug 'vim-syntastic/syntastic'
+    Plug 'lifepillar/vim-mucomplete'
 endif
+
+if v:version >= 800
+    Plug 'w0rp/ale'
+    Plug 'maralla/completor.vim'
+endif
+
+" List ends here. Plugins become visible to Vim after this call.
+call plug#end()
+
 
 set nocompatible
 " set hidden
