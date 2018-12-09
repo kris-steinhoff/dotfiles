@@ -40,20 +40,13 @@ endif
 " List ends here. Plugins become visible to Vim after this call.
 call plug#end()
 
-
 set nocompatible
-" set hidden
+
 filetype on
 filetype indent on
 filetype plugin on
-compiler ruby
 
-" set mouse+=a
-" if &term =~ '^screen'
-"     " tmux knows the extended mouse mode
-"     set ttymouse=xterm2
-" endif
-set fillchars+=vert:\ 
+set fillchars+=vert:\  " use space as vertical split char
 
 
 set exrc
@@ -61,32 +54,25 @@ set showmode
 set number
 highlight LineNr ctermfg=darkgrey
 
-set ruler
 set showcmd
 
+" Search options
 set incsearch
 set nowrapscan
 set showmatch
-" set hlsearch
 set ignorecase
 set smartcase
 
 set shiftwidth=4
 set softtabstop=4
-set autoindent
 set smartindent
 set expandtab
 
 set wrap linebreak textwidth=0
 
-set backspace=indent,eol,start
-
 set foldlevelstart=20
 
-syntax on
-
 set background=dark
-set laststatus=2
 
 try
     set shortmess+=c
@@ -131,8 +117,8 @@ inoremap <expr> <S-Tab> pumvisible() ? "\<C-p>" : "\<S-Tab>"
 inoremap <expr> <cr> pumvisible() ? "\<C-y>\<cr>" : "\<cr>"
 
 " map linter previous and next errors
-nmap <silent> <leader>lj :ALENext<cr>
-nmap <silent> <leader>lk :ALEPrevious<cr>
+nmap <silent> <leader>aj :ALENext<cr>
+nmap <silent> <leader>ak :ALEPrevious<cr>
 
 " Disable completor.vim preview
 let g:completor_complete_options='menuone,noselect,noinsert'
