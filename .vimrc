@@ -106,7 +106,7 @@ noremap <C-S-l>  <Plug>AirlineSelectNextTab
 
 nnoremap <C-b>    :CtrlPBuffer<CR>
 let g:ctrlp_custom_ignore = {
-    \ 'dir':  'venv$\|\.egg-info$',
+    \ 'dir':  '^venv$\|\.egg-info$\|node_modules',
     \ 'file': 'Session.vim' }
 
 let g:airline#extensions#tabline#show_close_button = 0
