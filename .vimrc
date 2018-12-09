@@ -15,6 +15,8 @@ Plug 'saltstack/salt-vim'
 Plug 'Quramy/tsuquyomi'
 Plug 'leafgarland/typescript-vim'
 
+Plug 'fatih/vim-go', { 'do': ':GoInstallBinaries' }
+
 Plug 'tpope/vim-commentary'
 
 Plug 'tpope/vim-obsession'
