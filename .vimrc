@@ -96,7 +96,6 @@ endtry
 set noshowmode
 set completeopt-=preview
 set completeopt+=menuone
-set completeopt+=noselect
 
 try
     set completeopt+=noinsert
@@ -125,11 +124,6 @@ let g:pymode_rope = 0
 let g:ale_lint_on_text_changed = 'normal'
 let g:ale_lint_on_insert_leave = 1
 
-" [completor.vim] Use Tab to select completion
-inoremap <expr> <Tab> pumvisible() ? "\<C-n>" : "\<Tab>"
-inoremap <expr> <S-Tab> pumvisible() ? "\<C-p>" : "\<S-Tab>"
-inoremap <expr> <cr> pumvisible() ? "\<C-y>\<cr>" : "\<cr>"
-
 " map linter previous and next errors
 nmap <silent> <leader>lj :ALENext<cr>
 nmap <silent> <leader>lk :ALEPrevious<cr>
@@ -141,10 +135,7 @@ noremap <C-S-h>  <Plug>AirlineSelectPrevTab
 noremap <C-S-l>  <Plug>AirlineSelectNextTab
 " inoremap <C-S-h>  <Esc>:tabprevious<CR> i
 " inoremap <C-S-l>  <Esc>:tabnext<CR> i
-
-nnoremap <C-b>    :CtrlPBuffer<CR>
-let g:ctrlp_custom_ignore = {
-    \ 'dir':  '^venv$\|\.egg-info$\|node_modules',
+nnoremap <C-b>    :CtrlPBuffer<CR> let g:ctrlp_custom_ignore = { \ 'dir':  '^venv$\|\.egg-info$\|node_modules',
     \ 'file': 'Session.vim' }
 
 let g:airline#extensions#tabline#show_close_button = 0
@@ -163,16 +154,25 @@ nmap <leader>8 <Plug>AirlineSelectTab8
 nmap <leader>9 <Plug>AirlineSelectTab9
 
 " Tab/buffer navigation with Ctrl-Shift-h and -l
-nmap <C-S-h>  <Plug>AirlineSelectPrevTab
-nmap <C-S-l>  <Plug>AirlineSelectNextTab
-imap <C-S-h>  <Esc> <Plug>AirlineSelectPrevTab i
-imap <C-S-l>  <Esc> <Plug>AirlineSelectNextTab i
+" nmap <C-S-h>  <Plug>AirlineSelectPrevTab
+" nmap <C-S-l>  <Plug>AirlineSelectNextTab
+" imap <C-S-h>  <Esc> <Plug>AirlineSelectPrevTab i
+" imap <C-S-l>  <Esc> <Plug>AirlineSelectNextTab i
 
 nmap <leader>z  :tabedit %<CR>:set nonumber<CR>:set signcolumn=no<CR>
 
 let g:tsuquyomi_disable_quickfix = 1
 
-set signcolumn=yes
+if v:version >= 800
+    set signcolumn=yes
+    set completeopt+=noselect
+
+    " [completor.vim] Use Tab to select completion
+    inoremap <expr> <Tab> pumvisible() ? "\<C-n>" : "\<Tab>"
+    inoremap <expr> <S-Tab> pumvisible() ? "\<C-p>" : "\<S-Tab>"
+    inoremap <expr> <cr> pumvisible() ? "\<C-y>\<cr>" : "\<cr>"
+
+endif
 
 try
     source ~/.vimrc.local
