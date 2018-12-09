@@ -1,72 +1,9 @@
 [submodule ".oh-my-zsh"]
 	path = .oh-my-zsh
 	url = https://github.com/robbyrussell/oh-my-zsh.git
-[submodule ".vim/bundle/nerdtree"]
-	path = .vim/bundle/nerdtree
-	url = https://github.com/scrooloose/nerdtree.git
-[submodule ".vim/bundle/vim-airline"]
-	path = .vim/bundle/vim-airline
-	url = https://github.com/vim-airline/vim-airline
-[submodule ".vim/bundle/vim-airline-themes"]
-	path = .vim/bundle/vim-airline-themes
-	url = https://github.com/vim-airline/vim-airline-themes
-[submodule ".vim/bundle/vim-gitgutter"]
-	path = .vim/bundle/vim-gitgutter
-	url = https://github.com/airblade/vim-gitgutter.git
-[submodule ".vim/bundle/syntastic"]
-	path = .vim/bundle/syntastic
-	url = https://github.com/vim-syntastic/syntastic.git
-[submodule ".vim/bundle/vim-mucomplete"]
-	path = .vim/bundle/vim-mucomplete
-	url = https://github.com/lifepillar/vim-mucomplete.git
-[submodule ".vim/bundle/vim-python-pep8-indent"]
-	path = .vim/bundle/vim-python-pep8-indent
-	url = https://github.com/Vimjas/vim-python-pep8-indent.git
-[submodule ".vim/bundle/SimpylFold"]
-	path = .vim/bundle/SimpylFold
-	url = https://github.com/tmhedberg/SimpylFold
 [submodule ".bash_it"]
 	path = .bash_it
 	url = https://github.com/Bash-it/bash-it
-[submodule ".vim/bundle/python-mode"]
-	path = .vim/bundle/python-mode
-	url = https://github.com/python-mode/python-mode.git
-[submodule ".vim/bundle/salt-vim"]
-	path = .vim/bundle/salt-vim
-	url = https://github.com/saltstack/salt-vim.git
-[submodule ".vim/pack/plugins/start/completor.vim"]
-	path = .vim/pack/plugins/start/completor.vim
-	url = https://github.com/maralla/completor.vim.git
-[submodule ".vim/pack/plugins/start/ale"]
-	path = .vim/pack/plugins/start/ale
-	url = https://github.com/w0rp/ale.git
-[submodule ".vim/pack/plugins/start/vim-fugitive"]
-	path = .vim/pack/plugins/start/vim-fugitive
-	url = https://github.com/tpope/vim-fugitive.git
-[submodule ".vim/bundle/vim-obsession"]
-	path = .vim/bundle/vim-obsession
-	url = https://github.com/tpope/vim-obsession
-[submodule ".vim/bundle/ctrlp.vim"]
-	path = .vim/bundle/ctrlp.vim
-	url = https://github.com/ctrlpvim/ctrlp.vim
 [submodule "vim-startify"]
 	path = vim-startify
 	url = https://github.com/mhinz/vim-startify
-[submodule ".vim/bundle/vim-startify"]
-	path = .vim/bundle/vim-startify
-	url = https://github.com/mhinz/vim-startify
-[submodule ".vim/bundle/tagbar"]
-	path = .vim/bundle/tagbar
-	url = https://github.com/majutsushi/tagbar
-[submodule ".vim/bundle/vim-test"]
-	path = .vim/bundle/vim-test
-	url = https://github.com/janko-m/vim-test
-[submodule ".vim/bundle/vim-commentary"]
-	path = .vim/bundle/vim-commentary
-	url = https://github.com/tpope/vim-commentary
-[submodule ".vim/bundle/typescript-vim"]
-	path = .vim/bundle/typescript-vim
-	url = https://github.com/leafgarland/typescript-vim
-[submodule ".vim/bundle/tsuquyomi"]
-	path = .vim/bundle/tsuquyomi
-	url = https://github.com/Quramy/tsuquyomi
