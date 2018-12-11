@@ -1,9 +1,0 @@
-[submodule ".oh-my-zsh"]
-	path = .oh-my-zsh
-	url = https://github.com/robbyrussell/oh-my-zsh.git
-[submodule ".bash_it"]
-	path = .bash_it
-	url = https://github.com/Bash-it/bash-it
-[submodule "vim-startify"]
-	path = vim-startify
-	url = https://github.com/mhinz/vim-startify
