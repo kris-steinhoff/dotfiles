@@ -91,6 +91,7 @@ catch /E474: Invalid argument/
 endtry
 
 let g:go_version_warning = 0
+autocmd BufNewFile,BufRead *.go setlocal noexpandtab tabstop=4 shiftwidth=4
 
 let g:mucomplete#enable_auto_at_startup = 1
 let g:mucomplete#completion_delay = 100
