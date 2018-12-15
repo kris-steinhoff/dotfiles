@@ -87,3 +87,8 @@ if [ -d "${HOME}/.bash_it" ]; then
 else
     echo "${HOME}/.bash_it not found (https://github.com/Bash-it/bash-it)"
 fi
+
+# tmux aliases
+alias ts='tmux new-session -s'
+alias ta='tmux attach -t'
+alias tl='tmux list-sessions'
