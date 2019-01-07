@@ -1,5 +1,5 @@
 mv .zshrc .zshrc.bak
-mv.bashrc .bashrc.bak
+mv .bashrc .bashrc.bak
 mv .bash_profile .bash_profile.bak
 
 git init --bare $HOME/.dotfiles
