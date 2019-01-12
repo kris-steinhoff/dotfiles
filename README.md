@@ -21,13 +21,3 @@ curl -O https://raw.githubusercontent.com/ksofa2/dotfiles/gh-pages/init.sh && sh
 ```
 
 If you want to use zsh, change your shell with `chsh`.
-
-Create a new shell to see the changes. (Or: `source ~/.zshrc` for ZSH; `source ~/.bash_profile` for Bash)
-
-## Upgrade submodules
-
-To upgrade and push submodules, use the `dotfiles-update-submodules-and-push` alias.
-
-## Pull upgraded submodules
-
-To pull and upgrade on other instances, use the `dotfiles-pull-submodules-and-merge` alias.
