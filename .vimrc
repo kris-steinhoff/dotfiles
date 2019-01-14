@@ -26,6 +26,7 @@ Plug 'airblade/vim-gitgutter'
 
 Plug 'Vimjas/vim-python-pep8-indent'
 Plug 'tmhedberg/SimpylFold'
+Plug 'davidhalter/jedi-vim'
 
 Plug 'mhinz/vim-startify'
 
