@@ -131,7 +131,6 @@ noremap <C-S-h>  <Plug>AirlineSelectPrevTab
 noremap <C-S-l>  <Plug>AirlineSelectNextTab
 " inoremap <C-S-h>  <Esc>:tabprevious<CR> i
 " inoremap <C-S-l>  <Esc>:tabnext<CR> i
-nnoremap <C-b>    :CtrlPBuffer<CR>
 let g:ctrlp_custom_ignore = {
     \ 'dir':  'venv$\|\.egg-info$\|node_modules',
     \ 'file': 'Session.vim\|.pyc$' }
