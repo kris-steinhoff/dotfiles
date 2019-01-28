@@ -127,6 +127,10 @@ nmap <silent> <leader>ak :ALEPrevious<cr>
 " Disable completor.vim preview
 let g:completor_complete_options='menuone,noselect,noinsert'
 
+highlight GitGutterAdd    ctermfg=2 ctermbg=0
+highlight GitGutterChange ctermfg=3 ctermbg=0
+highlight GitGutterDelete ctermfg=1 ctermbg=0
+
 noremap <C-S-h>  <Plug>AirlineSelectPrevTab
 noremap <C-S-l>  <Plug>AirlineSelectNextTab
 " inoremap <C-S-h>  <Esc>:tabprevious<CR> i
