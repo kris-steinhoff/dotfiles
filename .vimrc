@@ -124,6 +124,9 @@ let g:ale_lint_on_insert_leave = 1
 nmap <silent> <leader>aj :ALENext<cr>
 nmap <silent> <leader>ak :ALEPrevious<cr>
 
+highlight ALEErrorSign    ctermfg=1 ctermbg=0
+highlight ALEWarningSign  ctermfg=3 ctermbg=0
+
 " Disable completor.vim preview
 let g:completor_complete_options='menuone,noselect,noinsert'
 
