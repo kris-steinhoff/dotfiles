@@ -139,8 +139,9 @@ noremap <C-S-l>  <Plug>AirlineSelectNextTab
 " inoremap <C-S-h>  <Esc>:tabprevious<CR> i
 " inoremap <C-S-l>  <Esc>:tabnext<CR> i
 let g:ctrlp_custom_ignore = {
-    \ 'dir':  'venv$\|\.egg-info$\|node_modules',
+    \ 'dir':  'venv$\|\.egg-info$\|node_modules\|.git\|.tox',
     \ 'file': 'Session.vim\|.pyc$' }
+let g:ctrlp_show_hidden = 1
 
 let g:airline#extensions#tabline#show_close_button = 0
 let g:airline#extensions#tabline#formatter = 'unique_tail_improved'
