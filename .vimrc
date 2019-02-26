@@ -121,8 +121,8 @@ let g:ale_lint_on_text_changed = 'normal'
 let g:ale_lint_on_insert_leave = 1
 
 " map linter previous and next errors
-nmap <silent> <leader>aj :ALENext<cr>
-nmap <silent> <leader>ak :ALEPrevious<cr>
+nmap <silent> <C-k> <Plug>(ale_previous_wrap)
+nmap <silent> <C-j> <Plug>(ale_next_wrap)
 
 highlight ALEErrorSign    ctermfg=1 ctermbg=0
 highlight ALEWarningSign  ctermfg=3 ctermbg=0
