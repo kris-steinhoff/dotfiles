@@ -107,10 +107,11 @@ autocmd FileType yaml setlocal ts=2 sts=2 sw=2 expandtab
 " Less intrusive paren matching
 highlight MatchParen cterm=bold ctermbg=none
 
-" less gaudy highlights for Ale
-hi SpellBad ctermbg=darkgrey
-hi SpellCap ctermbg=darkgrey
-
+" less gaudy highlights for Ale, Spell, etc
+hi clear SpellBad
+hi clear SpellCap
+hi SpellBad cterm=underline
+hi SpellCap cterm=underline
 
 " set colorcolun to grey in pythomode
 hi ColorColumn ctermbg=8
