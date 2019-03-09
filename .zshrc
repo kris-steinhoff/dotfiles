@@ -1,4 +1,3 @@
-
 test -f "${HOME}/.utils.sh" && source "${HOME}/.utils.sh"
 
 if [ -d "${HOME}/.oh-my-zsh" ]; then
@@ -35,5 +34,4 @@ fi
 
 unsetopt share_history
 
-test -f "${HOME}/.iterm2_shell_integration.zsh" && source "${HOME}/.iterm2_shell_integration.zsh"
-
+test -f "${HOME}/.iterm2_shell_integration.zsh" && source "${HOME}/.iterm2_shell_integration.zsh" || true
