@@ -1,0 +1,4 @@
+#!/bin/sh
+
+git clone --depth=1 https://github.com/robbyrussell/oh-my-zsh.git "${DOTFILES_INSTALL_DIR}/.oh-my-zsh"
+git clone --depth=1 https://github.com/Bash-it/bash-it.git "${DOTFILES_INSTALL_DIR}/.bash_it"
