@@ -30,6 +30,8 @@ Plug 'tmhedberg/SimpylFold'
 
 Plug 'mhinz/vim-startify'
 
+Plug 'mephux/bro.vim'
+
 if v:version < 800
     Plug 'vim-syntastic/syntastic'
     Plug 'lifepillar/vim-mucomplete'
