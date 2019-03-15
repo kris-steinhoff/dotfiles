@@ -11,7 +11,7 @@ if [ -d "${HOME}/.oh-my-zsh" ]; then
     COMPLETION_WAITING_DOTS="true"
     # DISABLE_AUTO_UPDATE="true"
 
-    plugins=(vi-mode git git-prompt virtualenv django python tmux vagrant kubectl minikube docker)
+    plugins=(vi-mode git git-prompt virtualenv django python tmux vagrant kubectl minikube docker oc)
 
     export ZSH_TMUX_ITERM2=true
     source $ZSH/oh-my-zsh.sh
