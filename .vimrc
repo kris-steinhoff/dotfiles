@@ -56,7 +56,6 @@ set fillchars+=vert:\  " use space as vertical split char
 
 set exrc
 set showmode
-set number
 highlight LineNr ctermfg=darkgrey
 
 set showcmd
