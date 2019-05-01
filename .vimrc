@@ -169,6 +169,8 @@ nmap <leader>9 <Plug>AirlineSelectTab9
 
 nmap <leader>z  :tabedit %<CR>:set nonumber<CR>:set signcolumn=no<CR>
 
+autocmd FileType gitcommit setlocal spell
+
 let g:tsuquyomi_disable_quickfix = 1
 
 if v:version >= 800
