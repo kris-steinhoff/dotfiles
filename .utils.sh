@@ -71,7 +71,7 @@ function ls_or_page() {
 alias c=ls_or_page
 
 function t() {
-    DEFAULT_SESSION=$(basename $(pwd))
+    DEFAULT_SESSION=$(echo $(basename $(pwd)) | tr '.' '_')
     SESSION="${*:-${DEFAULT_SESSION}}"
     tmux list-sessions | grep -q "^${SESSION}" > /dev/null; rc=$?
     if [ ${rc} -eq 0 ]; then
