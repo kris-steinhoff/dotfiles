@@ -10,7 +10,7 @@ if [ -d "${HOME}/.oh-my-zsh" ]; then
     COMPLETION_WAITING_DOTS="true"
     # DISABLE_AUTO_UPDATE="true"
 
-    plugins=(vi-mode git git-prompt virtualenv django python tmux vagrant kubectl minikube docker oc)
+    plugins=(vi-mode virtualenv git git-prompt django python tmux kubectl vagrant docker)
 
     export ZSH_TMUX_ITERM2=true
     source $ZSH/oh-my-zsh.sh
@@ -33,5 +33,3 @@ else
 fi
 
 unsetopt share_history
-
-test -f "${HOME}/.iterm2_shell_integration.zsh" && source "${HOME}/.iterm2_shell_integration.zsh" || true
