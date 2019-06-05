@@ -172,6 +172,10 @@ nmap <leader>z  :tabedit %<CR>:set nonumber<CR>:set signcolumn=no<CR>
 autocmd FileType gitcommit setlocal spell
 autocmd FileType markdown setlocal spell
 
+autocmd Filetype ruby set softtabstop=2
+autocmd Filetype ruby set sw=2
+autocmd Filetype ruby set ts=2
+
 let g:tsuquyomi_disable_quickfix = 1
 
 if v:version >= 800
