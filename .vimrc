@@ -115,6 +115,7 @@ hi clear SpellCap
 hi SpellBad cterm=underline
 hi SpellCap cterm=underline
 
+highlight SignColumn ctermbg=black
 " set colorcolun to grey in pythomode
 hi ColorColumn ctermbg=8
 let g:pymode_rope = 0
