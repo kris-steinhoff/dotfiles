@@ -16,4 +16,4 @@ vim -c PlugInstall -c PlugUpdate -c qa
 git clone https://github.com/tmux-plugins/tpm "${HOME}/.tmux/plugins/tpm" || echo "${HOME}/.tmux/plugins/tpm already exists"
 export TMUX_PLUGIN_MANAGER_PATH="${HOME}/.tmux/plugins/tpm"
 "${HOME}/.tmux/plugins/tpm/bin/install_plugins" || echo "tpm plugin install failed"
-"${HOME}/.tmux/plugins/tpm/bin/update_plugins all"
+"${HOME}/.tmux/plugins/tpm/bin/update_plugins" all
