@@ -3,8 +3,8 @@
 set -x
 set -e
 
-git clone --depth=1 https://github.com/robbyrussell/oh-my-zsh.git "${HOME}/.oh-my-zsh"
-git clone --depth=1 https://github.com/Bash-it/bash-it.git "${HOME}/.bash_it"
+git clone --depth=1 https://github.com/robbyrussell/oh-my-zsh.git "${HOME}/.oh-my-zsh" || echo "${HOME}/.oh-my-zsh already exists"
+git clone --depth=1 https://github.com/Bash-it/bash-it.git "${HOME}/.bash_it" || echo "${HOME}/.bash_it already exists"
 
 mkdir "${HOME}/bin" || echo "${HOME}/bin already exists"
 curl -s -o "${HOME}/bin/mote" https://raw.githubusercontent.com/ksofa2/mote/master/mote
