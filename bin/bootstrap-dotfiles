@@ -14,5 +14,5 @@ curl -s -fLo ~/.vim/autoload/plug.vim --create-dirs https://raw.githubuserconten
 vim -c PlugInstall -c PlugUpdate -c qa
 
 git clone https://github.com/tmux-plugins/tpm "${HOME}/.tmux/plugins/tpm" || echo "${HOME}/.tmux/plugins/tpm already exists"
-"${HOME}/tmux/plugins/tpm/bin/install_plugins"
-"${HOME}/tmux/plugins/tpm/bin/update_plugins all"
+"${HOME}/.tmux/plugins/tpm/bin/install_plugins"
+"${HOME}/.tmux/plugins/tpm/bin/update_plugins all"
