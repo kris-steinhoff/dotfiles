@@ -1,4 +1,4 @@
-" Plugins will be downloaded under the specified directory.
+" Plugin will be downloaded under the specified directory.
 call plug#begin('~/.vim/plugged')
 
 " Declare the list of plugins.
@@ -31,6 +31,8 @@ Plug 'tmhedberg/SimpylFold'
 Plug 'mhinz/vim-startify'
 
 Plug 'mephux/bro.vim'
+
+Plug 'christoomey/vim-tmux-navigator'
 
 if v:version < 800
     Plug 'vim-syntastic/syntastic'
@@ -125,8 +127,8 @@ let g:ale_lint_on_text_changed = 'normal'
 let g:ale_lint_on_insert_leave = 1
 
 " map linter previous and next errors
-nmap <silent> <C-k> <Plug>(ale_previous_wrap)
-nmap <silent> <C-j> <Plug>(ale_next_wrap)
+nmap <silent> gp <Plug>(ale_previous_wrap)
+nmap <silent> gn <Plug>(ale_next_wrap)
 
 highlight ALEErrorSign    ctermfg=1 ctermbg=0
 highlight ALEWarningSign  ctermfg=3 ctermbg=0
