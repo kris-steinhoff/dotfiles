@@ -54,7 +54,8 @@ filetype indent on
 filetype plugin on
 
 set fillchars+=vert:\  " use space as vertical split char
-
+set splitbelow
+set splitright
 
 set exrc
 set showmode
