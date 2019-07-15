@@ -12,8 +12,9 @@ Plug 'scrooloose/nerdtree'
 
 Plug 'saltstack/salt-vim'
 
-Plug 'Quramy/tsuquyomi'
-Plug 'leafgarland/typescript-vim'
+" TypeScipt plugins
+" Plug 'Quramy/tsuquyomi'
+" Plug 'leafgarland/typescript-vim'
 
 Plug 'fatih/vim-go', { 'do': ':GoInstallBinaries' }
 
@@ -24,13 +25,15 @@ Plug 'tpope/vim-obsession'
 Plug 'tpope/vim-fugitive'
 Plug 'airblade/vim-gitgutter'
 
+" Python plugins
 Plug 'Vimjas/vim-python-pep8-indent'
 Plug 'tmhedberg/SimpylFold'
 " Plug 'davidhalter/jedi-vim'
 
 Plug 'mhinz/vim-startify'
 
-Plug 'mephux/bro.vim'
+" Bro / Zeek plugins
+" Plug 'mephux/bro.vim'
 
 Plug 'christoomey/vim-tmux-navigator'
 
