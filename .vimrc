@@ -11,8 +11,8 @@ Plug 'vim-airline/vim-airline'
 Plug 'vim-airline/vim-airline-themes'
 Plug 'ctrlpvim/ctrlp.vim'
 Plug 'scrooloose/nerdtree'
-Plug 'mhinz/vim-startify'
 Plug 'christoomey/vim-tmux-navigator'
+" Plug 'mhinz/vim-startify'
 
 Plug 'saltstack/salt-vim'
 
