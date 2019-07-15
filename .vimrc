@@ -98,6 +98,7 @@ autocmd FileType go nmap <leader>t  <Plug>(go-test)
 autocmd FileType go nmap <leader>b  <Plug>(go-build)
 autocmd FileType go nmap <leader>r  <Plug>(go-run)
 
+autocmd Filetype htmldjango setlocal ts=2 sts=2 sw=2 expandtab
 
 let g:mucomplete#enable_auto_at_startup = 1
 let g:mucomplete#completion_delay = 100
