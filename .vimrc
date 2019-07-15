@@ -3,12 +3,16 @@ call plug#begin('~/.vim/plugged')
 
 " Declare the list of plugins.
 Plug 'tpope/vim-sensible'
-
+Plug 'tpope/vim-commentary'
+Plug 'tpope/vim-obsession'
+Plug 'tpope/vim-fugitive'
+Plug 'airblade/vim-gitgutter'
 Plug 'vim-airline/vim-airline'
 Plug 'vim-airline/vim-airline-themes'
-
 Plug 'ctrlpvim/ctrlp.vim'
 Plug 'scrooloose/nerdtree'
+Plug 'mhinz/vim-startify'
+Plug 'christoomey/vim-tmux-navigator'
 
 Plug 'saltstack/salt-vim'
 
@@ -18,24 +22,13 @@ Plug 'saltstack/salt-vim'
 
 Plug 'fatih/vim-go', { 'do': ':GoInstallBinaries' }
 
-Plug 'tpope/vim-commentary'
-
-Plug 'tpope/vim-obsession'
-
-Plug 'tpope/vim-fugitive'
-Plug 'airblade/vim-gitgutter'
-
 " Python plugins
 Plug 'Vimjas/vim-python-pep8-indent'
 Plug 'tmhedberg/SimpylFold'
 " Plug 'davidhalter/jedi-vim'
 
-Plug 'mhinz/vim-startify'
-
 " Bro / Zeek plugins
 " Plug 'mephux/bro.vim'
-
-Plug 'christoomey/vim-tmux-navigator'
 
 if v:version < 800
     Plug 'vim-syntastic/syntastic'
