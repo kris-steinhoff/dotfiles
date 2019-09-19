@@ -26,3 +26,6 @@
 	default = simple
 [gpg]
 	program = gpg
+
+[include]
+    path = ~/.gitconfig.local
