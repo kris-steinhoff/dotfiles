@@ -11,6 +11,10 @@
     br = branch
     co = checkout
     lg = log --pretty=format:'%C(yellow)%h%Creset%x09%an%x09%ad%x09%C(cyan)%d%Creset %s' --graph --date=short
+
+    c = commit -v
+    l = log --decorate --graph --pretty=format:'%C(yellow)%h%C(reset) - %s %C(green)(%cr) %C(cyan)<%an>%C(reset) %C(yellow)%d%Creset'
+
 [merge]
     tool = vimdiff
 [core]
