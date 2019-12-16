@@ -51,6 +51,7 @@ filetype indent on
 filetype plugin on
 
 set fillchars+=vert:\  " use space as vertical split char
+hi VertSplit ctermfg=darkgrey " foreground and background seem to be flipped in this setting
 set splitbelow
 set splitright
 
