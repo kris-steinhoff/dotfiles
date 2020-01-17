@@ -39,6 +39,12 @@ endif
 if v:version >= 800
     Plug 'w0rp/ale'
     Plug 'maralla/completor.vim'
+
+    Plug 'prabirshrestha/async.vim'
+    Plug 'prabirshrestha/vim-lsp'
+
+    Plug 'ryanolsonx/vim-lsp-python'
+
 endif
 
 " List ends here. Plugins become visible to Vim after this call.
@@ -109,6 +115,12 @@ autocmd FileType html setlocal ts=2 sts=2 sw=2 expandtab
 autocmd FileType js setlocal ts=2 sts=2 sw=2 expandtab
 autocmd FileType vue setlocal ts=2 sts=2 sw=2 expandtab
 autocmd FileType yaml setlocal ts=2 sts=2 sw=2 expandtab
+
+let g:ale_linters = {
+      \ 'python': ['pyls', 'flake8']
+      \}
+let g:ale_virtualenv_dir_names = ['venv']
+
 
 " Less intrusive paren matching
 highlight MatchParen cterm=bold ctermbg=none
