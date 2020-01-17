@@ -40,10 +40,10 @@ if v:version >= 800
     Plug 'w0rp/ale'
     Plug 'maralla/completor.vim'
 
-    Plug 'prabirshrestha/async.vim'
-    Plug 'prabirshrestha/vim-lsp'
+    " Plug 'prabirshrestha/async.vim'
+    " Plug 'prabirshrestha/vim-lsp'
 
-    Plug 'ryanolsonx/vim-lsp-python'
+    " Plug 'ryanolsonx/vim-lsp-python'
 
 endif
 
