@@ -14,6 +14,7 @@ Plug 'ctrlpvim/ctrlp.vim'
 Plug 'scrooloose/nerdtree'
 Plug 'christoomey/vim-tmux-navigator'
 " Plug 'mhinz/vim-startify'
+Plug 'ekalinin/Dockerfile.vim'
 
 Plug 'saltstack/salt-vim'
 
