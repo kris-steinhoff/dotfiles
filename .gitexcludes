@@ -5,3 +5,4 @@
 .ropeproject
 Session.vim
 /tags
+*.code-workspace
