@@ -8,7 +8,7 @@ alias tscc='tmux -CC new-session -s'
 alias glg="git log --decorate --graph --pretty=format:'%C(yellow)%h%C(reset) - %s %C(green)(%cr) %C(cyan)<%an>%C(reset) %C(yellow)%d%Creset'"
 # who and where am i:
 alias wwami='echo "$(whoami)@$(hostname):$(pwd)"'
-export EDITOR='vim'
+export EDITOR=${OVERRIDE_EDITOR-'vim'}
 
 
 # activate a python virtualenv
