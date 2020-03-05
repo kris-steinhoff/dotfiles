@@ -9,7 +9,7 @@ alias glg="git log --decorate --graph --pretty=format:'%C(yellow)%h%C(reset) - %
 # who and where am i:
 alias wwami='echo "$(whoami)@$(hostname):$(pwd)"'
 export EDITOR=${OVERRIDE_EDITOR-'vim'}
-
+export PIP_DISABLE_PIP_VERSION_CHECK=1
 
 # activate a python virtualenv
 function activate() {
