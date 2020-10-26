@@ -1,4 +1,4 @@
-export PATH=${HOME}/bin:${HOME}/.local/bin:/opt/bin:${PATH}:${HOME}/go/bin
+export PATH=${HOME}/bin:${HOME}/.local/bin:${PATH}:$/opt/bin:{HOME}/go/bin
 alias dotfiles='$(which git) -c status.showUntrackedFiles=no --git-dir=$HOME/.dotfiles/ --work-tree=$HOME'
 
 alias tacc='tmux -CC attach -t'
@@ -8,8 +8,8 @@ alias tscc='tmux -CC new-session -s'
 alias glg="git log --decorate --graph --pretty=format:'%C(yellow)%h%C(reset) - %s %C(green)(%cr) %C(cyan)<%an>%C(reset) %C(yellow)%d%Creset'"
 # who and where am i:
 alias wwami='echo "$(whoami)@$(hostname):$(pwd)"'
-export EDITOR='vim'
-
+export EDITOR=${OVERRIDE_EDITOR-'vim'}
+export PIP_DISABLE_PIP_VERSION_CHECK=1
 
 # activate a python virtualenv
 function activate() {
