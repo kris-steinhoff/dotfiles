@@ -21,7 +21,7 @@ Plug 'saltstack/salt-vim'
 " Plug 'Quramy/tsuquyomi'
 " Plug 'leafgarland/typescript-vim'
 
-Plug 'fatih/vim-go', { 'do': ':GoInstallBinaries' }
+" Plug 'fatih/vim-go', { 'do': ':GoInstallBinaries' }
 
 " Python plugins
 Plug 'Vimjas/vim-python-pep8-indent'
@@ -100,11 +100,11 @@ try
 catch /E474: Invalid argument/
 endtry
 
-let g:go_version_warning = 0
-autocmd BufNewFile,BufRead *.go setlocal noexpandtab tabstop=4 shiftwidth=4
-autocmd FileType go nmap <leader>t  <Plug>(go-test)
-autocmd FileType go nmap <leader>b  <Plug>(go-build)
-autocmd FileType go nmap <leader>r  <Plug>(go-run)
+" let g:go_version_warning = 0
+" autocmd BufNewFile,BufRead *.go setlocal noexpandtab tabstop=4 shiftwidth=4
+" autocmd FileType go nmap <leader>t  <Plug>(go-test)
+" autocmd FileType go nmap <leader>b  <Plug>(go-build)
+" autocmd FileType go nmap <leader>r  <Plug>(go-run)
 
 
 let g:mucomplete#enable_auto_at_startup = 1
