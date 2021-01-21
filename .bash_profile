@@ -92,3 +92,5 @@ fi
 alias ts='tmux new-session -s'
 alias ta='tmux attach -t'
 alias tl='tmux list-sessions'
+
+test -f "${HOME}/.local.sh" && source "${HOME}/.local.sh" || true

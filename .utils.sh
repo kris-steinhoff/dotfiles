@@ -89,7 +89,5 @@ function tcc() {
 
 test -f "${HOME}/.travis/travis.sh" && source "${HOME}/.travis/travis.sh"
 
-test -f "${HOME}/.local.sh" && source "${HOME}/.local.sh"
-
 test -d "${HOME}/.vim/pack/" && echo "${HOME}/.vim/pack/ exists"
 test -d "${HOME}/.vim/bundle/" && echo "${HOME}/.vim/bundle/ exists"

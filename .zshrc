@@ -33,3 +33,5 @@ else
 fi
 
 unsetopt share_history
+
+test -f "${HOME}/.local.sh" && source "${HOME}/.local.sh" || true
