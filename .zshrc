@@ -1,5 +1,10 @@
 test -f "${HOME}/.utils.sh" && source "${HOME}/.utils.sh"
 
+# initialize pyenv
+if [ $(command -v pyenv)]; then
+    eval "$(pyenv init --path)"
+fi
+
 if [ -d "${HOME}/.oh-my-zsh" ]; then
     # Path to your oh-my-zsh installation.
     export ZSH=${HOME}/.oh-my-zsh
