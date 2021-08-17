@@ -18,6 +18,10 @@ if [ -d "${HOME}/.oh-my-zsh" ]; then
     plugins=(vi-mode virtualenv git git-prompt django python tmux kubectl vagrant docker docker-compose)
 
     export ZSH_TMUX_ITERM2=true
+    if [ $(command -v brew) ]; then
+        # https://docs.brew.sh/Shell-Completion#configuring-completions-in-zsh
+        FPATH=$(brew --prefix)/share/zsh/site-functions:$FPATH
+    fi
     source $ZSH/oh-my-zsh.sh
 
     # https://github.com/robbyrussell/oh-my-zsh/issues/1720#issuecomment-286366959
