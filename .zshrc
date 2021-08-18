@@ -1,7 +1,7 @@
 test -f "${HOME}/.utils.sh" && source "${HOME}/.utils.sh"
 
 # initialize pyenv
-if [ $(command -v pyenv)]; then
+if [ $(command -v pyenv) ]; then
     eval "$(pyenv init --path)"
 fi
 
