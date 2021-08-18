@@ -1,0 +1,13 @@
+#!/bin/sh
+
+set -x
+set -e
+
+git clone --depth=1 https://github.com/robbyrussell/oh-my-zsh.git "${HOME}/.oh-my-zsh" || echo "${HOME}/.oh-my-zsh already exists"
+git clone --depth=1 https://github.com/Bash-it/bash-it.git "${HOME}/.bash_it" || echo "${HOME}/.bash_it already exists"
+
+mkdir "${HOME}/bin" || echo "${HOME}/bin already exists"
+
+curl -s -fLo ~/.vim/autoload/plug.vim --create-dirs https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
+vim -c PlugInstall -c PlugUpdate -c qa
+
