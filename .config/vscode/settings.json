@@ -6,9 +6,11 @@
     "files.insertFinalNewline": true,
     "editor.renderFinalNewline": false,
     "editor.wordWrap": "on",
+    "terminal.integrated.defaultProfile.osx": "zsh",
     "terminal.integrated.env.osx": {
         "OVERRIDE_EDITOR": "code --wait"
     },
+    "terminal.integrated.defaultProfile.linux": "zsh",
     "terminal.integrated.env.linux": {
         "OVERRIDE_EDITOR": "code --wait"
     },
