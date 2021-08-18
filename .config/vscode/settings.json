@@ -1,0 +1,116 @@
+{
+    "python.venvFolders": [
+        "venv"
+    ],
+    "diffEditor.ignoreTrimWhitespace": false,
+    "files.insertFinalNewline": true,
+    "editor.renderFinalNewline": false,
+    "editor.wordWrap": "on",
+    "terminal.integrated.env.osx": {
+        "OVERRIDE_EDITOR": "code --wait"
+    },
+    "terminal.integrated.env.linux": {
+        "OVERRIDE_EDITOR": "code --wait"
+    },
+    "cSpell.userWords": [
+        "steinhoff",
+        "syslog"
+    ],
+    "cSpell.enabledLanguageIds": [
+        "git-commit",
+        "html",
+        "markdown",
+        "plaintext",
+        "restructuredtext",
+        "text",
+        "yaml",
+        "yml"
+    ],
+    "python.linting.banditEnabled": true,
+    "python.linting.flake8Enabled": true,
+    "python.linting.enabled": false,
+    "files.trimTrailingWhitespace": true,
+    "vsicons.dontShowNewVersionMessage": true,
+    "editor.dragAndDrop": false,
+    "[python]": {
+        "editor.rulers": [79],
+    },
+    "editor.roundedSelection": false,
+    "editor.minimap.enabled": false,
+    "editor.suggest.insertMode": "replace",
+    "screencastMode.onlyKeyboardShortcuts": true,
+    "git.autofetch": true,
+    "editor.highlightActiveIndentGuide": false,
+    "editor.occurrencesHighlight": false,
+    "window.restoreWindows": "none",
+    "python.defaultInterpreterPath": "/usr/local/bin/python3",
+    "editor.suggestSelection": "first",
+    "vsintellicode.modify.editor.suggestSelection": "automaticallyOverrodeDefaultValue",
+    "python.languageServer": "Pylance",
+    "nasc-touchbar.addCursorBelow": false,
+    "terminal.integrated.showExitAlert": false,
+    "jupyter.askForKernelRestart": false,
+    "jupyter.interactiveWindowMode": "perFile",
+    "files.associations": {
+        "**/Dockerfile_*": "dockerfile"
+    },
+    "workbench.editorAssociations": {
+        "*.ipynb": "jupyter-notebook"
+    },
+    "python.analysis.typeCheckingMode": "basic",
+    "files.watcherExclude": {
+        "**/venv/**": true
+    },
+    "workbench.startupEditor": "none",
+    "editor.parameterHints.enabled": false,
+    "gitlens.hovers.currentLine.over": "line",
+    "gitlens.currentLine.enabled": false,
+    "gitlens.statusBar.command": "gitlens.toggleFileBlame",
+    "rest-client.defaultHeaders": {
+        "User-Agent": null,
+    },
+    "rest-client.followredirect": false,
+    "rest-client.enableTelemetry": false,
+    "rest-client.rememberCookiesForSubsequentRequests": false,
+    "rest-client.requestNameAsResponseTabTitle": true,
+    "telemetry.enableCrashReporter": false,
+    "telemetry.enableTelemetry": false,
+    "redhat.telemetry.enabled": false,
+    "gitlens.hovers.enabled": false,
+    "java.home": "/Library/Java/JavaVirtualMachines/adoptopenjdk-16.jdk/Contents/Home",
+    "workbench.iconTheme": "vscode-icons",
+    "files.exclude": {
+        "**/.classpath": true,
+        "**/.project": true,
+        "**/.settings": true,
+        "**/.factorypath": true
+    },
+    "notebook.cellToolbarLocation": {
+        "default": "right",
+        "jupyter-notebook": "left"
+    },
+    "jupyter.widgetScriptSources": [
+        "jsdelivr.com",
+        "unpkg.com"
+    ],
+    "[yaml]": {
+        "editor.insertSpaces": true,
+        "editor.tabSize": 2,
+        "editor.autoIndent": "keep",
+        "gitlens.codeLens.scopes": [
+            "document"
+        ],
+        "editor.quickSuggestions": {
+            "other": true,
+            "comments": false,
+            "strings": true
+        }
+    },
+    "python.analysis.memory.keepLibraryAst": true,
+    "python.formatting.provider": "black",
+    "python.sortImports.args": [
+        "--profile",
+        "black",
+        "--src=${workspaceFolder}",
+    ],
+}

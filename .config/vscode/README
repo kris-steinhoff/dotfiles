@@ -1,0 +1,6 @@
+This folder is for versioned copies of the VS Code config files. Symlink to
+these files from the approriate location for the given operating system:
+
+ln -s $HOME/.config/vscode/settings.json
+ln -s $HOME/.config/vscode/keybindings.json
+
