@@ -29,6 +29,5 @@ fi
 
 unsetopt share_history
 
-alias glg="git log --graph --pretty=format:'%C(dim)%h %cr -%Creset %s %C(dim)-%Creset %C(cyan)%an%Creset%C(yellow)%d%Creset' --abbrev-commit --abbrev=7"
-
+alias glg="git log --graph --pretty=format:'%C(dim)%h - %cs (%cr) -%Creset %s %C(dim)-%Creset %C(cyan)%an%Creset%C(yellow)%d%Creset' --abbrev-commit --abbrev=7"
 test -f "${HOME}/.local.sh" && source "${HOME}/.local.sh" || true
