@@ -54,7 +54,8 @@
     "jupyter.askForKernelRestart": false,
     "jupyter.interactiveWindowMode": "perFile",
     "files.associations": {
-        "**/Dockerfile_*": "dockerfile"
+        "**/Dockerfile_*": "dockerfile",
+        "**/COMMIT_EDITMSG": "git-commit",
     },
     "workbench.editorAssociations": {
         "*.ipynb": "jupyter-notebook"
