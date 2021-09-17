@@ -116,4 +116,5 @@
         "black",
         "--src=${workspaceFolder}",
     ],
+    "workbench.editor.languageDetection": false,
 }
