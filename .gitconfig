@@ -7,10 +7,10 @@
     ci = commit
     br = branch
     co = checkout
-    lg = log --pretty=format:'%C(yellow)%h%Creset%x09%an%x09%ad%x09%C(cyan)%d%Creset %s' --graph --date=short
 
     c = commit -v
-    l = log --decorate --graph --pretty=format:'%C(yellow)%h%C(reset) - %s %C(green)<%an>%C(reset) %C(cyan)%cr %C(yellow)%d%Creset'
+    l = log --graph --pretty=format:'%C(dim)%h - %cs (%cr) -%Creset %s %C(dim)-%Creset %C(cyan)%an%Creset%C(yellow)%d%Creset' --abbrev-commit --abbrev=7
+    lg = l
 
 [merge]
     tool = vimdiff
