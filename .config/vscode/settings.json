@@ -117,4 +117,6 @@
         "--src=${workspaceFolder}",
     ],
     "workbench.editor.languageDetection": false,
+    "gitlens.blame.format": "${author|10?} - ${message|50?} ${agoOrDate|14-}",
+    "gitlens.blame.avatars": false,
 }
