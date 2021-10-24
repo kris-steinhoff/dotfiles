@@ -15,7 +15,7 @@ if [ -d "${HOME}/.oh-my-zsh" ]; then
     COMPLETION_WAITING_DOTS="true"
     # DISABLE_AUTO_UPDATE="true"
 
-    plugins=(vi-mode virtualenv git git-prompt python tmux kubectl vagrant docker docker-compose poetry pyenv terraform minikube)
+    plugins=(vi-mode virtualenv git git-prompt python tmux kubectl vagrant docker docker-compose poetry pyenv terraform minikube pipx)
 
     # export ZSH_TMUX_ITERM2=true
     if [ $(command -v brew) ]; then
