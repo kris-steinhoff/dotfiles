@@ -30,4 +30,5 @@ fi
 unsetopt share_history
 
 alias glg="git l"
+alias dco="docker-compose"
 test -f "${HOME}/.local.sh" && source "${HOME}/.local.sh" || true
