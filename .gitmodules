@@ -10,3 +10,6 @@
 [submodule ".oh-my-zsh-custom/plugins/zsh-autosuggestions"]
 	path = .oh-my-zsh-custom/plugins/zsh-autosuggestions
 	url = https://github.com/zsh-users/zsh-autosuggestions.git
+[submodule ".oh-my-zsh-custom/plugins/conda-zsh-completion"]
+	path = .oh-my-zsh-custom/plugins/conda-zsh-completion
+	url = https://github.com/esc/conda-zsh-completion
