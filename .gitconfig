@@ -8,7 +8,8 @@
     br = branch
     co = checkout
 
-    c = commit -v
+    c = commit --verbose
+    ca = commit --verbose --all
     l = log --graph --pretty=format:'%C(dim)%h - %cs (%cr) -%Creset %s %C(dim)-%Creset %C(cyan)%an%Creset%C(yellow)%d%Creset' --abbrev-commit --abbrev=7
     lg = l
 
