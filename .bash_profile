@@ -81,9 +81,12 @@ if [ -d "${HOME}/.bash_it" ]; then
         ;;
     esac
 
+    PROMPT_HOST=${PROMPT_HOST_OVERRIDE-$(hostname)}
+
     function prompt_command() {
         rc=${?}
-        PS1="${TITLEBAR}${yellow}\H ${reset_color}${cyan}\w${bold_blue}\[$(scm_prompt_info)\]${normal} "
+
+        PS1="${TITLEBAR}${yellow}${PROMPT_HOST} ${reset_color}${cyan}\w${bold_blue}\[$(scm_prompt_info)\]${normal} "
         if [ $rc -eq 0 ]; then
             PS1="${PS1}$ "
         else
