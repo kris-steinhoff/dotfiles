@@ -81,7 +81,7 @@ if [ -d "${HOME}/.bash_it" ]; then
         ;;
     esac
 
-    PROMPT_HOST=${PROMPT_HOST_OVERRIDE-$(hostname)}
+    PROMPT_HOST=${PROMPT_HOST_OVERRIDE-$(hostname -s)}
 
     function prompt_command() {
         rc=${?}
