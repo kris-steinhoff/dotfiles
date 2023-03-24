@@ -1,9 +1,8 @@
-test -f "${HOME}/.utils.sh" && source "${HOME}/.utils.sh"
+#!/usr/bin/env zsh
 
-# initialize pyenv
-if [ $(command -v pyenv) ]; then
-    eval "$(pyenv init --path)"
-fi
+
+test -f "${HOME}/.local-pre.sh" && source "${HOME}/.local-pre.sh"
+test -f "${HOME}/.utils.sh" && source "${HOME}/.utils.sh"
 
 if [ -d "${HOME}/.oh-my-zsh" ]; then
     # Path to your oh-my-zsh installation.
@@ -17,11 +16,15 @@ if [ -d "${HOME}/.oh-my-zsh" ]; then
 
     plugins=(vi-mode virtualenv git git-prompt python tmux kubectl vagrant docker docker-compose poetry pyenv terraform minikube zsh-autosuggestions zsh-syntax-highlighting conda-zsh-completion)
 
-    # export ZSH_TMUX_ITERM2=true
-    if [ $(command -v brew) ]; then
-        # https://docs.brew.sh/Shell-Completion#configuring-completions-in-zsh
-        FPATH=$(brew --prefix)/share/zsh/site-functions:$FPATH
+    # https://docs.brew.sh/Shell-Completion#configuring-completions-in-zsh
+    if type brew &>/dev/null
+    then
+        FPATH="$(brew --prefix)/share/zsh/site-functions:${FPATH}"
+
+        autoload -Uz compinit
+        compinit
     fi
+
     source $ZSH/oh-my-zsh.sh
 else
     echo "${HOME}/.oh-my-zsh not found (https://github.com/robbyrussell/oh-my-zsh)"
@@ -29,6 +32,5 @@ fi
 
 unsetopt share_history
 
-alias glg="git l"
-alias dco="docker-compose"
-test -f "${HOME}/.local.sh" && source "${HOME}/.local.sh" || true
+test -f "${HOME}/.local.sh" && echo "WARNING: ${HOME}/.local.sh is deprecated, move it to ${HOME}/.local-post.sh"
+test -f "${HOME}/.local-post.sh" && source "${HOME}/.local-post.sh"

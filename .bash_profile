@@ -1,8 +1,23 @@
 #!/usr/bin/env bash
 
-set -o vi
-
+test -f "${HOME}/.local-pre.sh" && source "${HOME}/.local-pre.sh"
 test -f "${HOME}/.utils.sh" && source "${HOME}/.utils.sh"
+
+# https://docs.brew.sh/Shell-Completion#configuring-completions-in-bash
+if type brew &>/dev/null
+then
+  HOMEBREW_PREFIX="$(brew --prefix)"
+  if [[ -r "${HOMEBREW_PREFIX}/etc/profile.d/bash_completion.sh" ]]
+  then
+    source "${HOMEBREW_PREFIX}/etc/profile.d/bash_completion.sh"
+  else
+    for COMPLETION in "${HOMEBREW_PREFIX}/etc/bash_completion.d/"*
+    do
+      [[ -r "${COMPLETION}" ]] && source "${COMPLETION}"
+    done
+  fi
+fi
+
 
 if [ -d "${HOME}/.bash_it" ]; then
     # Path to the bash it configuration
@@ -88,9 +103,5 @@ else
     echo "${HOME}/.bash_it not found (https://github.com/Bash-it/bash-it)"
 fi
 
-# tmux aliases
-alias ts='tmux new-session -s'
-alias ta='tmux attach -t'
-alias tl='tmux list-sessions'
-
-test -f "${HOME}/.local.sh" && source "${HOME}/.local.sh" || true
+test -f "${HOME}/.local.sh" && echo "WARNING: ${HOME}/.local.sh is deprecated, move it to ${HOME}/.local-post.sh"
+test -f "${HOME}/.local-post.sh" && source "${HOME}/.local-post.sh"
