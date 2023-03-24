@@ -12,40 +12,15 @@ Plug 'vim-airline/vim-airline'
 Plug 'vim-airline/vim-airline-themes'
 Plug 'ctrlpvim/ctrlp.vim'
 Plug 'scrooloose/nerdtree'
-Plug 'christoomey/vim-tmux-navigator'
-" Plug 'mhinz/vim-startify'
 Plug 'ekalinin/Dockerfile.vim'
-
-Plug 'saltstack/salt-vim'
-
-" TypeScipt plugins
-" Plug 'Quramy/tsuquyomi'
-" Plug 'leafgarland/typescript-vim'
-
-" Plug 'fatih/vim-go', { 'do': ':GoInstallBinaries' }
 
 " Python plugins
 Plug 'Vimjas/vim-python-pep8-indent'
 Plug 'tmhedberg/SimpylFold'
-" Plug 'davidhalter/jedi-vim'
-
-" Bro / Zeek plugins
-" Plug 'mephux/bro.vim'
-
-if v:version < 800
-    Plug 'vim-syntastic/syntastic'
-    Plug 'lifepillar/vim-mucomplete'
-endif
 
 if v:version >= 800
     Plug 'w0rp/ale'
     Plug 'maralla/completor.vim'
-
-    " Plug 'prabirshrestha/async.vim'
-    " Plug 'prabirshrestha/vim-lsp'
-
-    " Plug 'ryanolsonx/vim-lsp-python'
-
 endif
 
 " List ends here. Plugins become visible to Vim after this call.
