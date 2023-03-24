@@ -3,12 +3,11 @@
 set -x
 set -e
 
-cd "${HOME}"
+git clone --depth=1 https://github.com/robbyrussell/oh-my-zsh.git "${HOME}/.oh-my-zsh" || git -C "${HOME}/.oh-my-zsh" pull
 
-git clone --depth=1 https://github.com/robbyrussell/oh-my-zsh.git "${HOME}/.oh-my-zsh" || echo "${HOME}/.oh-my-zsh already exists"
-git clone --depth=1 https://github.com/Bash-it/bash-it.git "${HOME}/.bash_it" || echo "${HOME}/.bash_it already exists"
+git clone --depth=1 https://github.com/Bash-it/bash-it.git "${HOME}/.bash_it" || git -C "${HOME}/.bash_it" pull
 
-yadm submodule update --init
+yadm -C "${HOME}" submodule update --init
 
 curl -s -fLo ~/.vim/autoload/plug.vim --create-dirs https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
 vim -c PlugInstall -c PlugUpdate -c qa
