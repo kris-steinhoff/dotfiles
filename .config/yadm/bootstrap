@@ -17,6 +17,7 @@ else
 fi
 
 echo "Enabling bash-it features"
+mkdir -p "${HOME}/.bash_it/enabled"
 cd "${HOME}/.bash_it/enabled"
 ln -fs ../aliases/available/general.aliases.bash "150---general.aliases.bash" || true
 ln -fs ../aliases/available/git.aliases.bash "150---git.aliases.bash" || true
