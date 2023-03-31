@@ -64,6 +64,8 @@ if [ -d "${HOME}/.bash_it" ]; then
     SCM_THEME_PROMPT_SUFFIX=")"
 
     safe_append_prompt_command prompt_command
+
+    alias gst="git status"
 else
     echo "${HOME}/.bash_it not found (https://github.com/Bash-it/bash-it)"
 fi
