@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 
 test -f "${HOME}/.local-pre.sh" && source "${HOME}/.local-pre.sh"
-test -f "${HOME}/.utils.sh" && source "${HOME}/.utils.sh"
 
 # https://docs.brew.sh/Shell-Completion#configuring-completions-in-bash
 if type brew &>/dev/null
@@ -70,5 +69,6 @@ else
     echo "${HOME}/.bash_it not found (https://github.com/Bash-it/bash-it)"
 fi
 
+test -f "${HOME}/.utils.sh" && source "${HOME}/.utils.sh"
 test -f "${HOME}/.local.sh" && echo "WARNING: ${HOME}/.local.sh is deprecated, move it to ${HOME}/.local-post.sh"
 test -f "${HOME}/.local-post.sh" && source "${HOME}/.local-post.sh"

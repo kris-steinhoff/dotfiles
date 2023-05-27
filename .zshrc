@@ -2,7 +2,6 @@
 
 
 test -f "${HOME}/.local-pre.sh" && source "${HOME}/.local-pre.sh"
-test -f "${HOME}/.utils.sh" && source "${HOME}/.utils.sh"
 
 if [ -d "${HOME}/.oh-my-zsh" ]; then
     # Path to your oh-my-zsh installation.
@@ -32,5 +31,6 @@ fi
 
 unsetopt share_history
 
+test -f "${HOME}/.utils.sh" && source "${HOME}/.utils.sh"
 test -f "${HOME}/.local.sh" && echo "WARNING: ${HOME}/.local.sh is deprecated, move it to ${HOME}/.local-post.sh"
 test -f "${HOME}/.local-post.sh" && source "${HOME}/.local-post.sh"
