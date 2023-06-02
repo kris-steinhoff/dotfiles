@@ -1,13 +1,11 @@
 #!/bin/sh
 
+test -f "${HOME}/.local-pre.sh" && . "${HOME}/.local-pre.sh"
+
 export PATH="${HOME}/bin:${HOME}/.local/bin:${PATH}:/opt/bin:${HOME}/go/bin"
 
 export EDITOR="${OVERRIDE_EDITOR-'vim'}"
 export PIP_DISABLE_PIP_VERSION_CHECK=1
-
-alias glg="git l"
-alias dco="docker-compose"
-
 
 # initialize pyenv, if it's installed
 if [ -d "$HOME/.pyenv" ]; then
