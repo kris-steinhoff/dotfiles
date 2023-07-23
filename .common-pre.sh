@@ -9,8 +9,8 @@ export PIP_DISABLE_PIP_VERSION_CHECK=1
 # initialize pyenv, if it's installed
 if [ -d "$HOME/.pyenv" ]; then
     export PYENV_ROOT="$HOME/.pyenv"
-    command -v pyenv >/dev/null || export PATH="$PYENV_ROOT/bin:$PATH"
-    eval "$(pyenv init -)"
+    export PATH="$PYENV_ROOT/bin:$PATH"
+    eval "$(pyenv init --path)"
 fi
 
 t() {
