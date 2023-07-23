@@ -1,6 +1,6 @@
 #!/usr/bin/env zsh
 
-source "${HOME}/.common-post.sh"
+source "${HOME}/.common-pre.sh"
 
 
 if [ -d "${HOME}/.oh-my-zsh" ]; then
