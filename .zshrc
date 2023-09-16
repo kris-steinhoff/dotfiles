@@ -4,6 +4,9 @@ source "${HOME}/.common-pre.sh"
 
 
 if [ -d "${HOME}/.oh-my-zsh" ]; then
+    # Disable update prompt
+    zstyle ':omz:update' mode disabled
+
     # Path to your oh-my-zsh installation.
     export ZSH=${HOME}/.oh-my-zsh
 
