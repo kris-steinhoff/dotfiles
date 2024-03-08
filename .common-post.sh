@@ -1,6 +1,6 @@
 #!/bin/sh
 
-alias glg="git l"
+alias glg="git --no-pager l -20"
 alias dco="docker-compose"
 
 export EDITOR="${OVERRIDE_EDITOR-'vim'}"
