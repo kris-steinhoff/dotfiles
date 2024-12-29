@@ -29,5 +29,21 @@ tcc() {
     t "${*}"
 }
 
+activate() {
+
+    pwd_name="$(basename "$(pwd)")"
+    venvs_dir="${HOME}/.virtualenvs"
+
+    if [ -d "${venvs_dir}/${pwd_name}" ]; then
+        # shellcheck disable=SC1090
+        . "${venvs_dir}/${pwd_name}/bin/activate"
+    elif [ -d ".venv" ]; then
+        # shellcheck disable=SC1091
+        . ".venv/bin/activate"
+    else
+        echo "No virtualenv found. Looked for ${venvs_dir}/${pwd_name} and .venv"
+    fi
+}
+
 test -d "${HOME}/.vim/pack/" && echo "${HOME}/.vim/pack/ exists"
 test -d "${HOME}/.vim/bundle/" && echo "${HOME}/.vim/bundle/ exists"
