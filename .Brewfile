@@ -1,0 +1,11 @@
+brew "yadm"
+brew "tmux"
+brew "vim"
+brew "zsh"
+brew "git"
+brew "uv"
+brew "ripgrep"
+
+cask "firefox"
+cask "visual-studio-code"
+cask "meetingbar"
