@@ -6,12 +6,13 @@
 
 ```shell
 sudo apt update && sudo apt install -y yadm vim tmux curl zsh git
-yadm clone https://github.com/ksofa2/dotfiles
+yadm clone https://github.com/kris-steinhoff/dotfiles
 ```
 
 ### macOS
 
 ```shell
-brew install yadm
-yadm clone https://github.com/ksofa2/dotfiles
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+brew install yadm 
+yadm clone https://github.com/kris-steinhoff/dotfiles
 ```
