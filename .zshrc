@@ -81,6 +81,7 @@ alias gbd='git branch --delete'
 alias gco='git checkout'
 alias gsw='git switch'
 alias gswc='git switch --create'
+alias gswm='git switch main'
 alias gm='git merge'
 
 # Git - remote
@@ -94,6 +95,7 @@ alias gcl='git clone'
 alias grb='git rebase'
 alias grbi='git rebase --interactive'
 alias grbc='git rebase --continue'
+alias grba='git rebase --abort'
 alias gsta='git stash'
 
 # === Local Post-Config ===
