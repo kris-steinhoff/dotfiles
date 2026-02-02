@@ -60,6 +60,9 @@ alias ll='ls -lh --color=auto'
 alias dc='docker compose'
 alias dco='docker compose'
 
+# Git
+alias g='git'
+
 # Git - status & info
 alias gst='git status'
 alias gsh='git show'

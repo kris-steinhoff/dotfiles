@@ -2,6 +2,7 @@
     diff = auto
     status = auto
     branch = auto
+
 [alias]
     st = status
     ci = commit
@@ -13,20 +14,18 @@
     l = log --graph --pretty=format:'%C(dim)%h - %cs (%cr) -%Creset %s %C(dim)-%Creset %C(cyan)%an%Creset%C(yellow)%d%Creset' --abbrev-commit --abbrev=7
     lg = l
 
-[merge]
-    tool = vimdiff
-[core]
-    excludesfile = ~/.gitexcludes
-
 [push]
 	default = simple
 
 [include]
     path = ~/.gitconfig.local
+
 [pull]
 	rebase = true
+
 [init]
 	defaultBranch = main
+    
 [rebase]
 	updateRefs = true
 	autoSquash = true
