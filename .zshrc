@@ -86,6 +86,7 @@ alias gm='git merge'
 # Git - remote
 alias gf='git fetch'
 alias gl='git pull'
+alias gp='git push'
 alias gpsup='git push --set-upstream origin $(git branch --show-current)'
 alias gcl='git clone'
 
