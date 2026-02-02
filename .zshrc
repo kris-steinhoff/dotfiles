@@ -51,9 +51,42 @@ activate() {
 }
 
 # === Aliases ===
-alias glg="git --no-pager l -20"
-alias dco="docker compose"
-alias dc="docker compose"
+
+# Docker
+alias dc='docker compose'
+alias dco='docker compose'
+
+# Git - status & info
+alias gst='git status'
+alias gsh='git show'
+alias gd='git diff'
+alias gds='git diff --staged'
+alias glg='git --no-pager l -20'
+
+# Git - staging & commits
+alias ga='git add'
+alias grs='git restore'
+alias gc='git commit --verbose'
+alias gca='git commit --verbose --all'
+
+# Git - branches
+alias gbd='git branch --delete'
+alias gco='git checkout'
+alias gsw='git switch'
+alias gswc='git switch --create'
+alias gm='git merge'
+
+# Git - remote
+alias gf='git fetch'
+alias gl='git pull'
+alias gpsup='git push --set-upstream origin $(git branch --show-current)'
+alias gcl='git clone'
+
+# Git - rebase & stash
+alias grb='git rebase'
+alias grbi='git rebase --interactive'
+alias grbc='git rebase --continue'
+alias gsta='git stash'
 
 # === Local Post-Config ===
 [[ -f "${HOME}/.local-post.sh" ]] && source "${HOME}/.local-post.sh"
