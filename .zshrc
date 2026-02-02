@@ -52,6 +52,10 @@ activate() {
 
 # === Aliases ===
 
+# General
+alias l='ls -lah --color=auto'
+alias ll='ls -lh --color=auto'
+
 # Docker
 alias dc='docker compose'
 alias dco='docker compose'
