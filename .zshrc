@@ -4,7 +4,7 @@
 [[ -f "${HOME}/.local-pre.sh" ]] && source "${HOME}/.local-pre.sh"
 
 # === Environment ===
-export PATH="${HOME}/bin:${HOME}/.local/bin:${PATH}:/opt/bin:${HOME}/go/bin"
+export PATH="${HOME}/bin:${HOME}/.local/bin:${PATH}:${HOME}/go/bin"
 export EDITOR="${OVERRIDE_EDITOR:-vim}"
 export PIP_DISABLE_PIP_VERSION_CHECK=1
 
