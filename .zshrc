@@ -8,13 +8,6 @@ export PATH="${HOME}/bin:${HOME}/.local/bin:${PATH}:/opt/bin:${HOME}/go/bin"
 export EDITOR="${OVERRIDE_EDITOR:-vim}"
 export PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# === Pyenv ===
-if [[ -d "$HOME/.pyenv" ]]; then
-	export PYENV_ROOT="$HOME/.pyenv"
-	export PATH="$PYENV_ROOT/bin:$PATH"
-	eval "$(pyenv init --path)"
-fi
-
 # === Homebrew Completions ===
 if type brew &>/dev/null; then
 	FPATH="$(brew --prefix)/share/zsh/site-functions:${FPATH}"
