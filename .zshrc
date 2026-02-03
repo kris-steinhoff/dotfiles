@@ -44,15 +44,12 @@ unsetopt share_history
 
 # === Functions ===
 activate() {
-	pwd_name="$(basename "$(pwd)")"
-	venvs_dir="${HOME}/.virtualenvs"
-
-	if [ -d "${venvs_dir}/${pwd_name}" ]; then
-		source "${venvs_dir}/${pwd_name}/bin/activate"
-	elif [ -d ".venv" ]; then
+	if [ -d ".venv" ]; then
 		source ".venv/bin/activate"
+	elif [ -d "venv" ]; then
+		source "venv/bin/activate"
 	else
-		echo "No virtualenv found. Looked for ${venvs_dir}/${pwd_name} and .venv"
+		echo "No virtualenv found (.venv or venv)"
 	fi
 }
 
