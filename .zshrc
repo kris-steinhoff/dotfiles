@@ -8,8 +8,12 @@ export PATH="${HOME}/bin:${HOME}/.local/bin:${PATH}:${HOME}/go/bin"
 export EDITOR="${OVERRIDE_EDITOR:-vim}"
 export PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# === Homebrew Completions ===
-if type brew &>/dev/null; then
+# === Homebrew ===
+
+if [[ -f /opt/homebrew/bin/brew ]]; then
+	eval "$(/opt/homebrew/bin/brew shellenv)"
+
+	# Completions from brew packages
 	FPATH="$(brew --prefix)/share/zsh/site-functions:${FPATH}"
 	autoload -Uz compinit
 	compinit
