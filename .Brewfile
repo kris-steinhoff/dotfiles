@@ -8,6 +8,7 @@ brew "ripgrep"
 brew "starship"
 brew "zsh-autosuggestions"
 brew "zsh-syntax-highlighting"
+brew "zsh-completions"
 
 cask "firefox"
 cask "visual-studio-code"

@@ -12,16 +12,21 @@ export PIP_DISABLE_PIP_VERSION_CHECK=1
 
 if [[ -f /opt/homebrew/bin/brew ]]; then
 	eval "$(/opt/homebrew/bin/brew shellenv)"
-
-	# Completions from brew packages
-	FPATH="$(brew --prefix)/share/zsh/site-functions:${FPATH}"
-	autoload -Uz compinit
-	compinit
 fi
 
 export HOMEBREW_NO_ENV_HINTS=1
 
 # === Zsh Configuration ===
+
+# Completions from brew packages
+if type brew &>/dev/null; then
+	if [[ -d "$(brew --prefix)/share/zsh-completions" ]]; then
+		FPATH="$(brew --prefix)/share/zsh-completions:${FPATH}"
+	fi
+	FPATH="$(brew --prefix)/share/zsh/site-functions:${FPATH}"
+	autoload -Uz compinit
+	compinit
+fi
 
 # Edit command in $EDITOR with Ctrl+X Ctrl+E
 autoload -U edit-command-line
