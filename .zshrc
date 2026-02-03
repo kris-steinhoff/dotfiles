@@ -19,6 +19,8 @@ if [[ -f /opt/homebrew/bin/brew ]]; then
 	compinit
 fi
 
+export HOMEBREW_NO_ENV_HINTS=1
+
 # === Zsh Configuration ===
 
 # Edit command in $EDITOR with Ctrl+X Ctrl+E
