@@ -22,6 +22,13 @@ if type brew &>/dev/null; then
 	compinit
 fi
 
+# === Zsh Configuration ===
+
+# Edit command in $EDITOR with Ctrl+X Ctrl+E
+autoload -U edit-command-line
+zle -N edit-command-line
+bindkey '^X^E' edit-command-line
+
 # === Zsh Plugins (via Homebrew) ===
 if type brew &>/dev/null; then
 	source "$(brew --prefix)/share/zsh-autosuggestions/zsh-autosuggestions.zsh" 2>/dev/null
