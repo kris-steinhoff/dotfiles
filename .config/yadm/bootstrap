@@ -2,5 +2,6 @@
 
 set -e
 
-echo "Installing brew bundle (if brew is installed)"
-command -v brew && brew bundle install --global
+if type brew &>/dev/null; then
+	brew bundle install --global
+fi
