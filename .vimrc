@@ -9,3 +9,6 @@ set hlsearch
 
 set wrap
 set linebreak
+
+set tabstop=4
+set shiftwidth=4
