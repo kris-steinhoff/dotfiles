@@ -18,6 +18,9 @@ export HOMEBREW_NO_ENV_HINTS=1
 
 # === Zsh Configuration ===
 
+# Use emacs keybindings (^A, ^E, etc.) regardless of $EDITOR
+bindkey -e
+
 # Completions from brew packages
 if type brew &>/dev/null; then
 	if [[ -d "$(brew --prefix)/share/zsh-completions" ]]; then
