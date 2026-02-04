@@ -96,6 +96,7 @@ alias gm='git merge'
 alias gf='git fetch'
 alias gl='git pull'
 alias gp='git push'
+alias gpf='git push --force-with-lease'
 alias gpsup='git push --set-upstream origin $(git branch --show-current)'
 alias gcl='git clone'
 
