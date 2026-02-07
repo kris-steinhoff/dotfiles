@@ -1,2 +1,38 @@
+# No Nerd Font overrides (only modules whose defaults use Nerd Font/Powerline glyphs)
+
+[battery]
+full_symbol = "• "
+charging_symbol = "⇡ "
+discharging_symbol = "⇣ "
+unknown_symbol = "❓ "
+empty_symbol = "❗ "
+
+[buf]
+symbol = "B "
+
+[erlang]
+symbol = "ⓔ "
+
+[fossil_branch]
+symbol = "⎇ "
+
 [git_status]
 ignore_submodules = true
+
+[git_branch]
+symbol = "⎇ "
+
+[hg_branch]
+symbol = "⎇ "
+
+[nodejs]
+symbol = "[⬢](bold green) "
+
+[pijul_channel]
+symbol = "🪺 "
+
+[pulumi]
+symbol = "🧊 "
+
+[typst]
+symbol = "t "

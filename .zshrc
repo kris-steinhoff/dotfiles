@@ -19,7 +19,9 @@ export HOMEBREW_NO_ENV_HINTS=1
 # === Zsh Configuration ===
 
 # Use emacs keybindings (^A, ^E, etc.) regardless of $EDITOR
+# Escape enters vi command mode for modal editing
 bindkey -e
+bindkey '\e' vi-cmd-mode
 
 # Completions from brew packages
 if type brew &>/dev/null; then
