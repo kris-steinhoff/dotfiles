@@ -14,16 +14,16 @@ symbol = "B "
 symbol = "ⓔ "
 
 [fossil_branch]
-symbol = "⎇ "
+symbol = "⎇  "
 
 [git_status]
 ignore_submodules = true
 
 [git_branch]
-symbol = "⎇ "
+symbol = "⎇  "
 
 [hg_branch]
-symbol = "⎇ "
+symbol = "⎇  "
 
 [nodejs]
 symbol = "[⬢](bold green) "
