@@ -111,6 +111,7 @@ alias grbi='git rebase --interactive'
 alias grbc='git rebase --continue'
 alias grba='git rebase --abort'
 alias gsta='git stash'
+alias gstp='git stash pop'
 
 # === Local Post-Config ===
 [[ -f "${HOME}/.local-post.sh" ]] && source "${HOME}/.local-post.sh"
