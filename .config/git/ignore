@@ -6,3 +6,5 @@
 Session.vim
 /tags
 /venv
+
+**/.claude/settings.local.json
