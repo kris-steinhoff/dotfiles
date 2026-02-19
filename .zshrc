@@ -116,5 +116,14 @@ alias grba='git rebase --abort'
 alias gsta='git stash'
 alias gstp='git stash pop'
 
+# AWS Helpers
+
+set_aws_profile_and_login() {
+  export AWS_PROFILE="$1"
+  if ! aws sts get-caller-identity &>/dev/null; then
+    aws sso login
+  fi
+}
+
 # === Local Post-Config ===
 [[ -f "${HOME}/.local-post.sh" ]] && source "${HOME}/.local-post.sh"
