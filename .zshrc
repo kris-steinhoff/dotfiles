@@ -36,6 +36,11 @@ if type brew &>/dev/null; then
 	compinit
 fi
 
+# direnv for per-project environment variables
+if type direnv &>/dev/null; then\
+	eval "$(direnv hook zsh)"
+fi
+
 # Edit command in $EDITOR with Ctrl+X Ctrl+E
 autoload -U edit-command-line
 zle -N edit-command-line
