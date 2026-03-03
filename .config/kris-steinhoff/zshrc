@@ -1,8 +1,5 @@
 #!/usr/bin/env zsh
 
-# === Local Pre-Config ===
-[[ -f "${HOME}/.config/kris-steinhoff/zshrc-pre-hook" ]] && source "${HOME}/.config/kris-steinhoff/zshrc-pre-hook"
-
 # === Environment ===
 export PATH="${HOME}/bin:${HOME}/.local/bin:${PATH}:${HOME}/go/bin"
 export EDITOR="${OVERRIDE_EDITOR:-vim}"
@@ -129,6 +126,3 @@ set_aws_profile_and_login() {
     aws sso login
   fi
 }
-
-# === Local Post-Config ===
-[[ -f "${HOME}/.config/kris-steinhoff/zshrc-post-hook" ]] && source "${HOME}/.config/kris-steinhoff/zshrc-post-hook"

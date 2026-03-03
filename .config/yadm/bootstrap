@@ -1,6 +1,24 @@
-#!/bin/sh
+#!/bin/bash
 
 set -e
+
+# shellcheck disable=SC2016
+source_line='source "${HOME}/.config/kris-steinhoff/zshrc"'
+
+if [ ! -f "${HOME}/.zshrc" ]; then
+	echo "$source_line" > "${HOME}/.zshrc"
+	echo "Created ~/.zshrc"
+elif ! grep -qF '.config/kris-steinhoff/zshrc' "${HOME}/.zshrc"; then
+	# shellcheck disable=SC2088
+	echo -n "~/.zshrc exists but doesn't source the shared config. Add it to the top? [y/N] "
+	read -r answer
+	if [ "$answer" = "y" ] || [ "$answer" = "Y" ]; then
+		tmp=$(mktemp)
+		{ echo "$source_line"; echo; cat "${HOME}/.zshrc"; } > "$tmp"
+		mv "$tmp" "${HOME}/.zshrc"
+		echo "Added source line to top of ~/.zshrc"
+	fi
+fi
 
 if type brew &>/dev/null; then
 	brew bundle install --global
