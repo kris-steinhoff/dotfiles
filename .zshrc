@@ -1,7 +1,7 @@
 #!/usr/bin/env zsh
 
 # === Local Pre-Config ===
-[[ -f "${HOME}/.local-pre.sh" ]] && source "${HOME}/.local-pre.sh"
+[[ -f "${HOME}/.config/kris-steinhoff/zshrc-pre-hook" ]] && source "${HOME}/.config/kris-steinhoff/zshrc-pre-hook"
 
 # === Environment ===
 export PATH="${HOME}/bin:${HOME}/.local/bin:${PATH}:${HOME}/go/bin"
@@ -131,4 +131,4 @@ set_aws_profile_and_login() {
 }
 
 # === Local Post-Config ===
-[[ -f "${HOME}/.local-post.sh" ]] && source "${HOME}/.local-post.sh"
+[[ -f "${HOME}/.config/kris-steinhoff/zshrc-post-hook" ]] && source "${HOME}/.config/kris-steinhoff/zshrc-post-hook"
