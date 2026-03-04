@@ -129,8 +129,8 @@ alias gpsup='git push --set-upstream origin $(git branch --show-current)'
 alias gcl='git clone'
 
 # Git - rebase & stash
-alias grb='git rebase'
-alias grbi='git rebase --interactive'
+alias grb='git rebase --interactive'
+alias grbom='git rebase --interactive --onto main'
 alias grbc='git rebase --continue'
 alias grba='git rebase --abort'
 alias gsta='git stash'
