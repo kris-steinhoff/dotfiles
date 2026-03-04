@@ -40,5 +40,5 @@ ensure_config "${HOME}/.vimrc" \
 	'kris-steinhoff/vimrc'
 
 if type brew &>/dev/null; then
-	brew bundle install --global
+	brew bundle install --file="${HOME}/.config/homebrew/Brewfile"
 fi
