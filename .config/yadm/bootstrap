@@ -2,61 +2,42 @@
 
 set -e
 
+# Ensure a config file includes/sources the shared config.
+# Usage: ensure_config <file> <include_line> <grep_pattern>
+ensure_config() {
+	local file="$1" include_line="$2" grep_pattern="$3"
+	local display_path="~${file#"$HOME"}"
+
+	if [ ! -f "$file" ]; then
+		mkdir -p "$(dirname "$file")"
+		echo "$include_line" > "$file"
+		echo "Created $display_path"
+	elif ! grep -qF "$grep_pattern" "$file"; then
+		echo -n "$display_path exists but doesn't include the shared config. Add it to the top? [y/N] "
+		read -r answer
+		if [ "$answer" = "y" ] || [ "$answer" = "Y" ]; then
+			tmp=$(mktemp)
+			{ echo "$include_line"; echo; cat "$file"; } > "$tmp"
+			mv "$tmp" "$file"
+			echo "Added include to top of $display_path"
+		fi
+	fi
+}
+
 # shellcheck disable=SC2016
-source_line='source "${HOME}/.config/kris-steinhoff/zshrc"'
+ensure_config "${HOME}/.zshrc" \
+	'source "${HOME}/.config/kris-steinhoff/zshrc"' \
+	'kris-steinhoff/zshrc'
 
-if [ ! -f "${HOME}/.zshrc" ]; then
-	echo "$source_line" > "${HOME}/.zshrc"
-	echo "Created ~/.zshrc"
-elif ! grep -qF '.config/kris-steinhoff/zshrc' "${HOME}/.zshrc"; then
-	# shellcheck disable=SC2088
-	echo -n "~/.zshrc exists but doesn't source the shared config. Add it to the top? [y/N] "
-	read -r answer
-	if [ "$answer" = "y" ] || [ "$answer" = "Y" ]; then
-		tmp=$(mktemp)
-		{ echo "$source_line"; echo; cat "${HOME}/.zshrc"; } > "$tmp"
-		mv "$tmp" "${HOME}/.zshrc"
-		echo "Added source line to top of ~/.zshrc"
-	fi
-fi
+ensure_config "${HOME}/.config/git/config" \
+	'[include]
+	path = ~/.config/kris-steinhoff/gitconfig' \
+	'kris-steinhoff/gitconfig'
 
-# Ensure ~/.config/git/config includes the shared gitconfig
-git_config="${HOME}/.config/git/config"
-git_include="path = ~/.config/kris-steinhoff/gitconfig"
-
-if [ ! -f "$git_config" ]; then
-	mkdir -p "${HOME}/.config/git"
-	printf '[include]\n\t%s\n' "$git_include" > "$git_config"
-	echo "Created ~/.config/git/config"
-elif ! grep -qF 'kris-steinhoff/gitconfig' "$git_config"; then
-	# shellcheck disable=SC2088
-	echo -n "~/.config/git/config exists but doesn't include the shared config. Add it to the top? [y/N] "
-	read -r answer
-	if [ "$answer" = "y" ] || [ "$answer" = "Y" ]; then
-		tmp=$(mktemp)
-		{ printf '[include]\n\t%s\n\n' "$git_include"; cat "$git_config"; } > "$tmp"
-		mv "$tmp" "$git_config"
-		echo "Added include to top of ~/.config/git/config"
-	fi
-fi
-
-# Ensure ~/.vimrc sources the shared vimrc
-vim_source="source ~/.config/kris-steinhoff/vimrc"
-
-if [ ! -f "${HOME}/.vimrc" ]; then
-	echo "$vim_source" > "${HOME}/.vimrc"
-	echo "Created ~/.vimrc"
-elif ! grep -qF 'kris-steinhoff/vimrc' "${HOME}/.vimrc"; then
-	# shellcheck disable=SC2088
-	echo -n "~/.vimrc exists but doesn't source the shared config. Add it to the top? [y/N] "
-	read -r answer
-	if [ "$answer" = "y" ] || [ "$answer" = "Y" ]; then
-		tmp=$(mktemp)
-		{ echo "$vim_source"; echo; cat "${HOME}/.vimrc"; } > "$tmp"
-		mv "$tmp" "${HOME}/.vimrc"
-		echo "Added source line to top of ~/.vimrc"
-	fi
-fi
+# shellcheck disable=SC2016
+ensure_config "${HOME}/.vimrc" \
+	'source $HOME/.config/kris-steinhoff/vimrc' \
+	'kris-steinhoff/vimrc'
 
 if type brew &>/dev/null; then
 	brew bundle install --global
