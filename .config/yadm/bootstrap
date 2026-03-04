@@ -20,6 +20,26 @@ elif ! grep -qF '.config/kris-steinhoff/zshrc' "${HOME}/.zshrc"; then
 	fi
 fi
 
+# Ensure ~/.config/git/config includes the shared gitconfig
+git_config="${HOME}/.config/git/config"
+git_include="path = ~/.config/kris-steinhoff/gitconfig"
+
+if [ ! -f "$git_config" ]; then
+	mkdir -p "${HOME}/.config/git"
+	printf '[include]\n\t%s\n' "$git_include" > "$git_config"
+	echo "Created ~/.config/git/config"
+elif ! grep -qF 'kris-steinhoff/gitconfig' "$git_config"; then
+	# shellcheck disable=SC2088
+	echo -n "~/.config/git/config exists but doesn't include the shared config. Add it to the top? [y/N] "
+	read -r answer
+	if [ "$answer" = "y" ] || [ "$answer" = "Y" ]; then
+		tmp=$(mktemp)
+		{ printf '[include]\n\t%s\n\n' "$git_include"; cat "$git_config"; } > "$tmp"
+		mv "$tmp" "$git_config"
+		echo "Added include to top of ~/.config/git/config"
+	fi
+fi
+
 if type brew &>/dev/null; then
 	brew bundle install --global
 fi

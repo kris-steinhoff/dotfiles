@@ -17,9 +17,6 @@
 [push]
 	default = simple
 
-[include]
-    path = ~/.gitconfig.local
-
 [pull]
 	rebase = true
 
