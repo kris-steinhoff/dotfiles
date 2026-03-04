@@ -26,12 +26,19 @@ bindkey '\e' vi-cmd-mode
 # Completions from brew packages
 if type brew &>/dev/null; then
 	if [[ -d "$(brew --prefix)/share/zsh-completions" ]]; then
-		FPATH="$(brew --prefix)/share/zsh-completions:${FPATH}"
+		fpath=("$(brew --prefix)/share/zsh-completions" $fpath)
 	fi
-	FPATH="$(brew --prefix)/share/zsh/site-functions:${FPATH}"
-	autoload -Uz compinit
-	compinit
+	fpath=("$(brew --prefix)/share/zsh/site-functions" $fpath)
 fi
+
+fpath+=~/.zfunc
+
+autoload -Uz compinit
+compinit
+
+zstyle ':completion:*' menu select
+zstyle ':completion:*' matcher-list 'm:{a-z}={A-Z}'
+zstyle ':completion:*' list-colors ${(s.:.)LS_COLORS}
 
 # direnv for per-project environment variables
 if type direnv &>/dev/null; then\
@@ -56,6 +63,17 @@ fi
 
 # === Options ===
 unsetopt share_history
+setopt hist_ignore_dups
+setopt hist_ignore_space
+setopt auto_cd
+setopt auto_pushd
+setopt correct
+setopt interactive_comments
+
+# === History ===
+HISTSIZE=10000
+SAVEHIST=10000
+HISTFILE=~/.zsh_history
 
 # === Functions ===
 activate() {
@@ -117,12 +135,3 @@ alias grbc='git rebase --continue'
 alias grba='git rebase --abort'
 alias gsta='git stash'
 alias gstp='git stash pop'
-
-# AWS Helpers
-
-set_aws_profile_and_login() {
-  export AWS_PROFILE="$1"
-  if ! aws sts get-caller-identity &>/dev/null; then
-    aws sso login
-  fi
-}
