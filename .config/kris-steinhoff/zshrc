@@ -41,7 +41,7 @@ zstyle ':completion:*' matcher-list 'm:{a-z}={A-Z}'
 zstyle ':completion:*' list-colors ${(s.:.)LS_COLORS}
 
 # direnv for per-project environment variables
-if type direnv &>/dev/null; then\
+if type direnv &>/dev/null; then
 	eval "$(direnv hook zsh)"
 fi
 
@@ -67,7 +67,6 @@ setopt hist_ignore_dups
 setopt hist_ignore_space
 setopt auto_cd
 setopt auto_pushd
-setopt correct
 setopt interactive_comments
 
 # === History ===
@@ -129,7 +128,8 @@ alias gpsup='git push --set-upstream origin $(git branch --show-current)'
 alias gcl='git clone'
 
 # Git - rebase & stash
-alias grb='git rebase --interactive'
+alias grb='git rebase'
+alias grbi='git rebase --interactive'
 alias grbom='git rebase --interactive --onto main'
 alias grbc='git rebase --continue'
 alias grba='git rebase --abort'
