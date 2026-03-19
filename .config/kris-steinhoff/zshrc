@@ -112,7 +112,10 @@ alias gc='git commit --verbose'
 alias gca='git commit --verbose --all'
 
 # Git - branches
+alias gb='git branch'
+alias gba='git branch --all'
 alias gbd='git branch --delete'
+alias gbD='git branch --delete --force'
 alias gco='git checkout'
 alias gsw='git switch'
 alias gswc='git switch --create'
