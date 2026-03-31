@@ -85,12 +85,7 @@ activate() {
 	fi
 }
 
-aws_profile_login() {
-	if [[ -z "$1" ]]; then
-		echo "Usage: aws_profile_login <profile>"
-		return 1
-	fi
-
+aws-profile-login() {
 	export AWS_PROFILE="$1"
 	if ! aws sts get-caller-identity &>/dev/null; then
 		aws sso login
