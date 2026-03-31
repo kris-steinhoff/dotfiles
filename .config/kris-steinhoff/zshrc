@@ -92,6 +92,11 @@ aws-profile-login() {
 	fi
 }
 
+aws-profile-logout() {
+	aws sso logout
+	unset AWS_PROFILE
+}
+
 # === Aliases ===
 
 # General
