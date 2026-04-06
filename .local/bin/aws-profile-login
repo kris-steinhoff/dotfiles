@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+if [ $# -ne 1 ]; then
+    echo "Usage: $(basename "$0") <profile>" >&2
+    exit 1
+fi
+
+export AWS_PROFILE="$1"
+
+if ! aws sts get-caller-identity &>/dev/null; then
+    aws sso login
+fi

@@ -1,7 +1,7 @@
 #!/usr/bin/env zsh
 
 # === Environment ===
-export PATH="${HOME}/bin:${HOME}/.local/bin:${PATH}:${HOME}/go/bin"
+export PATH="${HOME}/.local/bin"
 export EDITOR="${OVERRIDE_EDITOR:-vim}"
 export PIP_DISABLE_PIP_VERSION_CHECK=1
 
@@ -102,6 +102,10 @@ aws-profile-logout() {
 # General
 alias l='ls -lah --color=auto'
 alias ll='ls -lh --color=auto'
+
+# Pre-commit
+
+alias pcra="pre-commit run --all-files"
 
 # Docker
 alias dc='docker compose'
