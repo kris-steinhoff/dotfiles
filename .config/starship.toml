@@ -25,6 +25,9 @@ symbol = "🌿 "
 [hg_branch]
 symbol = "🌿 "
 
+[kubernetes]
+disabled = false
+
 [nodejs]
 symbol = "[⬢](bold green) "
 
