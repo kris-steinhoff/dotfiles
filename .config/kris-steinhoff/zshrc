@@ -1,7 +1,7 @@
 #!/usr/bin/env zsh
 
 # === Environment ===
-export PATH="${HOME}/.local/bin"
+export PATH="${PATH}:${HOME}/.local/bin"
 export EDITOR="${OVERRIDE_EDITOR:-vim}"
 export PIP_DISABLE_PIP_VERSION_CHECK=1
 
