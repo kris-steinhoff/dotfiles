@@ -22,13 +22,13 @@ chezmoi apply
 
 ## Config architecture
 
-Shared configs live under `dot_config/kris-steinhoff/` (deployed to `~/.config/kris-steinhoff/`) and are *included* by the machine-local config files (not replaced). This lets local overrides coexist with the shared baseline:
+Shared configs live under `dot_config/kris-steinhoff/` (deployed to `~/.config/kris-steinhoff/`) and are _included_ by the machine-local config files (not replaced). This lets local overrides coexist with the shared baseline:
 
-| Shared file | Included by |
-|---|---|
-| `~/.config/kris-steinhoff/zshrc` | `~/.zshrc` |
+| Shared file                          | Included by            |
+| ------------------------------------ | ---------------------- |
+| `~/.config/kris-steinhoff/zshrc`     | `~/.zshrc`             |
 | `~/.config/kris-steinhoff/gitconfig` | `~/.config/git/config` |
-| `~/.config/kris-steinhoff/vimrc` | `~/.vimrc` |
+| `~/.config/kris-steinhoff/vimrc`     | `~/.vimrc`             |
 
 The `run_once_bootstrap.sh` script uses `ensure_config` to add the include line automatically, prompting the user when a file already exists but doesn't include the shared config.
 
