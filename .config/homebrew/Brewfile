@@ -1,4 +1,4 @@
-brew "yadm"
+brew "chezmoi"
 brew "tmux"
 brew "vim"
 brew "zsh"
