@@ -85,15 +85,30 @@ activate() {
 	fi
 }
 
+_aws_profile_is_sso() {
+	local profile="${1:-${AWS_PROFILE:-default}}"
+	aws configure get sso_start_url --profile "$profile" &>/dev/null \
+		|| aws configure get sso_session --profile "$profile" &>/dev/null
+}
+
 aws-profile-login() {
 	export AWS_PROFILE="$1"
 	if ! aws sts get-caller-identity &>/dev/null; then
-		aws sso login
+		if _aws_profile_is_sso "$AWS_PROFILE"; then
+			aws sso login
+		else
+			aws login
+		fi
 	fi
 }
 
 aws-profile-logout() {
-	aws sso logout
+	if _aws_profile_is_sso "$AWS_PROFILE"; then
+		aws sso logout
+	else
+		aws logout
+		unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+	fi
 	unset AWS_PROFILE
 }
 
