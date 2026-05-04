@@ -3,3 +3,7 @@ font-feature = -calt
 font-feature = -liga
 font-feature = -dlig
 
+# Always open new windows in $HOME instead of inheriting the parent's CWD
+working-directory = home
+window-inherit-working-directory = false
+
