@@ -2,7 +2,11 @@
 
 # === Environment ===
 export PATH="${PATH}:${HOME}/.local/bin"
-export EDITOR="${OVERRIDE_EDITOR:-vim}"
+if command -v nvim &>/dev/null; then
+  export EDITOR="${OVERRIDE_EDITOR:-nvim}"
+else
+  export EDITOR="${OVERRIDE_EDITOR:-vim}"
+fi
 export PIP_DISABLE_PIP_VERSION_CHECK=1
 
 # === Homebrew ===
