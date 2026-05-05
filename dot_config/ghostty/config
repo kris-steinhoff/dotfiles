@@ -1,3 +1,5 @@
+theme = tokyonight
+
 # Disable ligatures
 font-feature = -calt
 font-feature = -liga
