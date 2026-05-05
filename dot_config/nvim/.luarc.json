@@ -4,6 +4,10 @@
     "version": "LuaJIT"
   },
   "workspace": {
-    "library": ["$VIMRUNTIME"]
+    "checkThirdParty": false,
+    "library": ["${3rd}/luv/library", "${3rd}/busted/library"]
+  },
+  "completion": {
+    "callSnippet": "Replace"
   }
 }
