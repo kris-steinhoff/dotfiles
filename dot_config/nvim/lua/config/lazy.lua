@@ -21,6 +21,7 @@ vim.g.maplocalleader = "\\"
 require("lazy").setup({
   spec = {
     { "LazyVim/LazyVim", import = "lazyvim.plugins" },
+    { import = "lazyvim.plugins.extras.lang.python" },
   },
   defaults = { lazy = false, version = false },
   install = { colorscheme = { "tokyonight", "habamax" } },
