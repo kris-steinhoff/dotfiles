@@ -22,6 +22,7 @@ require("lazy").setup({
   spec = {
     { "LazyVim/LazyVim", import = "lazyvim.plugins" },
     { import = "lazyvim.plugins.extras.lang.python" },
+    { "MeanderingProgrammer/render-markdown.nvim", opts = { anti_conceal = { enabled = false } } },
   },
   defaults = { lazy = false, version = false },
   install = { colorscheme = { "tokyonight", "habamax" } },
