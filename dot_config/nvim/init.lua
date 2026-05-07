@@ -36,6 +36,16 @@ vim.api.nvim_create_autocmd("FileType", {
   end,
 })
 
-require("lazy").setup({}, {
+require("lazy").setup({
+  {
+    "akinsho/toggleterm.nvim",
+    version = "*",
+    opts = {
+      open_mapping = [[<c-\>]],
+      direction = "float",
+      float_opts = { border = "curved" },
+    },
+  },
+}, {
   checker = { enabled = false },
 })
