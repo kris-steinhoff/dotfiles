@@ -54,6 +54,16 @@ vim.keymap.set("t", "<C-l>", "<C-\\><C-n><C-w>l")
 
 require("lazy").setup({
   {
+    "folke/tokyonight.nvim",
+    priority = 1000,
+    lazy = false,
+    opts = { style = "night" },
+    config = function(_, opts)
+      require("tokyonight").setup(opts)
+      vim.cmd.colorscheme("tokyonight")
+    end,
+  },
+  {
     "folke/which-key.nvim",
     event = "VeryLazy",
     opts = {},
