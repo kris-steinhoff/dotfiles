@@ -84,6 +84,9 @@ require("lazy").setup({
     "coder/claudecode.nvim",
     opts = {
       terminal_cmd = "claude --settings '{\"editorMode\":\"vim\"}'",
+      diff_opts = {
+        keep_terminal_focus = true,
+      },
     },
     keys = {
       { "<leader>a", nil, desc = "AI/Claude Code" },
