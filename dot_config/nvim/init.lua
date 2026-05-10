@@ -64,6 +64,24 @@ require("lazy").setup({
     end,
   },
   {
+    "nvim-treesitter/nvim-treesitter",
+    branch = "master",
+    build = ":TSUpdate",
+    event = { "BufReadPost", "BufNewFile" },
+    opts = {
+      ensure_installed = {
+        "bash", "lua", "luadoc", "markdown", "markdown_inline",
+        "python", "query", "vim", "vimdoc",
+      },
+      auto_install = true,
+      highlight = { enable = true },
+      indent = { enable = true },
+    },
+    config = function(_, opts)
+      require("nvim-treesitter.configs").setup(opts)
+    end,
+  },
+  {
     "folke/which-key.nvim",
     event = "VeryLazy",
     opts = {},
