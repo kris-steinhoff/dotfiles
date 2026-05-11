@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Push current branch and create a draft GitLab MR targeting the given branch (default: main).
+# If the branch name matches [PREFIX-]NUMBER[_-]description, the MR title and body are auto-generated:
+#   abc-123_fix_the_bug  → title: "Fix the bug"  body: "ABC-123"
+#   123-fix-the_bug      → title: "Fix the bug"  body: "${GITLAB_DRAFT_MR_ISSUE_PREFIX}123" (only if set)
+#
+# Set GITLAB_DRAFT_MR_ISSUE_PREFIX (e.g. "TDP-") to supply a default issue prefix when the
+# branch name lacks one. Include any desired separator in the value.
+#
+# Usage: git create-draft-mr [target_branch]
+
+set -euo pipefail
+
+target="${1:-main}"
+branch="$(git branch --show-current)"
+
+if [[ "$branch" =~ ^([a-zA-Z]+-)?([0-9]+)[_-] ]]; then
+    prefix="${BASH_REMATCH[1]:-${GITLAB_DRAFT_MR_ISSUE_PREFIX:-}}"
+    prefix="$(echo "$prefix" | tr '[:lower:]' '[:upper:]')"
+    number="${BASH_REMATCH[2]}"
+    title="$(echo "$branch" | sed 's/^[a-zA-Z]*-*[0-9]*[_-]//' | tr '_-' '  ' | awk '{print toupper(substr($0,1,1)) substr($0,2)}')"
+    issue="${prefix:+${prefix}${number}}"
+else
+    title="$(echo "$branch" | tr '_-' '  ' | awk '{print toupper(substr($0,1,1)) substr($0,2)}')"
+    issue=""
+fi
+
+push_opts=(
+    -o merge_request.create
+    -o merge_request.draft
+    -o "merge_request.target=${target}"
+    -o "merge_request.title=${title}"
+)
+[[ -n "$issue" ]] && push_opts+=(-o "merge_request.description=${issue}")
+
+git push --set-upstream origin "$branch" "${push_opts[@]}"
