@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+# Review a GitLab MR using Claude Code.
+#
+# Usage: mr-review <project!MR_NUMBER | MR_URL>
+# Examples:
+#   mr-review https://gitlab.com/group/project/-/merge_requests/123
+#   mr-review group/project!123
+
+set -euo pipefail
+
+if ! glab auth status &>/dev/null; then
+    echo "Error: Not authenticated with GitLab. Run 'glab auth login' first." >&2
+    exit 1
+fi
+
+CLONE_BASE="$HOME/code"
+
+usage() {
+    cat <<EOF
+Usage: mr-review <project!MR_NUMBER | MR_URL>
+
+Examples:
+  mr-review https://gitlab.com/group/project/-/merge_requests/123
+  mr-review group/project!123
+EOF
+    exit 1
+}
+
+[[ $# -ne 1 ]] && usage
+
+input="$1"
+
+if [[ "$input" =~ ^https?:// ]]; then
+    # Parse URL: https://gitlab.com/group/[subgroups/]project/-/merge_requests/123
+    path="${input#*://}"
+    host="${path%%/*}"
+    path="${path#*/}"
+    mr_number="${path##*/}"
+    project_path="${path%/-/merge_requests/*}"
+elif [[ "$input" =~ ^(.+)!([0-9]+)$ ]]; then
+    # Parse reference: group/project!123
+    host="gitlab.com"
+    project_path="${BASH_REMATCH[1]}"
+    mr_number="${BASH_REMATCH[2]}"
+else
+    echo "Error: Could not parse '$input'" >&2
+    echo "" >&2
+    usage
+fi
+
+local_path="${CLONE_BASE}/${host}/${project_path}"
+
+if [[ ! -d "$local_path" ]]; then
+    echo "Local clone not found: $local_path"
+    read -rp "Clone git@${host}:${project_path}.git? [y/N] " answer
+    if [[ "$answer" =~ ^[Yy] ]]; then
+        git clone "git@${host}:${project_path}.git" "$local_path"
+    else
+        echo "Aborting."
+        exit 1
+    fi
+fi
+
+cd "$local_path"
+
+if [[ -n "$(git status --porcelain)" ]]; then
+    echo "Error: Working tree is not clean in $local_path" >&2
+    echo "Commit or stash your changes before running mr-review." >&2
+    exit 1
+fi
+
+# Fetch latest and check out the MR's source branch
+mr_json="$(glab mr view "$mr_number" --output json)"
+source_branch="$(jq -r '.source_branch' <<< "$mr_json")"
+target_branch="$(jq -r '.target_branch' <<< "$mr_json")"
+git fetch origin "$source_branch" "$target_branch"
+git checkout "$source_branch"
+git pull --ff-only
+
+mr_title="$(jq -r '.title' <<< "$mr_json")"
+mr_description="$(jq -r '.description // empty' <<< "$mr_json")"
+mr_notes="$(glab mr note list "$mr_number" 2>/dev/null || true)"
+
+prompt="Review GitLab MR !${mr_number}: ${mr_title}
+
+The MR branch '${source_branch}' is checked out. The target branch is
+'${target_branch}'. Use git diff and local files to review the changes.
+Provide a thorough code review covering correctness, readability,
+potential bugs, and suggestions for improvement."
+
+[[ -n "$mr_description" ]] && prompt+="
+
+MR description:
+${mr_description}"
+
+[[ -n "$mr_notes" ]] && prompt+="
+
+Existing discussion:
+${mr_notes}"
+
+exec claude "$prompt"
