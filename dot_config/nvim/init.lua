@@ -56,6 +56,8 @@ vim.keymap.set("n", "<leader>fd", function() Snacks.picker.diagnostics() end, { 
 vim.keymap.set("n", "<leader>fk", function() Snacks.picker.keymaps() end, { desc = "Keymaps" })
 vim.keymap.set("n", "<leader>fR", function() Snacks.picker.resume() end, { desc = "Resume picker" })
 
+vim.keymap.set({ "n", "i", "v", "c" }, "<D-s>", "<Cmd>w<CR>", { desc = "Save file" })
+
 vim.keymap.set("n", "<C-h>", "<C-w>h")
 vim.keymap.set("n", "<C-j>", "<C-w>j")
 vim.keymap.set("n", "<C-k>", "<C-w>k")
