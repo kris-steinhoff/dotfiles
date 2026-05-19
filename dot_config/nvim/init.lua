@@ -20,7 +20,7 @@ vim.g.mapleader = " "
 vim.g.maplocalleader = "\\"
 
 vim.opt.showcmd = true
-vim.opt.showmode = true
+vim.opt.showmode = false
 vim.opt.incsearch = true
 vim.opt.hlsearch = true
 vim.opt.wrap = true
@@ -120,6 +120,18 @@ require("lazy").setup({
     "lewis6991/gitsigns.nvim",
     event = { "BufReadPre", "BufNewFile" },
     opts = {},
+  },
+  {
+    "nvim-lualine/lualine.nvim",
+    event = "VeryLazy",
+    opts = {
+      options = {
+        theme = "auto",
+        icons_enabled = false,
+        component_separators = { left = "|", right = "|" },
+        section_separators = { left = "", right = "" },
+      },
+    },
   },
   {
     "coder/claudecode.nvim",
