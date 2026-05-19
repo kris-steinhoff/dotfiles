@@ -1,3 +1,8 @@
+---
+name: cli-json
+description: Parse JSON output from CLI tools (gh, aws, kubectl, terraform, jj, databricks, helm, etc.) with `jq` rather than piping to `python -c` / `node -e` / one-shot scripts. Invoke when filtering, shaping, or extracting fields from JSON output of any command-line tool.
+---
+
 # Parsing JSON output from CLI tools
 
 When a CLI returns JSON (e.g. `databricks`, `gh`, `aws`, `kubectl`, `jj`, `terraform`, `helm -o json`), filter and shape it with `jq`. Avoid piping to `python -c` / `python3 -c`, `node -e`, or one-shot scripts in another language, unless necessary.
