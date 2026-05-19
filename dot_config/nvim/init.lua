@@ -30,6 +30,7 @@ vim.opt.shiftwidth = 4
 vim.opt.number = true
 vim.opt.relativenumber = true
 vim.opt.signcolumn = "yes"
+vim.opt.clipboard = "unnamedplus"
 
 -- Markdown: disable concealment so syntax is visible as typed
 vim.api.nvim_create_autocmd("FileType", {
