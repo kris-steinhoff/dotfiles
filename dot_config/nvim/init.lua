@@ -111,6 +111,11 @@ require("lazy").setup({
     },
   },
   {
+    "lewis6991/gitsigns.nvim",
+    event = { "BufReadPre", "BufNewFile" },
+    opts = {},
+  },
+  {
     "coder/claudecode.nvim",
     opts = {
       terminal_cmd = "claude --settings '{\"editorMode\":\"vim\"}'",
