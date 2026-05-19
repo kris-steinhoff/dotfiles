@@ -27,10 +27,23 @@ vim.opt.wrap = true
 vim.opt.linebreak = true
 vim.opt.tabstop = 4
 vim.opt.shiftwidth = 4
+vim.opt.expandtab = true
 vim.opt.number = true
 vim.opt.relativenumber = true
 vim.opt.signcolumn = "yes"
 vim.opt.clipboard = "unnamedplus"
+vim.opt.scrolloff = 8
+vim.opt.ignorecase = true
+vim.opt.smartcase = true
+vim.opt.undofile = true
+vim.opt.splitright = true
+vim.opt.splitbelow = true
+vim.opt.confirm = true
+vim.opt.cursorline = true
+vim.opt.breakindent = true
+vim.opt.updatetime = 250
+vim.opt.timeoutlen = 300
+vim.opt.pumheight = 10
 
 -- Markdown: disable concealment so syntax is visible as typed
 vim.api.nvim_create_autocmd("FileType", {
