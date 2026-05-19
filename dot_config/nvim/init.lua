@@ -27,6 +27,9 @@ vim.opt.wrap = true
 vim.opt.linebreak = true
 vim.opt.tabstop = 4
 vim.opt.shiftwidth = 4
+vim.opt.number = true
+vim.opt.relativenumber = true
+vim.opt.signcolumn = "yes"
 
 -- Markdown: disable concealment so syntax is visible as typed
 vim.api.nvim_create_autocmd("FileType", {
