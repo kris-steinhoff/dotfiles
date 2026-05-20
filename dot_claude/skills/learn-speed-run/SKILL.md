@@ -16,7 +16,7 @@ Per-project specifics (the topic, the user's background, the chosen project, con
 Check whether `CLAUDE.md` already records the project as a `learn-speed-run` project (i.e. the bootstrap step below has run before).
 
 - **No `CLAUDE.md`, or it doesn't record this skill** → run the **Bootstrap** section below, top to bottom.
-- **`CLAUDE.md` records this skill** → bootstrap is done. Skip to the ongoing-behavior sections; the contract in `CLAUDE.md` is authoritative. Don't re-ask bootstrap questions.
+- **`CLAUDE.md` records this skill** → bootstrap is done. `CLAUDE.md` is already in context (the harness loads it automatically); use the parameters in its `## Contract` block (baseline, project, progress store, git enabled/disabled) to configure how the rest of this skill applies. Skip the Bootstrap section entirely; don't re-ask. Then apply the ongoing-behavior sections (Core principles, quizzes, just-in-time tools, commits, etc.) for the rest of the session.
 
 ## Bootstrap (one-time setup)
 
@@ -45,12 +45,14 @@ Don't default either direction; ask. (If there's no git repo and the user declin
 
 ### 4. Write `CLAUDE.md`
 
-`CLAUDE.md` is **always versioned** (or, if there's no git repo, at least present in the working tree) — it's the contract and needs to load on every session. Inline the durable behaviors here so future sessions reproduce them without the skill firing again. Template:
+`CLAUDE.md` is **always versioned** (or, if there's no git repo, at least present in the working tree) — it's the contract and needs to load on every session. Keep it small: just the contract parameters and a pointer to the skill. The skill itself owns the behavior — `CLAUDE.md` configures it. Template:
 
 ```markdown
 # <project name>
 
-Built as a `learn-speed-run` learning project. Goal is familiarity with <topic>, not mastery.
+This is a `learn-speed-run` learning project. Goal is familiarity with <topic>, not mastery.
+
+**At the start of any session in this repo, invoke the `learn-speed-run` skill.** The skill uses the Contract below to configure itself for this project.
 
 ## Contract
 
@@ -58,21 +60,9 @@ Built as a `learn-speed-run` learning project. Goal is familiarity with <topic>,
 - **Project:** <one-line description of what's being built>.
 - **Progress store:** <versioned in `PROGRESS.md` | local per-project memory>.
 - **Git:** <enabled | disabled — no commits or tags>.
-
-## How to work in this repo
-
-- Agent writes the code; narrates **what**, **why this idiom**, and **what you'd reach for instead**. Don't generate code silently.
-- User runs, modifies, and observes each chunk. If they go passive ("ok", "done" several times in a row), pause and check in.
-- Use `AskUserQuestion` quizzes (1–2 questions, 2–4 options) frequently — they're the primary engagement mechanism in speed-run mode.
-- Introduce tools/patterns just-in-time with the *why*; ecosystem scaffolding generators are fair game but narrate generated files before adding to them.
-- Move quickly. If the user wants to slow down on a piece, say so explicitly — that's a signal to switch to `learn-the-hard-way` for that piece.
-- Keep the progress store up to date proactively — every new concept introduced, milestone hit, or plan shift. Don't wait to be asked.
-<!-- if git enabled: -->
-- Just run `git add` + `git commit -m '…'` at natural milestones; the permission gate is the user's veto. Don't ask first.
-- At topic boundaries, run `git tag -a <slug> -m '…'`. Tag slugs are what the topic *was about* (`cli-skeleton`, `persistence`) — no prefix, no leading number.
 ```
 
-Adjust to taste, but keep every bullet — each one is something the skill won't be around to remind future-Claude about.
+Add other project-specific context as needed (ecosystem-specific conventions the user has agreed on, links to references, anything that belongs with this project but not in the skill). What you should **not** inline here are the speed-run principles, do/don'ts, quiz guidance, or commit/tag rules — those live in the skill and would drift if duplicated.
 
 ## Core principles
 

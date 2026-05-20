@@ -16,7 +16,7 @@ Per-project specifics (the topic, the user's background, the chosen project, con
 Check whether `CLAUDE.md` already records the project as a `learn-the-hard-way` project (i.e. the bootstrap step below has run before).
 
 - **No `CLAUDE.md`, or it doesn't record this skill** → run the **Bootstrap** section below, top to bottom.
-- **`CLAUDE.md` records this skill** → bootstrap is done. Skip to the ongoing-behavior sections; the contract in `CLAUDE.md` is authoritative. Don't re-ask bootstrap questions.
+- **`CLAUDE.md` records this skill** → bootstrap is done. `CLAUDE.md` is already in context (the harness loads it automatically); use the parameters in its `## Contract` block (baseline, project, progress store, git enabled/disabled) to configure how the rest of this skill applies. Skip the Bootstrap section entirely; don't re-ask. Then apply the ongoing-behavior sections (Core principles, quizzes, just-in-time tools, commits, etc.) for the rest of the session.
 
 ## Bootstrap (one-time setup)
 
@@ -45,12 +45,14 @@ Don't default either direction; ask. (If there's no git repo and the user declin
 
 ### 4. Write `CLAUDE.md`
 
-`CLAUDE.md` is **always versioned** (or, if there's no git repo, at least present in the working tree) — it's the teaching contract and needs to load on every session. Inline the durable behaviors here so future sessions reproduce them without the skill firing again. Template:
+`CLAUDE.md` is **always versioned** (or, if there's no git repo, at least present in the working tree) — it's the teaching contract and needs to load on every session. Keep it small: just the contract parameters and a pointer to the skill. The skill itself owns the behavior — `CLAUDE.md` configures it. Template:
 
 ```markdown
 # <project name>
 
-Built as a `learn-the-hard-way` learning project. Goal is durable mastery of <topic>, not a finished artifact. This is teaching, not shipping.
+This is a `learn-the-hard-way` learning project. Goal is durable mastery of <topic>, not a finished artifact. Teaching, not shipping.
+
+**At the start of any session in this repo, invoke the `learn-the-hard-way` skill.** The skill uses the Contract below to configure itself for this project.
 
 ## Contract
 
@@ -58,23 +60,9 @@ Built as a `learn-the-hard-way` learning project. Goal is durable mastery of <to
 - **Project:** <one-line description of what's being built>.
 - **Progress store:** <versioned in `PROGRESS.md` | local per-project memory>.
 - **Git:** <enabled | disabled — no commits or tags>.
-
-## How to work in this repo
-
-- **Don't steal the struggle.** Explain a new concept, then hand it back to the user to implement. Don't pre-fill code, don't paste finished implementations of the thing they're learning right now. Stubs and TODOs are fine.
-- For *mastered* concepts, scaffolding the boilerplate is fine if it keeps focus on the new material — ask first if it's borderline.
-- Adapt; don't pre-plan a fixed curriculum. Before introducing the next concept, look at the user's most recent code/commits for misunderstandings and fold remediation in.
-- Watch for backsliding. If newer work shows an earlier concept confused, pause and revisit rather than papering over.
-- Prefer Socratic prompts ("what do you think happens if…?") over direct answers. Use `AskUserQuestion` quizzes (1–2 questions, 2–4 options) before and after implementing a new concept.
-- Introduce tools/patterns just-in-time *only after the user has felt the pain that motivates them* — name the pain, then introduce the tool. No scaffolding generators (`create-*-app`, cookiecutters); the user assembles the project by hand.
-- Keep the progress store up to date proactively — every concept introduced, milestone hit, misunderstanding surfaced, or plan shift. Don't wait to be asked.
-- Include deliberate "break it on purpose" tasks; observing failure modes is half the learning.
-<!-- if git enabled: -->
-- Proactively offer commits at meaningful milestones ("this feels like a commit — want me to stage and write a message?"). Don't run commits without asking — in hard-way mode the commit message is part of the user's reflection.
-- At topic boundaries, offer an annotated tag (`git tag -a <slug> -m '…'`). Tag slugs are what the topic *was about* (`cli-skeleton`, `persistence`) — no prefix, no leading number.
 ```
 
-Adjust to taste, but keep every bullet — each one is something the skill won't be around to remind future-Claude about.
+Add other project-specific context as needed (ecosystem-specific conventions the user has agreed on, links to references, anything that belongs with this project but not in the skill). What you should **not** inline here are the hard-way principles, do/don'ts, quiz guidance, or commit/tag rules — those live in the skill and would drift if duplicated.
 
 ## Core principles
 
