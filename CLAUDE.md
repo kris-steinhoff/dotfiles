@@ -19,6 +19,19 @@ chezmoi apply
 
 1. Ensures `~/.zshrc`, `~/.config/git/config`, and `~/.vimrc` each source/include the shared config files under `~/.config/kris-steinhoff/`
 2. Runs `brew bundle install` from `~/.config/homebrew/Brewfile` if Homebrew is available
+3. Runs `nvim --headless "+Lazy! restore" +qa` to install Neovim plugins at the commits pinned in `lazy-lock.json`
+
+## Neovim plugin pinning
+
+`dot_config/nvim/lazy-lock.json` is checked in. lazy.nvim installs plugins at the commits recorded there, which guards against supply-chain compromise of upstream repos. The bootstrap step above installs from the lockfile rather than letting plugins float to HEAD.
+
+When updating plugins:
+
+1. Run `:Lazy update` inside nvim.
+2. Review the diff in `~/.config/nvim/lazy-lock.json`.
+3. `chezmoi re-add ~/.config/nvim/lazy-lock.json` to pull the new commits into the source dir, then commit.
+
+Without step 3, the next `chezmoi apply` will revert the lockfile to whatever's checked in.
 
 ## Config architecture
 

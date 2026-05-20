@@ -42,3 +42,10 @@ ensure_config "${HOME}/.vimrc" \
 if type brew &>/dev/null; then
 	brew bundle install --file="${HOME}/.config/homebrew/Brewfile"
 fi
+
+# Install nvim plugins at the commits pinned in lazy-lock.json.
+# `Lazy! restore` is the synchronous form; it installs missing plugins and
+# rolls existing ones back to the lockfile.
+if type nvim &>/dev/null && [ -f "${HOME}/.config/nvim/lazy-lock.json" ]; then
+	nvim --headless "+Lazy! restore" +qa
+fi
