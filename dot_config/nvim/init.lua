@@ -44,12 +44,37 @@ vim.opt.breakindent = true
 vim.opt.updatetime = 250
 vim.opt.timeoutlen = 300
 vim.opt.pumheight = 10
+vim.opt.winborder = "rounded"
 
 -- Markdown: disable concealment so syntax is visible as typed
 vim.api.nvim_create_autocmd("FileType", {
   pattern = "markdown",
   callback = function()
     vim.opt_local.conceallevel = 0
+  end,
+})
+
+vim.diagnostic.config({
+  virtual_text = true,
+  severity_sort = true,
+})
+
+-- The popup menu (right-click, completion) can't take a border; lift its
+-- background instead so it stands apart from the editor.
+vim.api.nvim_create_autocmd("ColorScheme", {
+  callback = function()
+    vim.api.nvim_set_hl(0, "Pmenu", { bg = "#2a2e45" })
+    vim.api.nvim_set_hl(0, "PmenuSel", { bg = "#3d59a1", bold = true })
+  end,
+})
+
+-- Let ty own hover (K); ruff's hover is just diagnostic text.
+vim.api.nvim_create_autocmd("LspAttach", {
+  callback = function(args)
+    local client = vim.lsp.get_client_by_id(args.data.client_id)
+    if client and client.name == "ruff" then
+      client.server_capabilities.hoverProvider = false
+    end
   end,
 })
 
@@ -133,6 +158,19 @@ require("lazy").setup({
     "lewis6991/gitsigns.nvim",
     event = { "BufReadPre", "BufNewFile" },
     opts = {},
+  },
+  { "mason-org/mason.nvim", opts = {} },
+  {
+    "mason-org/mason-lspconfig.nvim",
+    event = { "BufReadPre", "BufNewFile" },
+    dependencies = {
+      "mason-org/mason.nvim",
+      "neovim/nvim-lspconfig",
+    },
+    opts = {
+      ensure_installed = { "ruff", "ty" },
+      automatic_enable = { "ruff", "ty" },
+    },
   },
   {
     "nvim-lualine/lualine.nvim",
