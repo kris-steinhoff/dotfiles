@@ -49,10 +49,22 @@ def main(
         None, help="Container label; defaults to the CWD basename."
     ),
     force_build: bool = typer.Option(
-        False, "--build", help="Force an image rebuild before launching."
+        False, "--build", help="Rebuild the image and recreate the container."
+    ),
+    stop: bool = typer.Option(
+        False, "--stop", help="Stop the container and exit."
+    ),
+    kill: bool = typer.Option(
+        False, "--kill", help="Remove the container and exit."
+    ),
+    shell: bool = typer.Option(
+        False, "--shell", help="Exec a shell instead of the Claude agents UI."
     ),
 ) -> None:
     """cab: claude agent box, a per-project Claude Code container."""
+    if stop and kill:
+        raise typer.BadParameter("--stop and --kill are mutually exclusive.")
+
     cwd = os.getcwd()
 
     # Container name: "cab-<label>-<hash>", where <label> is the given label
@@ -62,12 +74,30 @@ def main(
     digest = hashlib.sha1(cwd.encode()).hexdigest()[:8]
     name = f"{IMAGE}-{label}-{digest}"
 
+    exists = quiet_ok("docker", "container", "inspect", name)
+
+    # --stop and --kill are terminal actions: act on the container, then exit.
+    if stop:
+        if exists:
+            run("docker", "stop", name, stdout=subprocess.DEVNULL)
+        raise typer.Exit()
+    if kill:
+        if exists:
+            run("docker", "rm", "-f", name, stdout=subprocess.DEVNULL)
+        raise typer.Exit()
+
     # Build the image if forced, or if the daemon does not already have it.
     if force_build or not quiet_ok("docker", "image", "inspect", IMAGE):
         run("docker", "build", "-t", IMAGE, "-", input=DOCKERFILE, text=True)
 
+    # A rebuilt image leaves the old container running stale code, so drop it
+    # and let the block below recreate it on the fresh image.
+    if force_build and exists:
+        run("docker", "rm", "-f", name, stdout=subprocess.DEVNULL)
+        exists = False
+
     # Ensure the project container is running, creating it on first use.
-    if not quiet_ok("docker", "container", "inspect", name):
+    if not exists:
         run(
             "docker", "run", "-d", "--name", name,
             "-v", f"{name}-dot_claude:/home/node/.claude",
@@ -84,9 +114,10 @@ def main(
         if running != "true":
             run("docker", "start", name, stdout=subprocess.DEVNULL)
 
-    # Drop into the Claude Code agents UI inside the container. execvp
-    # replaces this process with docker so no wrapper lingers as its parent.
-    os.execvp("docker", ["docker", "exec", "-it", name, "claude", "agents"])
+    # Drop into the container. execvp replaces this process with docker so no
+    # wrapper lingers as its parent.
+    target = ["bash"] if shell else ["claude", "agents"]
+    os.execvp("docker", ["docker", "exec", "-it", name, *target])
 
 
 if __name__ == "__main__":
