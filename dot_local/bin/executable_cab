@@ -9,7 +9,9 @@ Builds the image on first use, then keeps one container per name.
 """
 
 import os
+import shutil
 import subprocess
+from pathlib import Path
 
 import click
 import typer
@@ -25,21 +27,19 @@ PREFIX = "cab"
 # them. Spelled out in full to avoid colliding with unrelated labels.
 DOCKER_LABEL = "claude_agents_box"
 
+# Per-name home directories live here on the host, bind-mounted at
+# /home/node. New homes are seeded once from SKEL_DIR.
+STATE_DIR = Path.home() / ".local/state/cab/home_dir"
+SKEL_DIR = Path.home() / ".config/cab/skel"
+
 DOCKERFILE = """\
 FROM node:22
 
 RUN npm install -g @anthropic-ai/claude-code
 
-# Pre-create the config dir owned by node so a fresh named volume
-# mounted here inherits node ownership instead of defaulting to root.
-RUN mkdir -p /home/node/.claude && chown node:node /home/node/.claude
-
-# Pre-seed host keys so git over SSH to these hosts doesn't prompt.
-RUN mkdir -p /home/node/.ssh \\
-    && ssh-keyscan gitlab.com github.com >> /home/node/.ssh/known_hosts \\
-    && chmod 700 /home/node/.ssh \\
-    && chmod 600 /home/node/.ssh/known_hosts \\
-    && chown -R node:node /home/node/.ssh
+# /home/node is a per-name host directory bind-mounted at runtime, so
+# anything seeded into it here would be shadowed. Common home files come
+# from the host skel directory instead.
 
 # Pre-create the workdir owned by node. Otherwise docker auto-creates
 # /workspace from WORKDIR owned by root, and the agent (running as
@@ -94,8 +94,21 @@ def container_name(name: str) -> str:
     return f"{PREFIX}-{name}"
 
 
-def volume_name(name: str) -> str:
-    return f"{PREFIX}-{name}-claude"
+def home_dir(name: str) -> Path:
+    return STATE_DIR / name
+
+
+def ensure_home(name: str) -> Path:
+    """Return the host home directory for NAME, creating it on first use.
+    A fresh home is seeded from SKEL_DIR so common non-secret config (e.g.
+    .gitconfig, .ssh/known_hosts) is present without per-name setup."""
+    home = home_dir(name)
+    if not home.exists():
+        if SKEL_DIR.is_dir():
+            shutil.copytree(SKEL_DIR, home)
+        else:
+            home.mkdir(parents=True)
+    return home
 
 
 def ensure_image(force_build: bool) -> None:
@@ -110,108 +123,68 @@ def is_running(container: str) -> bool:
     ).stdout.strip() == "true"
 
 
-def check_mount(spec: str) -> None:
-    """Validate a `src:dst[:opts]` bind mount. The host path is used
-    verbatim, as docker does (no ~ expansion). A path-like source is
-    checked to exist so a typo does not silently become an empty
-    directory; a source with no slash is treated as a named volume."""
-    src, sep, _ = spec.partition(":")
-    if not sep:
-        console.print(
-            f"Invalid bind mount, expected src:dst: [cyan]{spec}[/]", style="red"
-        )
-        raise typer.Exit(1)
-    if "/" in src and not os.path.exists(src):
-        console.print(
-            f"Bind mount source not found: [cyan]{src}[/]", style="red"
-        )
-        raise typer.Exit(1)
-
-
-def collect_mounts(mount_flags: list[str]) -> list[str]:
-    """Bind mounts from $CAB_BIND_MOUNTS (newline-delimited) followed by
-    --mount flags, each validated and passed to docker verbatim."""
-    env = os.environ.get("CAB_BIND_MOUNTS", "")
-    specs = [line.strip() for line in env.splitlines() if line.strip()]
-    specs += mount_flags
-    for spec in specs:
-        check_mount(spec)
-    return specs
-
-
-def ensure_running(name: str, mount_flags: list[str]) -> str:
+def ensure_running(name: str) -> str:
     """Create the container on first use, or start it if stopped. Returns
     the docker container name."""
     container = container_name(name)
     if not quiet_ok("docker", "container", "inspect", container):
-        mounts = collect_mounts(mount_flags)
-        # Create the volume explicitly so it carries DOCKER_LABEL; an
-        # implicit `-v` volume would be unlabelled and invisible to `list`.
+        home = ensure_home(name)
         run(
-            "docker", "volume", "create", "--label", f"{DOCKER_LABEL}=true",
-            volume_name(name), stdout=subprocess.DEVNULL,
-        )
-        opts = [
             "docker", "run", "-d", "--name", container,
             "--label", f"{DOCKER_LABEL}=true",
-            "-v", f"{volume_name(name)}:/home/node/.claude",
-        ]
-        for mount in mounts:
-            opts += ["-v", mount]
-        run(*opts, IMAGE, stdout=subprocess.DEVNULL)
+            "-v", f"{home}:/home/node",
+            IMAGE, stdout=subprocess.DEVNULL,
+        )
     elif not is_running(container):
         run("docker", "start", container, stdout=subprocess.DEVNULL)
     return container
 
 
-def enter(name: str, target: list[str], mount_flags: list[str]) -> None:
+def enter(name: str, target: list[str]) -> None:
     """Ensure the image and container exist, then exec into the container.
     execvp replaces this process with docker so no wrapper lingers."""
     ensure_image(force_build=False)
-    container = ensure_running(name, mount_flags)
+    container = ensure_running(name)
     os.execvp("docker", ["docker", "exec", "-it", container, *target])
 
 
 @app.callback(invoke_without_command=True)
-def cli(
-    ctx: typer.Context,
-    mount: list[str] = typer.Option(
-        None, "--mount", "-m", metavar="SRC:DST[:OPTS]",
-        help="Bind mount to add, repeatable. Combined with the newline-"
-             "delimited $CAB_BIND_MOUNTS.",
-    ),
-) -> None:
+def cli(ctx: typer.Context) -> None:
     """cab: claude agent box, a named Claude Code container.
 
     Run `cab NAME` to launch the Claude agents UI in a container named
     NAME, building the image and creating the container on first use.
-    `cab NAME` is shorthand for `cab agents NAME`; the other subcommands
+    `cab NAME` is shorthand for `cab agents NAME`. The other subcommands
     manage existing containers.
+
+    Each container has a host home directory at
+    ~/.local/state/cab/home_dir/NAME/ bind-mounted at /home/node, so
+    Claude config and history persist across restarts. A fresh home is
+    seeded from ~/.config/cab/skel/ (mirroring /home/node), the place to
+    put common non-secret files such as .gitconfig and .ssh/known_hosts.
+    `cab kill --purge` removes a container's home directory.
     """
     if ctx.invoked_subcommand is None:
         console.print("Specify a proejct name, for example [bold]cab myproject[/].")
         console.print("[dim]Run [bold]cab --help[/] for all commands.[/]")
         raise typer.Exit(1)
     require_docker()
-    ctx.obj = mount or []
 
 
 @app.command()
 def agents(
-    ctx: typer.Context,
     name: str = typer.Argument(..., help="Container name."),
 ) -> None:
     """Launch the Claude agents UI in the container (the default action)."""
-    enter(name, ["claude", "agents"], ctx.obj)
+    enter(name, ["claude", "agents"])
 
 
 @app.command()
 def shell(
-    ctx: typer.Context,
     name: str = typer.Argument(..., help="Container name."),
 ) -> None:
     """Exec a shell in the container."""
-    enter(name, ["bash"], ctx.obj)
+    enter(name, ["bash"])
 
 
 @app.command()
@@ -238,15 +211,17 @@ def kill(
     name: str = typer.Argument(..., help="Container name."),
     purge: bool = typer.Option(
         False, "--purge",
-        help="Also remove the named volume holding the container's Claude config.",
+        help="Also remove the host home directory holding the container's "
+             "Claude config and home files.",
     ),
 ) -> None:
-    """Remove the container. Its named volume is left intact unless --purge."""
+    """Remove the container. Its host home directory is left intact unless
+    --purge."""
     container = container_name(name)
-    vol = volume_name(name)
+    home = home_dir(name)
     container_exists = quiet_ok("docker", "container", "inspect", container)
-    volume_exists = quiet_ok("docker", "volume", "inspect", vol)
-    if not container_exists and not volume_exists:
+    home_exists = home.is_dir()
+    if not container_exists and not home_exists:
         console.print(f"Nothing to remove for [cyan]{name}[/].", style="dim")
         return
 
@@ -254,47 +229,46 @@ def kill(
         run("docker", "rm", "-f", container, stdout=subprocess.DEVNULL)
         console.print(f"Removed container [cyan]{container}[/].")
 
-    # The volume holds the saved Claude config, so it is kept unless --purge.
-    if volume_exists and purge:
-        run("docker", "volume", "rm", vol, stdout=subprocess.DEVNULL)
-        console.print(f"Removed volume [cyan]{vol}[/].")
-    elif volume_exists:
-        console.print(f"[dim]Volume [cyan]{vol}[/] kept.[/]")
+    # The home directory holds the saved Claude config, so it is kept
+    # unless --purge.
+    if home_exists and purge:
+        shutil.rmtree(home)
+        console.print(f"Removed home directory [cyan]{home}[/].")
+    elif home_exists:
+        console.print(f"[dim]Home directory [cyan]{home}[/] kept.[/]")
 
 
 @app.command("list")
 def list_() -> None:
-    """List all cab containers and volumes, including orphans."""
+    """List all cab containers and home directories, including orphans."""
     containers = subprocess.run(
         ["docker", "ps", "-a", "--filter", f"label={DOCKER_LABEL}",
          "--format", "{{.Names}}\t{{.State}}"],
         capture_output=True, text=True, check=True,
     ).stdout.splitlines()
-    volumes = subprocess.run(
-        ["docker", "volume", "ls", "--filter", f"label={DOCKER_LABEL}",
-         "--format", "{{.Name}}"],
-        capture_output=True, text=True, check=True,
-    ).stdout.splitlines()
+    homes = (
+        [p.name for p in STATE_DIR.iterdir() if p.is_dir()]
+        if STATE_DIR.is_dir() else []
+    )
 
-    # Join containers and volumes by name so an orphaned volume (one with
-    # no container) shows up as its own row.
+    # Join containers and home directories by name so an orphaned home
+    # (one with no container) shows up as its own row.
     rows: dict[str, dict] = {}
     for line in containers:
         cname, _, state = line.partition("\t")
         name = cname.removeprefix(f"{PREFIX}-")
         rows.setdefault(name, {}).update(container=cname, state=state)
-    for vname in volumes:
-        name = vname.removeprefix(f"{PREFIX}-").removesuffix("-claude")
-        rows.setdefault(name, {})["volume"] = True
+    for name in homes:
+        rows.setdefault(name, {})["home"] = True
 
     if not rows:
-        console.print("No cab containers or volumes.", style="dim")
+        console.print("No cab containers or home directories.", style="dim")
         return
 
     table = Table()
     table.add_column("Name")
     table.add_column("State")
-    table.add_column("Volume")
+    table.add_column("Home")
     for name in sorted(rows):
         row = rows[name]
         state = row.get("state", "—")
@@ -302,7 +276,7 @@ def list_() -> None:
         table.add_row(
             name,
             f"[green]{state}[/]" if state == "running" else state,
-            "yes" if row.get("volume") else "—",
+            "yes" if row.get("home") else "—",
             style="yellow" if orphan else None,
         )
     console.print(table)
