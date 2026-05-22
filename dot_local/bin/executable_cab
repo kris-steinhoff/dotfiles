@@ -3,22 +3,21 @@
 # requires-python = ">=3.11"
 # dependencies = ["typer", "rich"]
 # ///
-"""cab: claude agent box, a per-project Claude Code container.
+"""cab: claude agent box, a named Claude Code container.
 
-Builds the image on first use, then keeps one container per label.
-With no label, the label is derived from the CWD so each project
-directory gets its own container.
+Builds the image on first use, then keeps one container per name.
 """
 
-import hashlib
 import os
 import subprocess
 from pathlib import Path
 
+import click
 import typer
 from rich.console import Console
 from rich.prompt import Confirm
 from rich.table import Table
+from typer.core import TyperGroup
 
 console = Console()
 
@@ -48,10 +47,20 @@ WORKDIR /workspace
 CMD ["sleep", "infinity"]
 """
 
+
+class DefaultCommandGroup(TyperGroup):
+    """When the first argument is not a known subcommand, treat it as a
+    NAME for the default `agents` command, so `cab myproject` works."""
+
+    def resolve_command(self, ctx, args):
+        try:
+            return super().resolve_command(ctx, args)
+        except click.UsageError:
+            return super().resolve_command(ctx, ["agents", *args])
+
+
 app = typer.Typer(
-    help="cab: claude agent box, a per-project Claude Code container.",
-    add_completion=False,
-    no_args_is_help=False,
+    cls=DefaultCommandGroup, add_completion=False, no_args_is_help=True
 )
 
 
@@ -77,23 +86,12 @@ def require_docker() -> None:
         raise typer.Exit(1)
 
 
-def resolve(label: str | None) -> str:
-    """An explicit label is taken at face value. Without one, derive a
-    per-directory label from the CWD basename plus a hash of its path,
-    so two projects sharing a basename don't collide."""
-    if label:
-        return label
-    cwd = os.getcwd()
-    digest = hashlib.sha1(cwd.encode()).hexdigest()[:8]
-    return f"{os.path.basename(cwd)}-{digest}"
+def container_name(name: str) -> str:
+    return f"{PREFIX}-{name}"
 
 
-def container_name(label: str) -> str:
-    return f"{PREFIX}-{label}"
-
-
-def volume_name(label: str) -> str:
-    return f"{PREFIX}-{label}-claude"
+def volume_name(name: str) -> str:
+    return f"{PREFIX}-{name}-claude"
 
 
 def ensure_image(force_build: bool) -> None:
@@ -101,26 +99,11 @@ def ensure_image(force_build: bool) -> None:
         run("docker", "build", "-t", IMAGE, "-", input=DOCKERFILE, text=True)
 
 
-def is_running(name: str) -> bool:
+def is_running(container: str) -> bool:
     return subprocess.run(
-        ["docker", "inspect", "-f", "{{.State.Running}}", name],
+        ["docker", "inspect", "-f", "{{.State.Running}}", container],
         capture_output=True, text=True, check=True,
     ).stdout.strip() == "true"
-
-
-def workspace_of(name: str) -> str:
-    """The host directory bind-mounted at /workspace, with $HOME shortened
-    to ~. Returns '—' when there is no such mount."""
-    src = subprocess.run(
-        ["docker", "inspect", "-f",
-         '{{range .Mounts}}{{if eq .Destination "/workspace"}}{{.Source}}{{end}}{{end}}',
-         name],
-        capture_output=True, text=True, check=True,
-    ).stdout.strip()
-    home = os.path.expanduser("~")
-    if src.startswith(home):
-        src = "~" + src[len(home):]
-    return src or "—"
 
 
 def resolve_ssh_key(ssh_key: Path | None) -> Path | None:
@@ -135,42 +118,41 @@ def resolve_ssh_key(ssh_key: Path | None) -> Path | None:
     return path
 
 
-def ensure_running(label: str, ssh_key: Path | None) -> str:
+def ensure_running(name: str, ssh_key: Path | None) -> str:
     """Create the container on first use, or start it if stopped. Returns
-    the container name."""
-    name = container_name(label)
-    if not quiet_ok("docker", "container", "inspect", name):
+    the docker container name."""
+    container = container_name(name)
+    if not quiet_ok("docker", "container", "inspect", container):
         key = resolve_ssh_key(ssh_key)
         # Create the volume explicitly so it carries DOCKER_LABEL; an
         # implicit `-v` volume would be unlabelled and invisible to `list`.
         run(
             "docker", "volume", "create", "--label", f"{DOCKER_LABEL}=true",
-            volume_name(label), stdout=subprocess.DEVNULL,
+            volume_name(name), stdout=subprocess.DEVNULL,
         )
         opts = [
-            "docker", "run", "-d", "--name", name,
+            "docker", "run", "-d", "--name", container,
             "--label", f"{DOCKER_LABEL}=true",
-            "-v", f"{volume_name(label)}:/home/node/.claude",
-            "-v", f"{os.getcwd()}:/workspace",
+            "-v", f"{volume_name(name)}:/home/node/.claude",
         ]
         if key:
             opts += ["-v", f"{key}:/home/node/.ssh/identity:ro"]
         run(*opts, IMAGE, stdout=subprocess.DEVNULL)
-    elif not is_running(name):
-        run("docker", "start", name, stdout=subprocess.DEVNULL)
-    return name
+    elif not is_running(container):
+        run("docker", "start", container, stdout=subprocess.DEVNULL)
+    return container
 
 
-def enter(label: str | None, target: list[str], ssh_key: Path | None) -> None:
+def enter(name: str, target: list[str], ssh_key: Path | None) -> None:
     """Ensure the image and container exist, then exec into the container.
     execvp replaces this process with docker so no wrapper lingers."""
     ensure_image(force_build=False)
-    name = ensure_running(resolve(label), ssh_key)
-    os.execvp("docker", ["docker", "exec", "-it", name, *target])
+    container = ensure_running(name, ssh_key)
+    os.execvp("docker", ["docker", "exec", "-it", container, *target])
 
 
-@app.callback(invoke_without_command=True)
-def default(
+@app.callback()
+def cli(
     ctx: typer.Context,
     ssh_key: Path = typer.Option(
         None, "--ssh-key", envvar="CAB_SSH_KEY", metavar="FILE",
@@ -178,29 +160,27 @@ def default(
              "$CAB_SSH_KEY; if unset, no key is mounted.",
     ),
 ) -> None:
-    """Bare `cab` launches the agents UI for the current directory."""
+    """cab: claude agent box, a named Claude Code container."""
     require_docker()
     ctx.obj = ssh_key
-    if ctx.invoked_subcommand is None:
-        enter(None, ["claude", "agents"], ssh_key)
 
 
 @app.command()
 def agents(
     ctx: typer.Context,
-    label: str = typer.Argument(None, help="Container label; defaults to one derived from the current directory."),
+    name: str = typer.Argument(..., help="Container name."),
 ) -> None:
     """Launch the Claude agents UI in the container (the default action)."""
-    enter(label, ["claude", "agents"], ctx.obj)
+    enter(name, ["claude", "agents"], ctx.obj)
 
 
 @app.command()
 def shell(
     ctx: typer.Context,
-    label: str = typer.Argument(None, help="Container label; defaults to one derived from the current directory."),
+    name: str = typer.Argument(..., help="Container name."),
 ) -> None:
     """Exec a shell in the container."""
-    enter(label, ["bash"], ctx.obj)
+    enter(name, ["bash"], ctx.obj)
 
 
 @app.command()
@@ -211,20 +191,20 @@ def build() -> None:
 
 @app.command()
 def stop(
-    label: str = typer.Argument(None, help="Container label; defaults to one derived from the current directory.")
+    name: str = typer.Argument(..., help="Container name."),
 ) -> None:
     """Stop the container."""
-    name = container_name(resolve(label))
-    if quiet_ok("docker", "container", "inspect", name):
-        run("docker", "stop", name, stdout=subprocess.DEVNULL)
-        console.print(f"Stopped [cyan]{name}[/].")
+    container = container_name(name)
+    if quiet_ok("docker", "container", "inspect", container):
+        run("docker", "stop", container, stdout=subprocess.DEVNULL)
+        console.print(f"Stopped [cyan]{container}[/].")
     else:
-        console.print(f"No such container: [cyan]{name}[/]", style="dim")
+        console.print(f"No such container: [cyan]{container}[/]", style="dim")
 
 
 @app.command()
 def kill(
-    label: str = typer.Argument(None, help="Container label; defaults to one derived from the current directory."),
+    name: str = typer.Argument(..., help="Container name."),
     force: bool = typer.Option(
         False, "--force", "-f", help="Skip confirmation prompts.",
     ),
@@ -234,27 +214,26 @@ def kill(
     ),
 ) -> None:
     """Remove the container. Its named volume is left intact unless --purge."""
-    label = resolve(label)
-    name = container_name(label)
-    vol = volume_name(label)
-    container_exists = quiet_ok("docker", "container", "inspect", name)
+    container = container_name(name)
+    vol = volume_name(name)
+    container_exists = quiet_ok("docker", "container", "inspect", container)
     volume_exists = quiet_ok("docker", "volume", "inspect", vol)
     if not container_exists and not volume_exists:
-        console.print(f"Nothing to remove for label [cyan]{label}[/].", style="dim")
+        console.print(f"Nothing to remove for [cyan]{name}[/].", style="dim")
         return
 
-    running = container_exists and is_running(name)
+    running = container_exists and is_running(container)
     if running and not force:
         if not Confirm.ask(
-            f"Delete container [cyan]{name}[/]? "
+            f"Delete container [cyan]{container}[/]? "
             "[yellow]This ends any active session.[/]",
             default=True,
         ):
             raise typer.Abort()
 
     if container_exists:
-        run("docker", "rm", "-f", name, stdout=subprocess.DEVNULL)
-        console.print(f"  Removed container [cyan]{name}[/].")
+        run("docker", "rm", "-f", container, stdout=subprocess.DEVNULL)
+        console.print(f"  Removed container [cyan]{container}[/].")
 
     # The volume holds the saved Claude config, so it is kept by default.
     # --purge removes it outright; otherwise ask, unless --force.
@@ -286,36 +265,33 @@ def list_() -> None:
         capture_output=True, text=True, check=True,
     ).stdout.splitlines()
 
-    # Join containers and volumes by label so an orphaned volume (one with
+    # Join containers and volumes by name so an orphaned volume (one with
     # no container) shows up as its own row.
     rows: dict[str, dict] = {}
     for line in containers:
-        name, _, state = line.partition("\t")
-        label = name.removeprefix(f"{PREFIX}-")
-        rows.setdefault(label, {}).update(container=name, state=state)
+        cname, _, state = line.partition("\t")
+        name = cname.removeprefix(f"{PREFIX}-")
+        rows.setdefault(name, {}).update(container=cname, state=state)
     for vname in volumes:
-        label = vname.removeprefix(f"{PREFIX}-").removesuffix("-claude")
-        rows.setdefault(label, {})["volume"] = True
+        name = vname.removeprefix(f"{PREFIX}-").removesuffix("-claude")
+        rows.setdefault(name, {})["volume"] = True
 
     if not rows:
         console.print("No cab containers or volumes.", style="dim")
         return
 
     table = Table()
-    table.add_column("Label")
+    table.add_column("Name")
     table.add_column("State")
     table.add_column("Volume")
-    table.add_column("Workspace")
-    for label in sorted(rows):
-        row = rows[label]
+    for name in sorted(rows):
+        row = rows[name]
         state = row.get("state", "—")
-        workspace = workspace_of(row["container"]) if "container" in row else "—"
         orphan = "container" not in row
         table.add_row(
-            label,
+            name,
             f"[green]{state}[/]" if state == "running" else state,
             "yes" if row.get("volume") else "—",
-            workspace,
             style="yellow" if orphan else None,
         )
     console.print(table)
