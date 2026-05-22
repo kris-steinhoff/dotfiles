@@ -35,6 +35,13 @@ RUN npm install -g @anthropic-ai/claude-code
 # mounted here inherits node ownership instead of defaulting to root.
 RUN mkdir -p /home/node/.claude && chown node:node /home/node/.claude
 
+# Pre-seed host keys so git over SSH to these hosts doesn't prompt.
+RUN mkdir -p /home/node/.ssh \\
+    && ssh-keyscan gitlab.com github.com >> /home/node/.ssh/known_hosts \\
+    && chmod 700 /home/node/.ssh \\
+    && chmod 600 /home/node/.ssh/known_hosts \\
+    && chown -R node:node /home/node/.ssh
+
 USER node
 WORKDIR /workspace
 
