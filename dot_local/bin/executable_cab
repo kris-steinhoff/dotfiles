@@ -41,6 +41,11 @@ RUN mkdir -p /home/node/.ssh \\
     && chmod 600 /home/node/.ssh/known_hosts \\
     && chown -R node:node /home/node/.ssh
 
+# Pre-create the workdir owned by node. Otherwise docker auto-creates
+# /workspace from WORKDIR owned by root, and the agent (running as
+# node) cannot write to it without escalating to root.
+RUN mkdir -p /workspace && chown node:node /workspace
+
 USER node
 WORKDIR /workspace
 
