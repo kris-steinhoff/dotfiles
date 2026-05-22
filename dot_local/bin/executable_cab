@@ -5,8 +5,9 @@
 # ///
 """cab: claude agent box, a per-project Claude Code container.
 
-Builds the image on first use, then keeps one container per project
-directory (named after the basename of the CWD).
+Builds the image on first use, then keeps one container per label.
+With no label, the label is derived from the CWD so each project
+directory gets its own container.
 """
 
 import hashlib
@@ -16,6 +17,10 @@ import subprocess
 import typer
 
 IMAGE = "cab"
+PREFIX = "cab"
+# Docker object label stamped on every cab container so `list` can find
+# them. Spelled out in full to avoid colliding with unrelated labels.
+DOCKER_LABEL = "claude_agents_box"
 
 DOCKERFILE = """\
 FROM node:22
@@ -33,6 +38,12 @@ WORKDIR /workspace
 CMD ["sleep", "infinity"]
 """
 
+app = typer.Typer(
+    help="cab: claude agent box, a per-project Claude Code container.",
+    add_completion=False,
+    no_args_is_help=False,
+)
+
 
 def run(*args: str, **kwargs) -> subprocess.CompletedProcess:
     return subprocess.run(args, check=True, **kwargs)
@@ -44,65 +55,41 @@ def quiet_ok(*args: str) -> bool:
     ).returncode == 0
 
 
-def main(
-    label: str = typer.Argument(
-        None, help="Container label; defaults to the CWD basename."
-    ),
-    force_build: bool = typer.Option(
-        False, "--build", help="Rebuild the image and recreate the container."
-    ),
-    stop: bool = typer.Option(
-        False, "--stop", help="Stop the container and exit."
-    ),
-    kill: bool = typer.Option(
-        False, "--kill", help="Remove the container and exit."
-    ),
-    shell: bool = typer.Option(
-        False, "--shell", help="Exec a shell instead of the Claude agents UI."
-    ),
-) -> None:
-    """cab: claude agent box, a per-project Claude Code container."""
-    if stop and kill:
-        raise typer.BadParameter("--stop and --kill are mutually exclusive.")
-
+def resolve(label: str | None) -> str:
+    """An explicit label is taken at face value. Without one, derive a
+    per-directory label from the CWD basename plus a hash of its path,
+    so two projects sharing a basename don't collide."""
+    if label:
+        return label
     cwd = os.getcwd()
-
-    # Container name: "cab-<label>-<hash>", where <label> is the given label
-    # or the CWD basename, and <hash> keeps it unique per directory so two
-    # projects sharing a basename don't collide.
-    label = label or os.path.basename(cwd)
     digest = hashlib.sha1(cwd.encode()).hexdigest()[:8]
-    name = f"{IMAGE}-{label}-{digest}"
+    return f"{os.path.basename(cwd)}-{digest}"
 
-    exists = quiet_ok("docker", "container", "inspect", name)
 
-    # --stop and --kill are terminal actions: act on the container, then exit.
-    if stop:
-        if exists:
-            run("docker", "stop", name, stdout=subprocess.DEVNULL)
-        raise typer.Exit()
-    if kill:
-        if exists:
-            run("docker", "rm", "-f", name, stdout=subprocess.DEVNULL)
-        raise typer.Exit()
+def container_name(label: str) -> str:
+    return f"{PREFIX}-{label}"
 
-    # Build the image if forced, or if the daemon does not already have it.
+
+def volume_name(label: str) -> str:
+    return f"{PREFIX}-{label}-claude"
+
+
+def ensure_image(force_build: bool) -> None:
     if force_build or not quiet_ok("docker", "image", "inspect", IMAGE):
         run("docker", "build", "-t", IMAGE, "-", input=DOCKERFILE, text=True)
 
-    # A rebuilt image leaves the old container running stale code, so drop it
-    # and let the block below recreate it on the fresh image.
-    if force_build and exists:
-        run("docker", "rm", "-f", name, stdout=subprocess.DEVNULL)
-        exists = False
 
-    # Ensure the project container is running, creating it on first use.
-    if not exists:
+def ensure_running(label: str) -> str:
+    """Create the container on first use, or start it if stopped. Returns
+    the container name."""
+    name = container_name(label)
+    if not quiet_ok("docker", "container", "inspect", name):
         run(
             "docker", "run", "-d", "--name", name,
-            "-v", f"{name}-dot_claude:/home/node/.claude",
+            "--label", f"{DOCKER_LABEL}=true",
+            "-v", f"{volume_name(label)}:/home/node/.claude",
             "-v", f"{os.path.expanduser('~')}/.ssh/id_ed25519_claude:/home/node/.ssh/id_ed25519:ro",
-            "-v", f"{cwd}:/workspace",
+            "-v", f"{os.getcwd()}:/workspace",
             IMAGE,
             stdout=subprocess.DEVNULL,
         )
@@ -113,12 +100,90 @@ def main(
         ).stdout.strip()
         if running != "true":
             run("docker", "start", name, stdout=subprocess.DEVNULL)
+    return name
 
-    # Drop into the container. execvp replaces this process with docker so no
-    # wrapper lingers as its parent.
-    target = ["bash"] if shell else ["claude", "agents"]
+
+def enter(label: str | None, target: list[str]) -> None:
+    """Ensure the image and container exist, then exec into the container.
+    execvp replaces this process with docker so no wrapper lingers."""
+    ensure_image(force_build=False)
+    name = ensure_running(resolve(label))
     os.execvp("docker", ["docker", "exec", "-it", name, *target])
 
 
+@app.callback(invoke_without_command=True)
+def default(ctx: typer.Context) -> None:
+    """Bare `cab` launches the agents UI for the current directory."""
+    if ctx.invoked_subcommand is None:
+        enter(None, ["claude", "agents"])
+
+
+@app.command()
+def agents(
+    label: str = typer.Argument(None, help="Container label; defaults to one derived from the current directory.")
+) -> None:
+    """Launch the Claude agents UI in the container (the default action)."""
+    enter(label, ["claude", "agents"])
+
+
+@app.command()
+def shell(
+    label: str = typer.Argument(None, help="Container label; defaults to one derived from the current directory.")
+) -> None:
+    """Exec a shell in the container."""
+    enter(label, ["bash"])
+
+
+@app.command()
+def build() -> None:
+    """Rebuild the image. Existing containers pick it up when recreated."""
+    ensure_image(force_build=True)
+
+
+@app.command()
+def stop(
+    label: str = typer.Argument(None, help="Container label; defaults to one derived from the current directory.")
+) -> None:
+    """Stop the container."""
+    name = container_name(resolve(label))
+    if quiet_ok("docker", "container", "inspect", name):
+        run("docker", "stop", name, stdout=subprocess.DEVNULL)
+    else:
+        typer.echo(f"No such container: {name}")
+
+
+@app.command()
+def kill(
+    label: str = typer.Argument(None, help="Container label; defaults to one derived from the current directory.")
+) -> None:
+    """Remove the container. Its named volume is left intact."""
+    name = container_name(resolve(label))
+    if quiet_ok("docker", "container", "inspect", name):
+        run("docker", "rm", "-f", name, stdout=subprocess.DEVNULL)
+    else:
+        typer.echo(f"No such container: {name}")
+
+
+@app.command("list")
+def list_() -> None:
+    """List all cab containers and their status."""
+    out = subprocess.run(
+        ["docker", "ps", "-a", "--filter", f"label={DOCKER_LABEL}",
+         "--format", "{{.Names}}\t{{.Status}}"],
+        capture_output=True, text=True, check=True,
+    ).stdout
+    rows = []
+    for line in out.splitlines():
+        name, _, status = line.partition("\t")
+        label = name.removeprefix(f"{PREFIX}-")
+        rows.append((label, status))
+    if not rows:
+        typer.echo("No cab containers.")
+        return
+    width = max(len(label) for label, _ in rows)
+    for label, status in rows:
+        typer.echo(f"{label:<{width}}  {status}")
+
+
 if __name__ == "__main__":
-    typer.run(main)
+    app()
