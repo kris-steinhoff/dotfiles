@@ -57,6 +57,18 @@ def quiet_ok(*args: str) -> bool:
     ).returncode == 0
 
 
+def require_docker() -> None:
+    """Exit cleanly if the docker CLI is missing or its daemon is down,
+    rather than letting a raw traceback reach the user."""
+    try:
+        ok = quiet_ok("docker", "info")
+    except FileNotFoundError:
+        ok = False
+    if not ok:
+        typer.echo("Docker is not available. Is the daemon running?", err=True)
+        raise typer.Exit(1)
+
+
 def resolve(label: str | None) -> str:
     """An explicit label is taken at face value. Without one, derive a
     per-directory label from the CWD basename plus a hash of its path,
@@ -118,6 +130,7 @@ def enter(label: str | None, target: list[str]) -> None:
 @app.callback(invoke_without_command=True)
 def default(ctx: typer.Context) -> None:
     """Bare `cab` launches the agents UI for the current directory."""
+    require_docker()
     if ctx.invoked_subcommand is None:
         enter(None, ["claude", "agents"])
 
