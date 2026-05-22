@@ -14,7 +14,6 @@ import subprocess
 import click
 import typer
 from rich.console import Console
-from rich.prompt import Confirm
 from rich.table import Table
 from typer.core import TyperGroup
 
@@ -232,9 +231,6 @@ def stop(
 @app.command()
 def kill(
     name: str = typer.Argument(..., help="Container name."),
-    force: bool = typer.Option(
-        False, "--force", "-f", help="Skip confirmation prompts.",
-    ),
     purge: bool = typer.Option(
         False, "--purge",
         help="Also remove the named volume holding the container's Claude config.",
@@ -249,33 +245,16 @@ def kill(
         console.print(f"Nothing to remove for [cyan]{name}[/].", style="dim")
         return
 
-    running = container_exists and is_running(container)
-    if running and not force:
-        if not Confirm.ask(
-            f"Delete container [cyan]{container}[/]? "
-            "[yellow]This ends any active session.[/]",
-            default=True,
-        ):
-            raise typer.Abort()
-
     if container_exists:
         run("docker", "rm", "-f", container, stdout=subprocess.DEVNULL)
-        console.print(f"  Removed container [cyan]{container}[/].")
+        console.print(f"Removed container [cyan]{container}[/].")
 
-    # The volume holds the saved Claude config, so it is kept by default.
-    # --purge removes it outright; otherwise ask, unless --force.
-    remove_volume = volume_exists and (
-        purge or (not force and Confirm.ask(
-            f"Delete volume [cyan]{vol}[/]? "
-            "[yellow]This is the saved Claude config.[/]",
-            default=False,
-        ))
-    )
-    if remove_volume:
+    # The volume holds the saved Claude config, so it is kept unless --purge.
+    if volume_exists and purge:
         run("docker", "volume", "rm", vol, stdout=subprocess.DEVNULL)
-        console.print(f"  Removed volume [cyan]{vol}[/].")
+        console.print(f"Removed volume [cyan]{vol}[/].")
     elif volume_exists:
-        console.print(f"  [dim]Volume [cyan]{vol}[/] kept.[/]")
+        console.print(f"[dim]Volume [cyan]{vol}[/] kept.[/]")
 
 
 @app.command("list")
