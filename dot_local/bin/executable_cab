@@ -16,7 +16,10 @@ import subprocess
 
 import typer
 from rich.console import Console
+from rich.prompt import Confirm
 from rich.table import Table
+
+console = Console()
 
 IMAGE = "cab"
 PREFIX = "cab"
@@ -100,11 +103,32 @@ def is_running(name: str) -> bool:
     ).stdout.strip() == "true"
 
 
+def workspace_of(name: str) -> str:
+    """The host directory bind-mounted at /workspace, with $HOME shortened
+    to ~. Returns '—' when there is no such mount."""
+    src = subprocess.run(
+        ["docker", "inspect", "-f",
+         '{{range .Mounts}}{{if eq .Destination "/workspace"}}{{.Source}}{{end}}{{end}}',
+         name],
+        capture_output=True, text=True, check=True,
+    ).stdout.strip()
+    home = os.path.expanduser("~")
+    if src.startswith(home):
+        src = "~" + src[len(home):]
+    return src or "—"
+
+
 def ensure_running(label: str) -> str:
     """Create the container on first use, or start it if stopped. Returns
     the container name."""
     name = container_name(label)
     if not quiet_ok("docker", "container", "inspect", name):
+        # Create the volume explicitly so it carries DOCKER_LABEL; an
+        # implicit `-v` volume would be unlabelled and invisible to `list`.
+        run(
+            "docker", "volume", "create", "--label", f"{DOCKER_LABEL}=true",
+            volume_name(label), stdout=subprocess.DEVNULL,
+        )
         run(
             "docker", "run", "-d", "--name", name,
             "--label", f"{DOCKER_LABEL}=true",
@@ -165,52 +189,107 @@ def stop(
     name = container_name(resolve(label))
     if quiet_ok("docker", "container", "inspect", name):
         run("docker", "stop", name, stdout=subprocess.DEVNULL)
+        console.print(f"Stopped [cyan]{name}[/].")
     else:
-        typer.echo(f"No such container: {name}")
+        console.print(f"No such container: [cyan]{name}[/]", style="dim")
 
 
 @app.command()
 def kill(
     label: str = typer.Argument(None, help="Container label; defaults to one derived from the current directory."),
     force: bool = typer.Option(
-        False, "--force", "-f",
-        help="Skip the confirmation prompt when the container is running.",
+        False, "--force", "-f", help="Skip confirmation prompts.",
+    ),
+    purge: bool = typer.Option(
+        False, "--purge",
+        help="Also remove the named volume holding the container's Claude config.",
     ),
 ) -> None:
-    """Remove the container. Its named volume is left intact."""
-    name = container_name(resolve(label))
-    if not quiet_ok("docker", "container", "inspect", name):
-        typer.echo(f"No such container: {name}")
+    """Remove the container. Its named volume is left intact unless --purge."""
+    label = resolve(label)
+    name = container_name(label)
+    vol = volume_name(label)
+    container_exists = quiet_ok("docker", "container", "inspect", name)
+    volume_exists = quiet_ok("docker", "volume", "inspect", vol)
+    if not container_exists and not volume_exists:
+        console.print(f"Nothing to remove for label [cyan]{label}[/].", style="dim")
         return
-    if is_running(name) and not force:
-        typer.confirm(
-            f"{name} is running. Removing it ends any active session. Continue?",
-            abort=True,
-        )
-    run("docker", "rm", "-f", name, stdout=subprocess.DEVNULL)
+
+    running = container_exists and is_running(name)
+    if running and not force:
+        if not Confirm.ask(
+            f"Delete container [cyan]{name}[/]? "
+            "[yellow]This ends any active session.[/]",
+            default=True,
+        ):
+            raise typer.Abort()
+
+    if container_exists:
+        run("docker", "rm", "-f", name, stdout=subprocess.DEVNULL)
+        console.print(f"  Removed container [cyan]{name}[/].")
+
+    # The volume holds the saved Claude config, so it is kept by default.
+    # --purge removes it outright; otherwise ask, unless --force.
+    remove_volume = volume_exists and (
+        purge or (not force and Confirm.ask(
+            f"Delete volume [cyan]{vol}[/]? "
+            "[yellow]This is the saved Claude config.[/]",
+            default=False,
+        ))
+    )
+    if remove_volume:
+        run("docker", "volume", "rm", vol, stdout=subprocess.DEVNULL)
+        console.print(f"  Removed volume [cyan]{vol}[/].")
+    elif volume_exists:
+        console.print(f"  [dim]Volume [cyan]{vol}[/] kept.[/]")
 
 
 @app.command("list")
 def list_() -> None:
-    """List all cab containers and their status."""
-    out = subprocess.run(
+    """List all cab containers and volumes, including orphans."""
+    containers = subprocess.run(
         ["docker", "ps", "-a", "--filter", f"label={DOCKER_LABEL}",
-         "--format", "{{.Names}}\t{{.State}}\t{{.Status}}"],
+         "--format", "{{.Names}}\t{{.State}}"],
         capture_output=True, text=True, check=True,
-    ).stdout
-    console = Console()
-    rows = out.splitlines()
+    ).stdout.splitlines()
+    volumes = subprocess.run(
+        ["docker", "volume", "ls", "--filter", f"label={DOCKER_LABEL}",
+         "--format", "{{.Name}}"],
+        capture_output=True, text=True, check=True,
+    ).stdout.splitlines()
+
+    # Join containers and volumes by label so an orphaned volume (one with
+    # no container) shows up as its own row.
+    rows: dict[str, dict] = {}
+    for line in containers:
+        name, _, state = line.partition("\t")
+        label = name.removeprefix(f"{PREFIX}-")
+        rows.setdefault(label, {}).update(container=name, state=state)
+    for vname in volumes:
+        label = vname.removeprefix(f"{PREFIX}-").removesuffix("-claude")
+        rows.setdefault(label, {})["volume"] = True
+
     if not rows:
-        console.print("No cab containers.", style="dim")
+        console.print("No cab containers or volumes.", style="dim")
         return
+
     table = Table()
     table.add_column("Label")
     table.add_column("State")
-    table.add_column("Status")
-    for line in rows:
-        name, state, status = line.split("\t")
-        style = "green" if state == "running" else "dim"
-        table.add_row(name.removeprefix(f"{PREFIX}-"), f"[{style}]{state}[/]", status)
+    table.add_column("Volume")
+    table.add_column("Workspace")
+    for label in sorted(rows):
+        row = rows[label]
+        state = row.get("state", "—")
+        workspace = workspace_of(row["container"]) if "container" in row else "—"
+        orphan = "container" not in row
+        table.add_row(
+            label,
+            f"[green]{state}[/]" if state == "running" else state,
+            "yes" if row.get("volume") else "—",
+            workspace,
+            style="yellow" if orphan else None,
+        )
     console.print(table)
 
 
