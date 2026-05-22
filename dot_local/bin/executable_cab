@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.11"
-# dependencies = []
+# dependencies = ["typer"]
 # ///
 """cab: claude agent box, a per-project Claude Code container.
 
@@ -12,7 +12,8 @@ directory (named after the basename of the CWD).
 import hashlib
 import os
 import subprocess
-import sys
+
+import typer
 
 IMAGE = "cab"
 
@@ -43,21 +44,21 @@ def quiet_ok(*args: str) -> bool:
     ).returncode == 0
 
 
-def main() -> None:
-    args = sys.argv[1:]
-
-    # --build forces an image rebuild before launching.
-    force_build = False
-    if args and args[0] == "--build":
-        force_build = True
-        args = args[1:]
-
+def main(
+    label: str = typer.Argument(
+        None, help="Container label; defaults to the CWD basename."
+    ),
+    force_build: bool = typer.Option(
+        False, "--build", help="Force an image rebuild before launching."
+    ),
+) -> None:
+    """cab: claude agent box, a per-project Claude Code container."""
     cwd = os.getcwd()
 
-    # Container name: "cab-<label>-<hash>", where <label> is the first arg
+    # Container name: "cab-<label>-<hash>", where <label> is the given label
     # or the CWD basename, and <hash> keeps it unique per directory so two
     # projects sharing a basename don't collide.
-    label = args[0] if args else os.path.basename(cwd)
+    label = label or os.path.basename(cwd)
     digest = hashlib.sha1(cwd.encode()).hexdigest()[:8]
     name = f"{IMAGE}-{label}-{digest}"
 
@@ -89,4 +90,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    typer.run(main)
