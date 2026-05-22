@@ -81,6 +81,13 @@ def ensure_image(force_build: bool) -> None:
         run("docker", "build", "-t", IMAGE, "-", input=DOCKERFILE, text=True)
 
 
+def is_running(name: str) -> bool:
+    return subprocess.run(
+        ["docker", "inspect", "-f", "{{.State.Running}}", name],
+        capture_output=True, text=True, check=True,
+    ).stdout.strip() == "true"
+
+
 def ensure_running(label: str) -> str:
     """Create the container on first use, or start it if stopped. Returns
     the container name."""
@@ -95,13 +102,8 @@ def ensure_running(label: str) -> str:
             IMAGE,
             stdout=subprocess.DEVNULL,
         )
-    else:
-        running = subprocess.run(
-            ["docker", "inspect", "-f", "{{.State.Running}}", name],
-            capture_output=True, text=True, check=True,
-        ).stdout.strip()
-        if running != "true":
-            run("docker", "start", name, stdout=subprocess.DEVNULL)
+    elif not is_running(name):
+        run("docker", "start", name, stdout=subprocess.DEVNULL)
     return name
 
 
@@ -156,14 +158,23 @@ def stop(
 
 @app.command()
 def kill(
-    label: str = typer.Argument(None, help="Container label; defaults to one derived from the current directory.")
+    label: str = typer.Argument(None, help="Container label; defaults to one derived from the current directory."),
+    force: bool = typer.Option(
+        False, "--force", "-f",
+        help="Skip the confirmation prompt when the container is running.",
+    ),
 ) -> None:
     """Remove the container. Its named volume is left intact."""
     name = container_name(resolve(label))
-    if quiet_ok("docker", "container", "inspect", name):
-        run("docker", "rm", "-f", name, stdout=subprocess.DEVNULL)
-    else:
+    if not quiet_ok("docker", "container", "inspect", name):
         typer.echo(f"No such container: {name}")
+        return
+    if is_running(name) and not force:
+        typer.confirm(
+            f"{name} is running. Removing it ends any active session. Continue?",
+            abort=True,
+        )
+    run("docker", "rm", "-f", name, stdout=subprocess.DEVNULL)
 
 
 @app.command("list")
