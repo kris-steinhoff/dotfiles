@@ -1,0 +1,92 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = []
+# ///
+"""cab: claude agent box, a per-project Claude Code container.
+
+Builds the image on first use, then keeps one container per project
+directory (named after the basename of the CWD).
+"""
+
+import hashlib
+import os
+import subprocess
+import sys
+
+IMAGE = "cab"
+
+DOCKERFILE = """\
+FROM node:22
+
+RUN npm install -g @anthropic-ai/claude-code
+
+# Pre-create the config dir owned by node so a fresh named volume
+# mounted here inherits node ownership instead of defaulting to root.
+RUN mkdir -p /home/node/.claude && chown node:node /home/node/.claude
+
+USER node
+WORKDIR /workspace
+
+# Keep the container alive as a persistent box; cab launches claude via exec.
+CMD ["sleep", "infinity"]
+"""
+
+
+def run(*args: str, **kwargs) -> subprocess.CompletedProcess:
+    return subprocess.run(args, check=True, **kwargs)
+
+
+def quiet_ok(*args: str) -> bool:
+    return subprocess.run(
+        args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+    ).returncode == 0
+
+
+def main() -> None:
+    args = sys.argv[1:]
+
+    # --build forces an image rebuild before launching.
+    force_build = False
+    if args and args[0] == "--build":
+        force_build = True
+        args = args[1:]
+
+    cwd = os.getcwd()
+
+    # Container name: "cab-<label>-<hash>", where <label> is the first arg
+    # or the CWD basename, and <hash> keeps it unique per directory so two
+    # projects sharing a basename don't collide.
+    label = args[0] if args else os.path.basename(cwd)
+    digest = hashlib.sha1(cwd.encode()).hexdigest()[:8]
+    name = f"{IMAGE}-{label}-{digest}"
+
+    # Build the image if forced, or if the daemon does not already have it.
+    if force_build or not quiet_ok("docker", "image", "inspect", IMAGE):
+        run("docker", "build", "-t", IMAGE, "-", input=DOCKERFILE, text=True)
+
+    # Ensure the project container is running, creating it on first use.
+    if not quiet_ok("docker", "container", "inspect", name):
+        run(
+            "docker", "run", "-d", "--name", name,
+            "-v", f"{name}-dot_claude:/home/node/.claude",
+            "-v", f"{os.path.expanduser('~')}/.ssh/id_ed25519_claude:/home/node/.ssh/id_ed25519:ro",
+            "-v", f"{cwd}:/workspace",
+            IMAGE,
+            stdout=subprocess.DEVNULL,
+        )
+    else:
+        running = subprocess.run(
+            ["docker", "inspect", "-f", "{{.State.Running}}", name],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        if running != "true":
+            run("docker", "start", name, stdout=subprocess.DEVNULL)
+
+    # Drop into the Claude Code agents UI inside the container. execvp
+    # replaces this process with docker so no wrapper lingers as its parent.
+    os.execvp("docker", ["docker", "exec", "-it", name, "claude", "agents"])
+
+
+if __name__ == "__main__":
+    main()
