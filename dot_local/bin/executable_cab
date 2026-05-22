@@ -54,9 +54,7 @@ class DefaultCommandGroup(TyperGroup):
             return super().resolve_command(ctx, ["agents", *args])
 
 
-app = typer.Typer(
-    cls=DefaultCommandGroup, add_completion=False, no_args_is_help=True
-)
+app = typer.Typer(cls=DefaultCommandGroup, add_completion=False)
 
 
 def run(*args: str, **kwargs) -> subprocess.CompletedProcess:
@@ -163,7 +161,7 @@ def enter(name: str, target: list[str], mount_flags: list[str]) -> None:
     os.execvp("docker", ["docker", "exec", "-it", container, *target])
 
 
-@app.callback()
+@app.callback(invoke_without_command=True)
 def cli(
     ctx: typer.Context,
     mount: list[str] = typer.Option(
@@ -172,7 +170,17 @@ def cli(
              "delimited $CAB_BIND_MOUNTS.",
     ),
 ) -> None:
-    """cab: claude agent box, a named Claude Code container."""
+    """cab: claude agent box, a named Claude Code container.
+
+    Run `cab NAME` to launch the Claude agents UI in a container named
+    NAME, building the image and creating the container on first use.
+    `cab NAME` is shorthand for `cab agents NAME`; the other subcommands
+    manage existing containers.
+    """
+    if ctx.invoked_subcommand is None:
+        console.print("Specify a proejct name, for example [bold]cab myproject[/].")
+        console.print("[dim]Run [bold]cab --help[/] for all commands.[/]")
+        raise typer.Exit(1)
     require_docker()
     ctx.obj = mount or []
 
