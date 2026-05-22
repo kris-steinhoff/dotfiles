@@ -32,6 +32,10 @@ DOCKER_LABEL = "claude_agents_box"
 STATE_DIR = Path.home() / ".local/state/cab/home_dir"
 SKEL_DIR = Path.home() / ".config/cab/skel"
 
+# Socket for the in-container ssh-agent. Kept off the /home/node bind
+# mount: unix sockets on the virtiofs mount are unreliable.
+SSH_AGENT_SOCK = "/tmp/cab-ssh-agent.sock"
+
 DOCKERFILE = """\
 FROM node:22
 
@@ -140,16 +144,55 @@ def ensure_running(name: str) -> str:
     return container
 
 
-def enter(name: str, target: list[str]) -> None:
+def seed_ssh_agent(container: str, key_path: str) -> None:
+    """Load the host private key into an ssh-agent running inside the
+    container. The key is piped over docker exec stdin, so it lives only
+    in the agent's memory and never touches the container filesystem.
+    Idempotent: the agent is started only if not already reachable, and
+    re-seeding survives a container restart that killed the old agent."""
+    script = f"""
+        sock={SSH_AGENT_SOCK}
+        SSH_AUTH_SOCK=$sock ssh-add -l >/dev/null 2>&1
+        if [ $? -eq 2 ]; then
+            rm -f "$sock"
+            eval "$(ssh-agent -a "$sock")" >/dev/null
+        fi
+        SSH_AUTH_SOCK=$sock ssh-add - >/dev/null 2>&1
+    """
+    with open(key_path, "rb") as key:
+        result = subprocess.run(
+            ["docker", "exec", "-i", container, "sh", "-c", script], stdin=key
+        )
+    if result.returncode != 0:
+        console.print(
+            f"Could not load SSH key [cyan]{key_path}[/] into the agent. "
+            "Passphrase-protected keys are not supported.",
+            style="yellow",
+        )
+
+
+def enter(name: str, target: list[str], ssh_key: str | None) -> None:
     """Ensure the image and container exist, then exec into the container.
     execvp replaces this process with docker so no wrapper lingers."""
     ensure_image(force_build=False)
     container = ensure_running(name)
-    os.execvp("docker", ["docker", "exec", "-it", container, *target])
+    env: list[str] = []
+    if ssh_key:
+        seed_ssh_agent(container, ssh_key)
+        env = ["-e", f"SSH_AUTH_SOCK={SSH_AGENT_SOCK}"]
+    os.execvp("docker", ["docker", "exec", "-it", *env, container, *target])
 
 
 @app.callback(invoke_without_command=True)
-def cli(ctx: typer.Context) -> None:
+def cli(
+    ctx: typer.Context,
+    ssh_key: str = typer.Option(
+        None, "--ssh-key", envvar="CAB_SSH_KEY", metavar="PATH",
+        help="Private key to load into an in-container ssh-agent for git "
+             "over SSH. The key is never written to the container's "
+             "filesystem.",
+    ),
+) -> None:
     """cab: claude agent box, a named Claude Code container.
 
     Run `cab NAME` to launch the Claude agents UI in a container named
@@ -163,28 +206,40 @@ def cli(ctx: typer.Context) -> None:
     seeded from ~/.config/cab/skel/ (mirroring /home/node), the place to
     put common non-secret files such as .gitconfig and .ssh/known_hosts.
     `cab kill --purge` removes a container's home directory.
+
+    With --ssh-key (or $CAB_SSH_KEY), the key is loaded into an
+    ssh-agent inside the container for git over SSH, without ever being
+    written to the container's filesystem.
     """
     if ctx.invoked_subcommand is None:
         console.print("Specify a proejct name, for example [bold]cab myproject[/].")
         console.print("[dim]Run [bold]cab --help[/] for all commands.[/]")
         raise typer.Exit(1)
     require_docker()
+    if ssh_key is not None:
+        ssh_key = os.path.expanduser(ssh_key)
+        if not os.path.isfile(ssh_key):
+            console.print(f"SSH key not found: [cyan]{ssh_key}[/]", style="red")
+            raise typer.Exit(1)
+    ctx.obj = ssh_key
 
 
 @app.command()
 def agents(
+    ctx: typer.Context,
     name: str = typer.Argument(..., help="Container name."),
 ) -> None:
     """Launch the Claude agents UI in the container (the default action)."""
-    enter(name, ["claude", "agents"])
+    enter(name, ["claude", "agents"], ctx.obj)
 
 
 @app.command()
 def shell(
+    ctx: typer.Context,
     name: str = typer.Argument(..., help="Container name."),
 ) -> None:
     """Exec a shell in the container."""
-    enter(name, ["bash"])
+    enter(name, ["bash"], ctx.obj)
 
 
 @app.command()
