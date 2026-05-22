@@ -10,7 +10,6 @@ Builds the image on first use, then keeps one container per name.
 
 import os
 import subprocess
-from pathlib import Path
 
 import click
 import typer
@@ -35,10 +34,6 @@ RUN npm install -g @anthropic-ai/claude-code
 # Pre-create the config dir owned by node so a fresh named volume
 # mounted here inherits node ownership instead of defaulting to root.
 RUN mkdir -p /home/node/.claude && chown node:node /home/node/.claude
-
-# Pre-create .ssh owned by node and point ssh at the key cab mounts.
-# ~/.ssh/identity is not a default identity file, so it needs IdentityFile.
-RUN mkdir -p /home/node/.ssh && printf 'IdentityFile ~/.ssh/identity\\n' > /home/node/.ssh/config && chown -R node:node /home/node/.ssh && chmod 700 /home/node/.ssh
 
 USER node
 WORKDIR /workspace
@@ -106,24 +101,41 @@ def is_running(container: str) -> bool:
     ).stdout.strip() == "true"
 
 
-def resolve_ssh_key(ssh_key: Path | None) -> Path | None:
-    """Expand the SSH key path and exit cleanly if the named file is
-    missing. Returns None when no key was given, meaning none is mounted."""
-    if ssh_key is None:
-        return None
-    path = ssh_key.expanduser()
-    if not path.is_file():
-        console.print(f"SSH key not found: [cyan]{path}[/]", style="red")
+def check_mount(spec: str) -> None:
+    """Validate a `src:dst[:opts]` bind mount. The host path is used
+    verbatim, as docker does (no ~ expansion). A path-like source is
+    checked to exist so a typo does not silently become an empty
+    directory; a source with no slash is treated as a named volume."""
+    src, sep, _ = spec.partition(":")
+    if not sep:
+        console.print(
+            f"Invalid bind mount, expected src:dst: [cyan]{spec}[/]", style="red"
+        )
         raise typer.Exit(1)
-    return path
+    if "/" in src and not os.path.exists(src):
+        console.print(
+            f"Bind mount source not found: [cyan]{src}[/]", style="red"
+        )
+        raise typer.Exit(1)
 
 
-def ensure_running(name: str, ssh_key: Path | None) -> str:
+def collect_mounts(mount_flags: list[str]) -> list[str]:
+    """Bind mounts from $CAB_BIND_MOUNTS (newline-delimited) followed by
+    --mount flags, each validated and passed to docker verbatim."""
+    env = os.environ.get("CAB_BIND_MOUNTS", "")
+    specs = [line.strip() for line in env.splitlines() if line.strip()]
+    specs += mount_flags
+    for spec in specs:
+        check_mount(spec)
+    return specs
+
+
+def ensure_running(name: str, mount_flags: list[str]) -> str:
     """Create the container on first use, or start it if stopped. Returns
     the docker container name."""
     container = container_name(name)
     if not quiet_ok("docker", "container", "inspect", container):
-        key = resolve_ssh_key(ssh_key)
+        mounts = collect_mounts(mount_flags)
         # Create the volume explicitly so it carries DOCKER_LABEL; an
         # implicit `-v` volume would be unlabelled and invisible to `list`.
         run(
@@ -135,34 +147,34 @@ def ensure_running(name: str, ssh_key: Path | None) -> str:
             "--label", f"{DOCKER_LABEL}=true",
             "-v", f"{volume_name(name)}:/home/node/.claude",
         ]
-        if key:
-            opts += ["-v", f"{key}:/home/node/.ssh/identity:ro"]
+        for mount in mounts:
+            opts += ["-v", mount]
         run(*opts, IMAGE, stdout=subprocess.DEVNULL)
     elif not is_running(container):
         run("docker", "start", container, stdout=subprocess.DEVNULL)
     return container
 
 
-def enter(name: str, target: list[str], ssh_key: Path | None) -> None:
+def enter(name: str, target: list[str], mount_flags: list[str]) -> None:
     """Ensure the image and container exist, then exec into the container.
     execvp replaces this process with docker so no wrapper lingers."""
     ensure_image(force_build=False)
-    container = ensure_running(name, ssh_key)
+    container = ensure_running(name, mount_flags)
     os.execvp("docker", ["docker", "exec", "-it", container, *target])
 
 
 @app.callback()
 def cli(
     ctx: typer.Context,
-    ssh_key: Path = typer.Option(
-        None, "--ssh-key", envvar="CAB_SSH_KEY", metavar="FILE",
-        help="Private SSH key file to mount into the container. Defaults to "
-             "$CAB_SSH_KEY; if unset, no key is mounted.",
+    mount: list[str] = typer.Option(
+        None, "--mount", "-m", metavar="SRC:DST[:OPTS]",
+        help="Bind mount to add, repeatable. Combined with the newline-"
+             "delimited $CAB_BIND_MOUNTS.",
     ),
 ) -> None:
     """cab: claude agent box, a named Claude Code container."""
     require_docker()
-    ctx.obj = ssh_key
+    ctx.obj = mount or []
 
 
 @app.command()
