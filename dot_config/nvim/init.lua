@@ -96,6 +96,8 @@ vim.keymap.set("n", "<leader>fk", function() Snacks.picker.keymaps() end, { desc
 vim.keymap.set("n", "<leader>fR", function() Snacks.picker.resume() end, { desc = "Resume picker" })
 
 vim.keymap.set({ "n", "i", "v", "c" }, "<D-s>", "<Cmd>w<CR>", { desc = "Save file" })
+vim.keymap.set("v", "<D-c>", "y", { desc = "Copy to system clipboard" })
+vim.keymap.set("i", "<D-c>", "<Nop>", { desc = "Swallow Cmd-C in insert" })
 
 vim.keymap.set("n", "<C-h>", "<C-w>h")
 vim.keymap.set("n", "<C-j>", "<C-w>j")
