@@ -161,6 +161,18 @@ require("lazy").setup({
     event = { "BufReadPre", "BufNewFile" },
     opts = {},
   },
+  {
+    "sindrets/diffview.nvim",
+    cmd = { "DiffviewOpen", "DiffviewClose", "DiffviewToggleFiles", "DiffviewFileHistory" },
+    keys = {
+      { "<leader>g", nil, desc = "Git" },
+      { "<leader>gd", "<cmd>DiffviewOpen<cr>", desc = "Diff unstaged changes" },
+      { "<leader>gD", "<cmd>DiffviewClose<cr>", desc = "Close diff view" },
+      { "<leader>gh", "<cmd>DiffviewFileHistory<cr>", desc = "Repo file history" },
+      { "<leader>gf", "<cmd>DiffviewFileHistory %<cr>", desc = "Current file history" },
+    },
+    opts = {},
+  },
   { "mason-org/mason.nvim", opts = {} },
   {
     "mason-org/mason-lspconfig.nvim",
