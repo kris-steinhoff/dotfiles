@@ -1,4 +1,10 @@
+---
+name: writing-style
+description: Adhere to the user's personal writing style guidelines, including avoiding em dashes and semicolons in prose.
+---
+
 # Writing style
+
 
 ## No em dashes or semicolons unless absolutely necessary
 

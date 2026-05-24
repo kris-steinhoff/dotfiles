@@ -1,4 +1,10 @@
+---
+name: change-summaries
+description: Display a codeblock with a summary of changes in the style of a well-formed commit message after completing a task.
+---
+
 # Change summaries
+
 
 After completing each task or step, display a codeblock with a summary of the change in the style of a well-formed commit message.
 

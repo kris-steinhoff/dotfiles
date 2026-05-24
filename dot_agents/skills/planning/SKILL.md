@@ -1,4 +1,10 @@
+---
+name: planning
+description: Structure implementation plans into discrete, logical steps that tell a story, including a mandatory pause and confirm protocol.
+---
+
 # Planning
+
 
 When in Plan Mode, structure plans into discrete steps. The contents of each step and their order should "tell a story" to make it easier for a human reviewer to follow and understand the larger change that the plan implements. Rather than having a separate step to update tests and documentation, each step (if appropriate) should create or update related tests, and update related documentation and versioned agent context (e.g. `.claude/rules/`).
 

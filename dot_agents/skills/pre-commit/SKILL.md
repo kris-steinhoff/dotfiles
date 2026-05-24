@@ -1,4 +1,10 @@
+---
+name: pre-commit
+description: Rely on pre-commit hooks for file formatting and linting instead of invoking tools manually.
+---
+
 # Pre-commit handles formatting
+
 
 When a repo has `.pre-commit-config.yaml`, the formatters and linters
 configured there run automatically on `git commit`. Don't shadow them by

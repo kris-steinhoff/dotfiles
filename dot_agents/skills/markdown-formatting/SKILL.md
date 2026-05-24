@@ -1,4 +1,10 @@
+---
+name: markdown-formatting
+description: Format markdown files without hard-wrapping paragraphs, maintaining one line per paragraph or list item with exceptions for tables.
+---
+
 # Markdown Formatting
+
 
 ## Don't hard-wrap
 
