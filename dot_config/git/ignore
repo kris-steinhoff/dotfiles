@@ -8,3 +8,5 @@ Session.vim
 /venv
 
 **/.claude/settings.local.json
+
+.antigravitycli
