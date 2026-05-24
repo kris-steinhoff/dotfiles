@@ -1,10 +1,11 @@
 ---
 name: markdown-formatting
-description: Format markdown files without hard-wrapping paragraphs, maintaining one line per paragraph or list item with exceptions for tables.
+description: Use when writing, editing, creating, or formatting markdown (.md) follow these formatting rules.
 ---
 
 # Markdown Formatting
 
+When editing existing Markdown content, **always prioritize matching and preserving the existing formatting style** (such as indentation, bullet style, heading syntax, and line wrapping) over applying these rules strictly, unless explicitly requested to reformat or when creating new files.
 
 ## Don't hard-wrap
 
