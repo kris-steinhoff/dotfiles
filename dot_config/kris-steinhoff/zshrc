@@ -174,3 +174,10 @@ alias grbc='git rebase --continue'
 alias grba='git rebase --abort'
 alias gsta='git stash'
 alias gstp='git stash pop'
+
+# Git - worktree
+alias gw='git worktree'
+alias gwa='git worktree add'
+alias gwl='git worktree list'
+alias gwp='git worktree prune'
+alias gwr='git worktree remove'
