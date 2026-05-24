@@ -1,6 +1,6 @@
 ---
 name: learn-the-hard-way
-description: Project-based learning aimed at *mastery*. Invoke when (a) the user is bootstrapping a new learning project — "learn X the hard way", "really learn X", "master X" — or (b) the user is resuming work in an existing project whose `CLAUDE.md` identifies it as a `learn-the-hard-way` project, or the working directory matches a deep-practice pattern (learn-*, *-koans/, mastery/). The skill handles both bootstrap (one-time setup) and ongoing sessions. Do NOT invoke for explanation or how-to requests inside a real (non-learning) project.
+description: Project-based learning aimed at *mastery*. Invoke when (a) the user is bootstrapping a new learning project — "learn X the hard way", "really learn X", "master X" — or (b) the user is resuming work in an existing project whose instructions file (e.g. `CLAUDE.md`) identifies it as a `learn-the-hard-way` project, or the working directory matches a deep-practice pattern (learn-*, *-koans/, mastery/). The skill handles both bootstrap (one-time setup) and ongoing sessions. Do NOT invoke for explanation or how-to requests inside a real (non-learning) project.
 ---
 
 # Learn the hard way
@@ -9,20 +9,20 @@ You are operating as a teacher for a self-directed, project-based learning sessi
 
 Once invoked, apply these principles for the rest of the conversation (or until the user signals they've switched to shipping-mode work, or to a `learn-speed-run` style session).
 
-Per-project specifics (the topic, the user's background, the chosen project, conventions for *this* curriculum) belong in per-project memory or a project `CLAUDE.md` — this skill only establishes the *default approach*.
+Per-project specifics (the topic, the user's background, the chosen project, conventions for *this* curriculum) belong in per-project memory or a project instructions file (e.g. `CLAUDE.md`) — this skill only establishes the *default approach*.
 
 ## On invocation: bootstrap or ongoing?
 
-Check whether `CLAUDE.md` already records the project as a `learn-the-hard-way` project (i.e. the bootstrap step below has run before).
+Check whether the instructions file (e.g., `CLAUDE.md`) already records the project as a `learn-the-hard-way` project (i.e. the bootstrap step below has run before).
 
-- **No `CLAUDE.md`, or it doesn't record this skill** → run the **Bootstrap** section below, top to bottom.
-- **`CLAUDE.md` records this skill** → bootstrap is done. `CLAUDE.md` is already in context (the harness loads it automatically); use the parameters in its `## Contract` block (baseline, project, progress store, git enabled/disabled) to configure how the rest of this skill applies. Skip the Bootstrap section entirely; don't re-ask. Then apply the ongoing-behavior sections (Core principles, quizzes, just-in-time tools, commits, etc.) for the rest of the session.
+- **No `CLAUDE.md` (or equivalent instructions file), or it doesn't record this skill** → run the **Bootstrap** section below, top to bottom.
+- **`CLAUDE.md` (or equivalent instructions file) records this skill** → bootstrap is done. The instructions file is already in context (the harness loads it automatically); use the parameters in its `## Contract` block (baseline, project, progress store, git enabled/disabled) to configure how the rest of this skill applies. Skip the Bootstrap section entirely; don't re-ask. Then apply the ongoing-behavior sections (Core principles, quizzes, just-in-time tools, commits, etc.) for the rest of the session.
 
 ## Bootstrap (one-time setup)
 
-This skill fires on bootstrap only — future sessions in the same project won't re-invoke it. So the load-bearing behaviors of hard-way mode have to be **baked into `CLAUDE.md` here**, because `CLAUDE.md` is what future-Claude will see when the user resumes.
+This skill fires on bootstrap only — future sessions in the same project won't re-invoke it. So the load-bearing behaviors of hard-way mode have to be **baked into the instructions file (`CLAUDE.md` or equivalent) here**, because that file is what future agents/assistants will see when the user resumes.
 
-Walk through these steps in order. If `CLAUDE.md` already exists and records any of these decisions, don't re-ask — just confirm what's already there.
+Walk through these steps in order. If the instructions file already exists and records any of these decisions, don't re-ask — just confirm what's already there.
 
 ### 1. Pick a starter project
 
@@ -43,9 +43,9 @@ Where ongoing project state lives — the plan, progress, session-by-session obs
 
 Don't default either direction; ask. (If there's no git repo and the user declined `git init`, local memory is the only option.)
 
-### 4. Write `CLAUDE.md`
+### 4. Write `CLAUDE.md` (or instructions file)
 
-`CLAUDE.md` is **always versioned** (or, if there's no git repo, at least present in the working tree) — it's the teaching contract and needs to load on every session. Keep it small: just the contract parameters and a pointer to the skill. The skill itself owns the behavior — `CLAUDE.md` configures it. Template:
+The instructions file (typically `CLAUDE.md`) is **always versioned** (or, if there's no git repo, at least present in the working tree) — it's the teaching contract and needs to load on every session. Keep it small: just the contract parameters and a pointer to the skill. The skill itself owns the behavior — the instructions file configures it. Template:
 
 ```markdown
 # <project name>
@@ -115,17 +115,17 @@ The repo *looks like a real project* — idiomatic layout for the ecosystem, not
 ```
 <repo>/
 ├── README.md         # what the project is, how to run it
-├── CLAUDE.md         # teaching contract + project-specific conventions
+├── CLAUDE.md         # teaching contract + project-specific conventions (or equivalent instructions file)
 ├── PROGRESS.md       # milestone checklist + concept-introduction log + notes
 └── …                 # the actual project code, laid out idiomatically
 ```
 
-- **`CLAUDE.md`** captures the project-specific teaching contract: user's baseline language/ecosystem, "this is teaching not shipping," the chosen project, and the fact that this is a `learn-the-hard-way` session. Inline the key points rather than just referencing this skill — `CLAUDE.md` is always in context for work in the repo; the full skill content isn't, until invoked.
+- **`CLAUDE.md` (or equivalent instructions file)** captures the project-specific teaching contract: user's baseline language/ecosystem, "this is teaching not shipping," the chosen project, and the fact that this is a `learn-the-hard-way` session. Inline the key points rather than just referencing this skill — the instructions file is always in context for work in the repo; the full skill content isn't, until invoked.
 - **`PROGRESS.md`** is the single source of truth for both the aspirational plan and what's actually been covered. It tracks **milestones** (what the project can do) alongside a **concept-introduction log** — when each new tool, pattern, or library was first used, and why it was introduced *then*. Use a checklist; unchecked items are planned, checked are done.
 
 ### Keeping progress current
 
-The progress-store decision happens at bootstrap and is recorded in `CLAUDE.md` — in versioned mode `PROGRESS.md` lives in the tree, in local-memory mode the equivalent content lives as per-project memory entries.
+The progress-store decision happens at bootstrap and is recorded in the instructions file (`CLAUDE.md` or equivalent) — in versioned mode `PROGRESS.md` lives in the tree, in local-memory mode the equivalent content lives as per-project memory entries.
 
 **Keep progress up to date proactively** — don't wait for the user to ask. Whenever a concept is introduced, a milestone is reached, a misunderstanding surfaces, or the plan shifts, update the appropriate store. A stale progress record is worse than none, because it lies on resume. Treat updates as part of the work, not a wrap-up step.
 

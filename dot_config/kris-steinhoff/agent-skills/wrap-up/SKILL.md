@@ -23,8 +23,8 @@ MEMORY has four types: `user`, `feedback`, `project`, `reference`. Each file has
 ### 2. Project rules (`.claude/rules/` in the project root)
 Shared instructions checked into the repo. Use for:
 - Conventions and patterns that should apply to **all future work** on the project, including by other contributors
-- Architectural decisions or constraints that Claude should follow when editing code
-- Anything that belongs in a CLAUDE.md-adjacent file rather than personal notes
+- Architectural decisions or constraints that the assistant or agent should follow when editing code
+- Anything that belongs in an instructions file (e.g., `CLAUDE.md`) rather than personal notes
 
 Only write to `.claude/rules/` when the convention is genuinely repo-wide (not just personal preference or session-specific status).
 
@@ -39,7 +39,7 @@ Only write to `.claude/rules/` when the convention is genuinely repo-wide (not j
 
 2. **Check existing memories first** — update rather than duplicate. Read `MEMORY.md` to see what already exists.
 
-3. **Apply the "would this help future-me?" test**: if the information is already recoverable by reading the code, running `git log`, or checking CLAUDE.md, skip it. Only persist what's genuinely hard to re-derive.
+3. **Apply the "would this help future-me?" test**: if the information is already recoverable by reading the code, running `git log`, or checking the project instructions file (e.g., `CLAUDE.md`), skip it. Only persist what's genuinely hard to re-derive.
 
 4. **Write memories** using the standard format:
    ```markdown
@@ -53,7 +53,7 @@ Only write to `.claude/rules/` when the convention is genuinely repo-wide (not j
 
 5. **Update MEMORY.md index** — one line per memory file, under ~150 chars: `- [Title](file.md) — one-line hook`
 
-6. **Write to `.claude/rules/`** only if a genuine repo-wide convention was established this session that isn't already captured in CLAUDE.md or existing rules files. Check those first.
+6. **Write to `.claude/rules/`** only if a genuine repo-wide convention was established this session that isn't already captured in the project instructions file (e.g., `CLAUDE.md`) or existing rules files. Check those first.
 
 7. **Report what you saved** — a brief summary so the user knows what was captured and can correct anything. Don't summarize things you *didn't* save.
 
@@ -62,5 +62,5 @@ Only write to `.claude/rules/` when the convention is genuinely repo-wide (not j
 - Code, file paths, or architecture already visible in the repo
 - Git history, recent commits, or who changed what
 - In-progress work or temporary state from this session
-- Anything already in CLAUDE.md or existing rules files
+- Anything already in the project instructions file (e.g., `CLAUDE.md`) or existing rules files
 - Verbose summaries of everything that happened — distill to what's *surprising* or *non-obvious*
