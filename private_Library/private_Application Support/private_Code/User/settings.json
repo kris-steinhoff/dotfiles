@@ -1,0 +1,202 @@
+{
+  "files.insertFinalNewline": true,
+  "editor.renderFinalNewline": "off",
+  "editor.wordWrap": "on",
+  "terminal.integrated.defaultProfile.osx": "zsh",
+  "terminal.integrated.env.osx": {
+    "OVERRIDE_EDITOR": "code --wait"
+  },
+  "terminal.integrated.defaultProfile.linux": "zsh",
+  "terminal.integrated.env.linux": {
+    "OVERRIDE_EDITOR": "code --wait"
+  },
+  "cSpell.userWords": ["closeio", "steinhoff", "syslog"],
+  "cSpell.enableFiletypes": ["git-commit"],
+  "files.trimTrailingWhitespace": true,
+  "editor.dragAndDrop": false,
+  "[python]": {
+    "editor.rulers": [79]
+  },
+  "[rust]": {
+    "editor.formatOnSave": true
+  },
+  "editor.roundedSelection": false,
+  "editor.minimap.enabled": false,
+  "editor.suggest.insertMode": "replace",
+  "screencastMode.onlyKeyboardShortcuts": true,
+  "git.autofetch": true,
+  "editor.occurrencesHighlight": "off",
+  "window.restoreWindows": "none",
+  "editor.suggestSelection": "first",
+  "vsintellicode.modify.editor.suggestSelection": "automaticallyOverrodeDefaultValue",
+  "nasc-touchbar.addCursorBelow": false,
+  "terminal.integrated.showExitAlert": false,
+  "jupyter.askForKernelRestart": false,
+  "files.associations": {
+    "**/Dockerfile_*": "dockerfile",
+    "**/COMMIT_EDITMSG": "git-commit"
+  },
+  "workbench.editorAssociations": {
+    "*.ipynb": "jupyter-notebook"
+  },
+  "files.watcherExclude": {
+    "**/venv/**": true,
+    "**/.bloop": true,
+    "**/.metals": true,
+    "**/.ammonite": true
+  },
+  "workbench.startupEditor": "none",
+  "editor.parameterHints.enabled": false,
+  "gitlens.hovers.currentLine.over": "line",
+  "gitlens.currentLine.enabled": false,
+  "gitlens.statusBar.command": "gitlens.toggleFileBlame",
+  "rest-client.defaultHeaders": {
+    "User-Agent": null
+  },
+  "rest-client.followredirect": false,
+  "rest-client.enableTelemetry": false,
+  "rest-client.rememberCookiesForSubsequentRequests": false,
+  "rest-client.requestNameAsResponseTabTitle": true,
+  "telemetry.telemetryLevel": "off",
+  "redhat.telemetry.enabled": false,
+  "gitlens.hovers.enabled": false,
+  "java.home": "/Library/Java/JavaVirtualMachines/adoptopenjdk-16.jdk/Contents/Home",
+  "files.exclude": {
+    "**/.classpath": true,
+    "**/.project": true,
+    "**/.settings": true,
+    "**/.factorypath": true
+  },
+  "notebook.cellToolbarLocation": {
+    "default": "right",
+    "jupyter-notebook": "right"
+  },
+  "[yaml]": {
+    "editor.insertSpaces": true,
+    "editor.tabSize": 2,
+    "editor.autoIndent": "keep",
+    "gitlens.codeLens.scopes": ["document"],
+    "editor.quickSuggestions": {
+      "other": true,
+      "comments": false,
+      "strings": true
+    }
+  },
+  "python.analysis.memory.keepLibraryAst": true,
+  // "isort.args": [
+  //     "--profile",
+  //     "black",
+  //     // "--src=${workspaceFolder}",
+  // ],
+  "workbench.editor.languageDetection": false,
+  "gitlens.blame.format": "${author|10?} - ${message|50?} ${agoOrDate|14-}",
+  "gitlens.blame.avatars": false,
+  "editor.guides.highlightActiveIndentation": false,
+  "python.venvPath": "~/Library/Caches/pypoetry/virtualenvs",
+  "jupyter.interactiveWindow.creationMode": "perFile",
+  "python.venvFolders": [
+    "venv"
+  ],
+  "github.copilot.enable": {
+    "plaintext": true,
+    "markdown": true,
+    "scminput": false,
+    "yaml": true,
+    "*": false
+  },
+  "editor.inlineSuggest.enabled": true,
+  "lldb.suppressUpdateNotifications": true,
+  "settingsSync.ignoredExtensions": [
+    "github.copilot"
+],
+  "githubPullRequests.pullBranch": "never",
+  "diffEditor.ignoreTrimWhitespace": false,
+  "window.confirmBeforeClose": "keyboardOnly",
+  "playwright.reuseBrowser": true,
+  "playwright.showTrace": false,
+  "githubPullRequests.terminalLinksHandler": "github",
+  "jupyter.completionTriggerCharacters": {
+    "bash": ["$", "{"],
+    "java": [".", "@", "#"],
+    "javascript": [".", "\"", "'", "/", "@"],
+    "python": [".", "%", "'", "\""],
+    "julia": ["."],
+    "r": ["[", "(", ",", "$", "@", "\"", "'"],
+    "rust": [".", ":"],
+    "scala": ["."],
+    "typescript": [".", "\"", "'", "/", "@", "<"]
+  },
+  "diffEditor.hideUnchangedRegions.enabled": true,
+  "github.copilot.editor.enableAutoCompletions": true,
+  "git.openRepositoryInParentFolders": "always",
+  "ruff.fixAll": false,
+  "workbench.editor.wrapTabs": true,
+  "chat.agent.enabled": true,
+  "python.analysis.extraPaths": [],
+  "mypy.enabled": false,
+  "docker.extension.enableComposeLanguageServer": false,
+  "workbench.secondarySideBar.defaultVisibility": "hidden",
+  "chat.tools.terminal.autoApprove": {
+    "git add": true,
+    "/^uv run pytest -q$/": {
+      "approve": true,
+      "matchCommandLine": true
+    },
+    "/^uv run cytowar$/": {
+      "approve": true,
+      "matchCommandLine": true
+    },
+    "cargo test": true,
+    "/^cargo test --workspace > scratch/test_output\\.log 2>&1 \\|\\| true$/": {
+      "approve": true,
+      "matchCommandLine": true
+    }
+  },
+  "[dockercompose]": {
+    "editor.insertSpaces": true,
+    "editor.tabSize": 2,
+    "editor.autoIndent": "advanced",
+    "editor.quickSuggestions": {
+      "other": true,
+      "comments": false,
+      "strings": true
+    },
+    "editor.defaultFormatter": "redhat.vscode-yaml"
+  },
+  "[github-actions-workflow]": {
+    "editor.defaultFormatter": "redhat.vscode-yaml"
+  },
+  "excalidraw.theme": "auto",
+  "[markdown]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "github.copilot.nextEditSuggestions.enabled": false,
+  "editor.fontFamily": "FiraCode Nerd Font, Menlo, Monaco, 'Courier New', monospace",
+  "terminal.integrated.fontFamily": "FiraCode Nerd Font, Menlo, monospace",
+  "terminal.integrated.initialHint": false,
+  "svelte.enable-ts-plugin": true,
+  "chat.mcp.serverSampling": {
+    "Global in Code: github": {
+      "allowedModels": [
+        "copilot/auto",
+        "copilotcli/claude-sonnet-4.6"
+      ]
+    }
+  },
+  "chat.viewSessions.orientation": "stacked",
+  "json.schemaDownload.trustedDomains": {
+    "https://developer.microsoft.com/json-schemas/": true,
+    "https://json-schema.org/": true,
+    "https://json.schemastore.org/": true,
+    "https://models.dev/model-schema.json": true,
+    "https://opencode.ai": true,
+    "https://raw.githubusercontent.com/devcontainers/spec/": true,
+    "https://raw.githubusercontent.com/microsoft/vscode/": true,
+    "https://schemastore.azurewebsites.net/": true,
+    "https://www.schemastore.org/": true
+  },
+  "claudeCode.preferredLocation": "panel",
+  "aws.telemetry": false,
+  "aws.cloudformation.telemetry.enabled": false,
+  "python.terminal.activateEnvironment": false
+}
