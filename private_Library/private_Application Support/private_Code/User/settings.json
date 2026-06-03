@@ -24,7 +24,6 @@
   "editor.minimap.enabled": false,
   "editor.suggest.insertMode": "replace",
   "screencastMode.onlyKeyboardShortcuts": true,
-  "git.autofetch": true,
   "editor.occurrencesHighlight": "off",
   "window.restoreWindows": "none",
   "editor.suggestSelection": "first",
@@ -198,5 +197,7 @@
   "claudeCode.preferredLocation": "panel",
   "aws.telemetry": false,
   "aws.cloudformation.telemetry.enabled": false,
-  "python.terminal.activateEnvironment": false
+  "python.terminal.activateEnvironment": false,
+  "chat.disableAIFeatures": true,
+  "extensions.ignoreRecommendations": true
 }
