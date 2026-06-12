@@ -181,3 +181,30 @@ alias gwa='git worktree add'
 alias gwl='git worktree list'
 alias gwp='git worktree prune'
 alias gwr='git worktree remove'
+
+# tmux
+alias t='tmux'
+alias tl='tmux list-sessions'
+alias tk='tmux kill-session -t'     # kill a named session: tk <name>
+alias tks='tmux kill-server'        # kill the server and ALL sessions
+
+# New session named $1, or after the current directory if no name is given.
+# tmux rejects '.' and ':' in session names, so substitute them with '_'.
+tn() {
+	local name="${1:-${PWD:t}}"
+	tmux new-session -s "${name//[.:]/_}"
+}
+
+# Attach to session $1, or to one named after the current directory.
+ta() {
+	local name="${1:-${PWD:t}}"
+	tmux attach -t "${name//[.:]/_}"
+}
+
+# Complete `ta` with the names of running tmux sessions.
+_ta() {
+	local -a sessions
+	sessions=(${(f)"$(tmux list-sessions -F '#S' 2>/dev/null)"})
+	compadd -- $sessions
+}
+compdef _ta ta
