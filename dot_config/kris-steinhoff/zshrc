@@ -176,11 +176,137 @@ alias gsta='git stash'
 alias gstp='git stash pop'
 
 # Git - worktree
+# gw is the escape hatch to the raw built-ins; the rest are opinionated helpers.
+# Worktrees live beside the main checkout as <parent>/<repo>_<slug>, where
+# <repo> is the project name from the git remote (not the checkout's folder name).
 alias gw='git worktree'
-alias gwa='git worktree add'
 alias gwl='git worktree list'
 alias gwp='git worktree prune'
-alias gwr='git worktree remove'
+
+# Absolute path of the repo's main worktree root, from any worktree/subdir.
+_gw_main_root() {
+	local common
+	common=$(git rev-parse --git-common-dir 2>/dev/null) || return 1
+	common=${common:A}
+	print -r -- "${common:h}"
+}
+
+# Project name from the git remote (origin, else the first remote), with any
+# trailing .git stripped. Empty if there's no remote, so callers can fall back.
+_gw_repo_name() {
+	local url
+	url=$(git remote get-url origin 2>/dev/null) \
+		|| url=$(git remote get-url "$(git remote 2>/dev/null | head -1)" 2>/dev/null) \
+		|| return 1
+	url=${url%.git}
+	url=${url%/}
+	print -r -- "${url:t}"
+}
+
+# True if <branch> exists as a tracking branch on any remote.
+_gw_remote_has() {
+	local branch=$1 r
+	for r in $(git remote 2>/dev/null); do
+		git show-ref --verify --quiet "refs/remotes/${r}/${branch}" && return 0
+	done
+	return 1
+}
+
+# Add (or attach) a worktree for <branch> at <parent>/<repo>_<slug> and cd in.
+# An existing local branch is attached; a remote-only branch is checked out as
+# a tracking branch (git DWIM); otherwise a new branch is created from
+# start-point (default HEAD). slug defaults to the sanitized branch.
+# Records the pre-switch dir so `gws -` returns to it.
+gwa() {
+	emulate -L zsh
+	local branch=$1
+	[[ -n $branch ]] || { print -u2 "usage: gwa <branch> [slug] [start-point]"; return 1 }
+	local slug=${2:-${branch//\//-}}
+	slug=${slug//\//-}
+	local root repo dir
+	root=$(_gw_main_root) || { print -u2 "gwa: not in a git repo"; return 1 }
+	if [[ $(git rev-parse --is-bare-repository 2>/dev/null) == true ]]; then
+		print -u2 "gwa: bare repo — use 'git worktree add <path> <branch>' directly"; return 1
+	fi
+	repo=$(_gw_repo_name); [[ -n $repo ]] || repo=${root:t}
+	dir="${root:h}/${repo}_${slug}"
+	if git show-ref --verify --quiet "refs/heads/${branch}"; then
+		git worktree add "$dir" "$branch" || return
+	elif [[ -z $3 ]] && _gw_remote_has "$branch"; then
+		git worktree add "$dir" "$branch" || return
+	else
+		git worktree add -b "$branch" "$dir" "${3:-HEAD}" || return
+	fi
+	local prev=$PWD
+	cd "$dir" && _GW_PREV=$prev
+}
+
+# Emit "<name>\t<path>" per worktree of the current repo, where <name> is the
+# branch (or the directory basename when the worktree is detached).
+_gw_list() {
+	git worktree list --porcelain 2>/dev/null | awk '
+		/^worktree / { wt=$0; sub(/^worktree /, "", wt); name=wt; sub(/.*\//, "", name) }
+		/^branch /   { name=$2; sub("refs/heads/", "", name) }
+		/^$/         { if (wt) print name "\t" wt; wt="" }
+		END          { if (wt) print name "\t" wt }
+	'
+}
+
+# Resolve a worktree name (branch) to its path, or fail if there's no match.
+_gw_path_for() {
+	_gw_list | awk -F'\t' -v t="$1" '$1 == t { print $2; exit }'
+}
+
+# Switch to (cd into) a worktree of this repo by branch name (tab-completes).
+# `gws -` returns to the worktree you last switched from (toggles).
+gws() {
+	emulate -L zsh
+	[[ -n $1 ]] || { print -u2 "usage: gws <branch>|-"; return 1 }
+	local dir
+	if [[ $1 == - ]]; then
+		dir=$_GW_PREV
+		[[ -n $dir ]] || { print -u2 "gws: no previous worktree"; return 1 }
+	else
+		dir=$(_gw_path_for "$1")
+		[[ -n $dir ]] || { print -u2 "gws: no worktree for '$1'"; return 1 }
+	fi
+	local prev=$PWD
+	cd "$dir" && _GW_PREV=$prev
+}
+
+# Remove a worktree (branch is kept) by branch name, then prune (tab-completes).
+gwr() {
+	emulate -L zsh
+	[[ -n $1 ]] || { print -u2 "usage: gwr <branch>"; return 1 }
+	local dir
+	dir=$(_gw_path_for "$1")
+	[[ -n $dir ]] || { print -u2 "gwr: no worktree for '$1'"; return 1 }
+	if [[ $PWD == $dir || $PWD == $dir/* ]]; then
+		cd "$(_gw_main_root)" || return
+	fi
+	git worktree remove "$dir" || return
+	git worktree prune
+	[[ $_GW_PREV == $dir || $_GW_PREV == $dir/* ]] && _GW_PREV=
+}
+
+# Complete gws/gwr with the branch names of this repo's worktrees.
+_gw_worktrees() {
+	local -a names
+	names=(${(f)"$(_gw_list | cut -f1)"})
+	compadd -- $names
+}
+compdef _gw_worktrees gws gwr
+
+# Complete gwa with local + remote-tracking branches, remote prefix stripped
+# (origin/foo -> foo), deduped. New branch names are just typed in.
+_gw_branches() {
+	local -a locals remotes
+	locals=(${(f)"$(git for-each-ref --format='%(refname:short)' refs/heads 2>/dev/null)"})
+	remotes=(${(f)"$(git for-each-ref --format='%(refname)' refs/remotes 2>/dev/null)"})
+	remotes=(${remotes:#*/HEAD})
+	compadd -- ${(u)locals} ${(u)remotes#refs/remotes/*/}
+}
+compdef _gw_branches gwa
 
 # tmux
 alias t='tmux'
