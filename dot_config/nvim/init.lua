@@ -232,6 +232,7 @@ require("lazy").setup({
   },
   {
     "coder/claudecode.nvim",
+    event = "VeryLazy",
     opts = {
       terminal_cmd = "claude --settings '{\"editorMode\":\"vim\"}'",
       diff_opts = {
