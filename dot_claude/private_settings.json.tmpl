@@ -1,5 +1,9 @@
 {{- $nexus := hasKey . "nexusPluginPath" -}}
 {
+  "statusLine": {
+    "type": "command",
+    "command": "~/.claude/statusline-enhanced.sh"
+  },
   "worktree": {
     "baseRef": "fresh"
   },
@@ -38,6 +42,7 @@
         "~/.aws/credentials",
         "~/.aws/sso",
         "~/.aws/cli",
+        "~/.aws/login",
         "~/.config/op",
         "~/Library/Application Support/glab-cli",
         "~/Library/Group Containers/2BUA8C4S2C.com.1password"
