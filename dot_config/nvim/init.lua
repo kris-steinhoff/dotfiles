@@ -95,6 +95,14 @@ vim.keymap.set("n", "<leader>fd", function() Snacks.picker.diagnostics() end, { 
 vim.keymap.set("n", "<leader>fk", function() Snacks.picker.keymaps() end, { desc = "Keymaps" })
 vim.keymap.set("n", "<leader>fR", function() Snacks.picker.resume() end, { desc = "Resume picker" })
 
+vim.keymap.set("n", "<leader>e", function() Snacks.explorer() end, { desc = "File explorer" })
+
+vim.keymap.set("n", "<S-h>", "<cmd>BufferLineCyclePrev<cr>", { desc = "Previous buffer" })
+vim.keymap.set("n", "<S-l>", "<cmd>BufferLineCycleNext<cr>", { desc = "Next buffer" })
+vim.keymap.set("n", "<leader>bd", function() Snacks.bufdelete() end, { desc = "Delete buffer" })
+vim.keymap.set("n", "<leader>bo", function() Snacks.bufdelete.other() end, { desc = "Delete other buffers" })
+vim.keymap.set("n", "<leader>bp", "<cmd>BufferLineTogglePin<cr>", { desc = "Pin buffer" })
+
 vim.keymap.set({ "n", "i", "v", "c" }, "<D-s>", "<Cmd>w<CR>", { desc = "Save file" })
 vim.keymap.set("v", "<D-c>", "y", { desc = "Copy to system clipboard" })
 vim.keymap.set("i", "<D-c>", "<Nop>", { desc = "Swallow Cmd-C in insert" })
@@ -150,10 +158,34 @@ require("lazy").setup({
     lazy = false,
     opts = {
       bigfile = { enabled = true },
+      explorer = { enabled = true },
       input = { enabled = true },
       notifier = { enabled = true },
       picker = { enabled = true },
       terminal = {},
+    },
+  },
+  {
+    "akinsho/bufferline.nvim",
+    event = "VeryLazy",
+    opts = {
+      options = {
+        mode = "buffers",
+        show_buffer_icons = false,
+        show_buffer_close_icons = false,
+        show_close_icon = false,
+        separator_style = "thin",
+        diagnostics = "nvim_lsp",
+        offsets = {
+          {
+            filetype = "snacks_layout_box",
+            text = "Explorer",
+            highlight = "Directory",
+            text_align = "left",
+            separator = true,
+          },
+        },
+      },
     },
   },
   {
