@@ -1,0 +1,48 @@
+{{- $nexus := hasKey . "nexusPluginPath" -}}
+{
+  "worktree": {
+    "baseRef": "fresh"
+  },
+  "enabledPlugins": {
+    "agent-skills@addy-agent-skills": true,
+    "aws-core@agent-toolkit-for-aws": true{{ if $nexus }},
+    "nexus-dev@nexus-dev": true{{ end }}
+  },
+  "extraKnownMarketplaces": {
+    "addy-agent-skills": {
+      "source": {
+        "source": "github",
+        "repo": "addyosmani/agent-skills"
+      }
+    },
+    "agent-toolkit-for-aws": {
+      "source": {
+        "source": "github",
+        "repo": "aws/agent-toolkit-for-aws"
+      }
+    }{{ if $nexus }},
+    "nexus-dev": {
+      "source": {
+        "source": "directory",
+        "path": {{ .nexusPluginPath | quote }}
+      }
+    }{{ end }}
+  },
+  "sandbox": {
+    "enabled": true,
+    "autoAllowBashIfSandboxed": true,
+    "allowUnsandboxedCommands": false,
+    "filesystem": {
+      "denyRead": [
+        "~/.ssh",
+        "~/.aws/credentials",
+        "~/.aws/sso",
+        "~/.aws/cli",
+        "~/.config/op",
+        "~/Library/Application Support/glab-cli",
+        "~/Library/Group Containers/2BUA8C4S2C.com.1password"
+      ]
+    }
+  },
+  "theme": "dark"
+}
