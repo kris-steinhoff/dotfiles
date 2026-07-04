@@ -1,8 +1,9 @@
 #!/bin/bash
 
 # Claude Code status line.
-# Receives session JSON on stdin and prints a single status line:
-#   context % | cost | lines changed | elapsed | dir (branch) [model] style
+# Receives session JSON on stdin and prints a single status line, `|`
+# separating four sections:
+#   context % cost lines changed elapsed | dir (branch) | model style | quotas
 
 input=$(cat)
 
@@ -67,8 +68,6 @@ human_remaining() {
     fi
 }
 
-# Everything on one line: context %, cost, lines changed, elapsed time,
-# then directory, git branch, model, output style.
 rl_color() {
     local v=$(printf '%.0f' "${1:-0}")
     if   (( v >= 90 )); then printf '%s' "$RED"
@@ -77,15 +76,6 @@ rl_color() {
     else                     printf '%s' "$DIM"
     fi
 }
-
-printf "${ctx_color}%.0f%%${RESET} ${DIM}|${RESET} \$%.2f ${DIM}|${RESET} ${GREEN}+%s${RESET}/${RED}-%s${RESET}" \
-    "${pct:-0}" "${cost:-0}" "$added" "$removed"
-
-# Omit elapsed time until it rounds to at least a full second
-# (sub-second durations before the first API response read as a glitch).
-if [ -n "$duration_ms" ] && [ "${duration_ms:-0}" -ge 1000 ]; then
-    printf " ${DIM}|${RESET} ${DIM}%s${RESET}" "$(human_duration "$duration_ms")"
-fi
 
 # Print one rate-limit window: colored percent, then a dim "(time left)"
 # once we know when it resets.
@@ -96,12 +86,28 @@ print_rl() {
     [ -n "$secs" ] && printf " ${DIM}(%s)${RESET}" "$(human_remaining "$secs")"
 }
 
+# Section 1: session stats (context %, cost, lines changed, elapsed time).
+printf "${ctx_color}%.0f%%${RESET} \$%.2f ${GREEN}+%s${RESET}/${RED}-%s${RESET}" \
+    "${pct:-0}" "${cost:-0}" "$added" "$removed"
+
+# Omit elapsed time until it rounds to at least a full second
+# (sub-second durations before the first API response read as a glitch).
+if [ -n "$duration_ms" ] && [ "${duration_ms:-0}" -ge 1000 ]; then
+    printf " ${DIM}%s${RESET}" "$(human_duration "$duration_ms")"
+fi
+
+# Section 2: directory and git branch.
+printf " ${DIM}|${RESET} ${DIM}%s${RESET}" "$dir"
+[ -n "$branch" ] && printf " ${MAGENTA}(%s)${RESET}" "$branch"
+
+# Section 3: model and output style.
+printf " ${DIM}|${RESET} ${BLUE}%s${RESET} ${DIM}%s${RESET}" "$model" "$style"
+
+# Section 4: rate-limit quotas, only when present.
 if [ -n "$rl5h" ] || [ -n "$rl7d" ]; then
     printf " ${DIM}|${RESET}"
     print_rl "$rl5h" "$rl5h_secs"
     print_rl "$rl7d" "$rl7d_secs"
 fi
 
-printf " ${DIM}|${RESET} ${DIM}%s${RESET}" "$dir"
-[ -n "$branch" ] && printf " ${MAGENTA}(%s)${RESET}" "$branch"
-printf " ${BLUE}[%s]${RESET} ${DIM}%s${RESET}\n" "$model" "$style"
+printf "\n"
