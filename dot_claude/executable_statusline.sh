@@ -77,7 +77,7 @@ print_rl() {
     local pct="$1" secs="$2"
     [ -z "$pct" ] && return
     printf " $(rl_color "$pct")%.0f%%${RESET}" "$pct"
-    [ -n "$secs" ] && printf " ${DIM}(%s)${RESET}" "$(human_duration "$secs")"
+    [ -n "$secs" ] && printf " ${DIM}(-%s)${RESET}" "$(human_duration "$secs")"
 }
 
 # Section 1: session stats (context %, cost, lines changed, elapsed time).
