@@ -7,7 +7,7 @@
 input=$(cat)
 
 # Pull every field we need in a single jq pass (tab-separated).
-IFS=$'\t' read -r raw_dir model style cost pct added removed duration_ms rl5h rl7d <<EOF
+IFS=$'\t' read -r raw_dir model style cost pct added removed duration_ms rl5h rl5h_secs rl7d rl7d_secs <<EOF
 $(printf '%s' "$input" | jq -r '
   [ (.workspace.current_dir // .cwd // ""),
     (.model.display_name // "?"),
@@ -18,7 +18,9 @@ $(printf '%s' "$input" | jq -r '
     (.cost.total_lines_removed // 0),
     (.cost.total_duration_ms // 0),
     (.rate_limits.five_hour.used_percentage // ""),
-    (.rate_limits.seven_day.used_percentage // "")
+    (if .rate_limits.five_hour.resets_at then ((.rate_limits.five_hour.resets_at | fromdateiso8601) - now) else "" end),
+    (.rate_limits.seven_day.used_percentage // ""),
+    (if .rate_limits.seven_day.resets_at then ((.rate_limits.seven_day.resets_at | fromdateiso8601) - now) else "" end)
   ] | @tsv')
 EOF
 
@@ -54,23 +56,44 @@ human_duration() {
     fi
 }
 
+# Time remaining until a rate-limit window resets, e.g. "34m", "3h", "2d".
+human_remaining() {
+    local s
+    s=$(printf '%.0f' "${1:-0}")
+    (( s < 0 )) && s=0
+    if   (( s < 3600 ));  then printf '%dm' $(( s/60 ))
+    elif (( s < 86400 )); then printf '%dh' $(( s/3600 ))
+    else                       printf '%dd' $(( s/86400 ))
+    fi
+}
+
 # Everything on one line: context %, cost, lines changed, elapsed time,
 # then directory, git branch, model, output style.
 rl_color() {
     local v=$(printf '%.0f' "${1:-0}")
-    if   (( v >= 80 )); then printf '%s' "$RED"
-    elif (( v >= 60 )); then printf '%s' "$YELLOW"
-    else                     printf '%s' "$GREEN"
+    if   (( v >= 90 )); then printf '%s' "$RED"
+    elif (( v >= 75 )); then printf '%s' "$YELLOW"
+    elif (( v >= 50 )); then printf '%s' "$GREEN"
+    else                     printf '%s' "$DIM"
     fi
 }
 
 printf "${ctx_color}%.0f%%${RESET} ${DIM}|${RESET} \$%.2f ${DIM}|${RESET} ${GREEN}+%s${RESET}/${RED}-%s${RESET} ${DIM}|${RESET} ${DIM}%s${RESET}" \
     "${pct:-0}" "${cost:-0}" "$added" "$removed" "$(human_duration "$duration_ms")"
 
+# Print one rate-limit window: colored percent, then a dim "(time left)"
+# once we know when it resets.
+print_rl() {
+    local pct="$1" secs="$2"
+    [ -z "$pct" ] && return
+    printf " $(rl_color "$pct")%.0f%%${RESET}" "$pct"
+    [ -n "$secs" ] && printf " ${DIM}(%s)${RESET}" "$(human_remaining "$secs")"
+}
+
 if [ -n "$rl5h" ] || [ -n "$rl7d" ]; then
     printf " ${DIM}|${RESET}"
-    [ -n "$rl5h" ] && printf " $(rl_color "$rl5h")5h:%.0f%%${RESET}" "$rl5h"
-    [ -n "$rl7d" ] && printf " $(rl_color "$rl7d")7d:%.0f%%${RESET}" "$rl7d"
+    print_rl "$rl5h" "$rl5h_secs"
+    print_rl "$rl7d" "$rl7d_secs"
 fi
 
 printf " ${DIM}|${RESET} ${DIM}%s${RESET}" "$dir"
