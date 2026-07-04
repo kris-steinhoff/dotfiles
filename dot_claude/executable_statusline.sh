@@ -98,7 +98,7 @@ fi
 
 # Section 2: directory and git branch.
 printf " ${DIM}|${RESET} ${DIM}%s${RESET}" "$dir"
-[ -n "$branch" ] && printf " ${MAGENTA}(%s)${RESET}" "$branch"
+[ -n "$branch" ] && printf " ${MAGENTA}%s${RESET}" "$branch"
 
 # Section 3: model and output style.
 printf " ${DIM}|${RESET} ${BLUE}%s${RESET} ${DIM}%s${RESET}" "$model" "$style"
