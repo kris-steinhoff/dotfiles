@@ -98,9 +98,11 @@ fi
 printf " ${DIM}|${RESET} ${DIM}%s${RESET}" "$dir"
 [ -n "$branch" ] && printf " ${MAGENTA}%s${RESET}" "$branch"
 
-# Section 3: model, output style, and reasoning effort (if supported).
-printf " ${DIM}|${RESET} ${BLUE}%s${RESET} ${DIM}%s${RESET}" "$model" "$style"
+# Section 3: model, reasoning effort (if supported), output style
+# (only when it's not the default).
+printf " ${DIM}|${RESET} ${BLUE}%s${RESET}" "$model"
 [ -n "$effort" ] && printf " ${DIM}%s${RESET}" "$effort"
+[ "$style" != "default" ] && printf " ${DIM}%s${RESET}" "$style"
 
 # Section 4: rate-limit quotas, only when present.
 if [ -n "$rl5h" ] || [ -n "$rl7d" ]; then
