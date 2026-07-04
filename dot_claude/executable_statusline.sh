@@ -78,8 +78,14 @@ rl_color() {
     fi
 }
 
-printf "${ctx_color}%.0f%%${RESET} ${DIM}|${RESET} \$%.2f ${DIM}|${RESET} ${GREEN}+%s${RESET}/${RED}-%s${RESET} ${DIM}|${RESET} ${DIM}%s${RESET}" \
-    "${pct:-0}" "${cost:-0}" "$added" "$removed" "$(human_duration "$duration_ms")"
+printf "${ctx_color}%.0f%%${RESET} ${DIM}|${RESET} \$%.2f ${DIM}|${RESET} ${GREEN}+%s${RESET}/${RED}-%s${RESET}" \
+    "${pct:-0}" "${cost:-0}" "$added" "$removed"
+
+# Omit elapsed time until the session has actually accrued any duration
+# (it's 0 before the first API response, which reads as a glitch).
+if [ -n "$duration_ms" ] && [ "$duration_ms" != "0" ]; then
+    printf " ${DIM}|${RESET} ${DIM}%s${RESET}" "$(human_duration "$duration_ms")"
+fi
 
 # Print one rate-limit window: colored percent, then a dim "(time left)"
 # once we know when it resets.
