@@ -7,7 +7,7 @@
 input=$(cat)
 
 # Pull every field we need in a single jq pass (tab-separated).
-IFS=$'\t' read -r raw_dir model style cost pct added removed duration_ms <<EOF
+IFS=$'\t' read -r raw_dir model style cost pct added removed duration_ms rl5h rl7d <<EOF
 $(printf '%s' "$input" | jq -r '
   [ (.workspace.current_dir // .cwd // ""),
     (.model.display_name // "?"),
@@ -16,7 +16,9 @@ $(printf '%s' "$input" | jq -r '
     (.context_window.used_percentage // 0),
     (.cost.total_lines_added // 0),
     (.cost.total_lines_removed // 0),
-    (.cost.total_duration_ms // 0)
+    (.cost.total_duration_ms // 0),
+    (.rate_limits.five_hour.used_percentage // ""),
+    (.rate_limits.seven_day.used_percentage // "")
   ] | @tsv')
 EOF
 
@@ -54,8 +56,23 @@ human_duration() {
 
 # Everything on one line: context %, cost, lines changed, elapsed time,
 # then directory, git branch, model, output style.
+rl_color() {
+    local v=$(printf '%.0f' "${1:-0}")
+    if   (( v >= 80 )); then printf '%s' "$RED"
+    elif (( v >= 60 )); then printf '%s' "$YELLOW"
+    else                     printf '%s' "$GREEN"
+    fi
+}
+
 printf "${ctx_color}%.0f%%${RESET} ${DIM}|${RESET} \$%.2f ${DIM}|${RESET} ${GREEN}+%s${RESET}/${RED}-%s${RESET} ${DIM}|${RESET} ${DIM}%s${RESET}" \
     "${pct:-0}" "${cost:-0}" "$added" "$removed" "$(human_duration "$duration_ms")"
+
+if [ -n "$rl5h" ] || [ -n "$rl7d" ]; then
+    printf " ${DIM}|${RESET}"
+    [ -n "$rl5h" ] && printf " $(rl_color "$rl5h")5h:%.0f%%${RESET}" "$rl5h"
+    [ -n "$rl7d" ] && printf " $(rl_color "$rl7d")7d:%.0f%%${RESET}" "$rl7d"
+fi
+
 printf " ${DIM}|${RESET} ${DIM}%s${RESET}" "$dir"
 [ -n "$branch" ] && printf " ${MAGENTA}(%s)${RESET}" "$branch"
 printf " ${BLUE}[%s]${RESET} ${DIM}%s${RESET}\n" "$model" "$style"
