@@ -18,9 +18,9 @@ $(printf '%s' "$input" | jq -r '
     (.cost.total_lines_removed // 0),
     (.cost.total_duration_ms // 0),
     (.rate_limits.five_hour.used_percentage // ""),
-    (if .rate_limits.five_hour.resets_at then ((.rate_limits.five_hour.resets_at | fromdateiso8601) - now) else "" end),
+    (if .rate_limits.five_hour.resets_at then (.rate_limits.five_hour.resets_at - now) else "" end),
     (.rate_limits.seven_day.used_percentage // ""),
-    (if .rate_limits.seven_day.resets_at then ((.rate_limits.seven_day.resets_at | fromdateiso8601) - now) else "" end)
+    (if .rate_limits.seven_day.resets_at then (.rate_limits.seven_day.resets_at - now) else "" end)
   ] | @tsv')
 EOF
 
