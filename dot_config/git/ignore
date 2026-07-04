@@ -10,3 +10,4 @@ Session.vim
 **/.claude/settings.local.json
 
 .antigravitycli
+**/.claude/.cc-writes/
