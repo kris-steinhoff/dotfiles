@@ -3,16 +3,20 @@
 # Claude Code status line.
 # Receives session JSON on stdin and prints a single status line, `|`
 # separating four sections:
-#   context % cost lines changed elapsed | dir (branch) | model style | quotas
+#   context % cost lines changed elapsed | dir (branch) | model style effort | quotas
 
 input=$(cat)
 
-# Pull every field we need in a single jq pass (tab-separated).
-IFS=$'\t' read -r raw_dir model style cost pct added removed duration_ms rl5h rl5h_secs rl7d rl7d_secs <<EOF
+# Pull every field we need in a single jq pass, joined with a unit
+# separator (not @tsv/tab): `read` treats tab as IFS whitespace and
+# collapses consecutive delimiters, which silently shifts every field
+# after an empty one (e.g. an absent effort level or rate limit).
+IFS=$'\x1f' read -r raw_dir model style effort cost pct added removed duration_ms rl5h rl5h_secs rl7d rl7d_secs <<EOF
 $(printf '%s' "$input" | jq -r '
   [ (.workspace.current_dir // .cwd // ""),
     (.model.display_name // "?"),
     (.output_style.name // "default"),
+    (.effort.level // ""),
     (.cost.total_cost_usd // 0),
     (.context_window.used_percentage // 0),
     (.cost.total_lines_added // 0),
@@ -22,7 +26,7 @@ $(printf '%s' "$input" | jq -r '
     (if .rate_limits.five_hour.resets_at then (.rate_limits.five_hour.resets_at - now) else "" end),
     (.rate_limits.seven_day.used_percentage // ""),
     (if .rate_limits.seven_day.resets_at then (.rate_limits.seven_day.resets_at - now) else "" end)
-  ] | @tsv')
+  ] | join("\u001f")')
 EOF
 
 # Show just the final path component, and grab the git branch (if any).
@@ -94,8 +98,9 @@ fi
 printf " ${DIM}|${RESET} ${DIM}%s${RESET}" "$dir"
 [ -n "$branch" ] && printf " ${MAGENTA}%s${RESET}" "$branch"
 
-# Section 3: model and output style.
+# Section 3: model, output style, and reasoning effort (if supported).
 printf " ${DIM}|${RESET} ${BLUE}%s${RESET} ${DIM}%s${RESET}" "$model" "$style"
+[ -n "$effort" ] && printf " ${DIM}%s${RESET}" "$effort"
 
 # Section 4: rate-limit quotas, only when present.
 if [ -n "$rl5h" ] || [ -n "$rl7d" ]; then
