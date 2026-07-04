@@ -49,20 +49,14 @@ else
     ctx_color="$GREEN"
 fi
 
+# Single-unit duration, e.g. "34m", "3h", "2d". Used for both elapsed
+# session time and time remaining until a rate-limit window resets.
 human_duration() {
-    local s=$(( ${1:-0} / 1000 ))
-    if   (( s < 60 ));   then printf '%ds' "$s"
-    elif (( s < 3600 )); then printf '%dm%02ds' $(( s/60 )) $(( s%60 ))
-    else                      printf '%dh%dm' $(( s/3600 )) $(( (s%3600)/60 ))
-    fi
-}
-
-# Time remaining until a rate-limit window resets, e.g. "34m", "3h", "2d".
-human_remaining() {
     local s
     s=$(printf '%.0f' "${1:-0}")
     (( s < 0 )) && s=0
-    if   (( s < 3600 ));  then printf '%dm' $(( s/60 ))
+    if   (( s < 60 ));    then printf '%ds' "$s"
+    elif (( s < 3600 ));  then printf '%dm' $(( s/60 ))
     elif (( s < 86400 )); then printf '%dh' $(( s/3600 ))
     else                       printf '%dd' $(( s/86400 ))
     fi
@@ -83,7 +77,7 @@ print_rl() {
     local pct="$1" secs="$2"
     [ -z "$pct" ] && return
     printf " $(rl_color "$pct")%.0f%%${RESET}" "$pct"
-    [ -n "$secs" ] && printf " ${DIM}(%s)${RESET}" "$(human_remaining "$secs")"
+    [ -n "$secs" ] && printf " ${DIM}(%s)${RESET}" "$(human_duration "$secs")"
 }
 
 # Section 1: session stats (context %, cost, lines changed, elapsed time).
@@ -93,7 +87,7 @@ printf "${ctx_color}%.0f%%${RESET} \$%.2f ${GREEN}+%s${RESET}/${RED}-%s${RESET}"
 # Omit elapsed time until it rounds to at least a full second
 # (sub-second durations before the first API response read as a glitch).
 if [ -n "$duration_ms" ] && [ "${duration_ms:-0}" -ge 1000 ]; then
-    printf " ${DIM}%s${RESET}" "$(human_duration "$duration_ms")"
+    printf " ${DIM}%s${RESET}" "$(human_duration $(( duration_ms / 1000 )))"
 fi
 
 # Section 2: directory and git branch.
