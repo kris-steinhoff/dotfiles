@@ -40,6 +40,7 @@ DIM="\033[2m"
 BLUE="\033[34m"
 MAGENTA="\033[35m"
 GREEN="\033[32m"
+CYAN="\033[36m"
 YELLOW="\033[33m"
 RED="\033[31m"
 
@@ -102,7 +103,7 @@ printf " ${DIM}|${RESET} ${DIM}%s${RESET}" "$dir"
 # (only when it's not the default).
 printf " ${DIM}|${RESET} ${BLUE}%s${RESET}" "$model"
 [ -n "$effort" ] && printf " ${DIM}%s${RESET}" "$effort"
-[ "$style" != "default" ] && printf " ${DIM}%s${RESET}" "$style"
+[ "$style" != "default" ] && printf " ${CYAN}%s${RESET}" "$style"
 
 # Section 4: rate-limit quotas, only when present.
 if [ -n "$rl5h" ] || [ -n "$rl7d" ]; then
