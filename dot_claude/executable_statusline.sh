@@ -81,9 +81,9 @@ rl_color() {
 printf "${ctx_color}%.0f%%${RESET} ${DIM}|${RESET} \$%.2f ${DIM}|${RESET} ${GREEN}+%s${RESET}/${RED}-%s${RESET}" \
     "${pct:-0}" "${cost:-0}" "$added" "$removed"
 
-# Omit elapsed time until the session has actually accrued any duration
-# (it's 0 before the first API response, which reads as a glitch).
-if [ -n "$duration_ms" ] && [ "$duration_ms" != "0" ]; then
+# Omit elapsed time until it rounds to at least a full second
+# (sub-second durations before the first API response read as a glitch).
+if [ -n "$duration_ms" ] && [ "${duration_ms:-0}" -ge 1000 ]; then
     printf " ${DIM}|${RESET} ${DIM}%s${RESET}" "$(human_duration "$duration_ms")"
 fi
 
