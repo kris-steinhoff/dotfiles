@@ -33,6 +33,7 @@ branch=$(git -C "$raw_dir" branch --show-current 2>/dev/null)
 # Color codes.
 RESET="\033[0m"
 DIM="\033[2m"
+BOLD="\033[1m"
 BLUE="\033[34m"
 MAGENTA="\033[35m"
 GREEN="\033[32m"
@@ -115,7 +116,7 @@ refresh_usage() {
 }
 
 # Section 1: directory and git branch.
-printf "${DIM}%s${RESET}" "$dir"
+printf "${BOLD}%s${RESET}" "$dir"
 [ -n "$branch" ] && printf " ${MAGENTA}%s${RESET}" "$branch"
 
 # Section 2: model, reasoning effort (if supported), output style
@@ -125,7 +126,7 @@ printf " ${DIM}|${RESET} ${BLUE}%s${RESET}" "$model"
 [ "$style" != "default" ] && printf " ${CYAN}%s${RESET}" "$style"
 
 # Section 3: session stats (context %, lines changed, elapsed time, cost).
-printf " ${DIM}|${RESET} ${ctx_color}%.0f%%${RESET} ${GREEN}+%s${RESET}/${RED}-%s${RESET}" \
+printf " ${DIM}|${RESET} ${ctx_color}%.0f%%${RESET} ${DIM}${GREEN}+%s${RESET}/${DIM}${RED}-%s${RESET}" \
     "${pct:-0}" "$added" "$removed"
 
 # Omit elapsed time until it rounds to at least a full second
