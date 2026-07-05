@@ -85,15 +85,17 @@ print_rl() {
     [ -n "$secs" ] && printf " ${DIM}(-%s)${RESET}" "$(human_duration "$secs")"
 }
 
-# Section 1: session stats (context %, cost, lines changed, elapsed time).
-printf "${ctx_color}%.0f%%${RESET} \$%.2f ${GREEN}+%s${RESET}/${RED}-%s${RESET}" \
-    "${pct:-0}" "${cost:-0}" "$added" "$removed"
+# Section 1: session stats (context %, lines changed, elapsed time, cost).
+printf "${ctx_color}%.0f%%${RESET} ${GREEN}+%s${RESET}/${RED}-%s${RESET}" \
+    "${pct:-0}" "$added" "$removed"
 
 # Omit elapsed time until it rounds to at least a full second
 # (sub-second durations before the first API response read as a glitch).
 if [ -n "$duration_ms" ] && [ "${duration_ms:-0}" -ge 1000 ]; then
     printf " ${DIM}%s${RESET}" "$(human_duration $(( duration_ms / 1000 )))"
 fi
+
+printf " ${DIM}\$%.2f${RESET}" "${cost:-0}"
 
 # Section 2: directory and git branch.
 printf " ${DIM}|${RESET} ${DIM}%s${RESET}" "$dir"
