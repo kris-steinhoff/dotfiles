@@ -11,7 +11,7 @@ input=$(cat)
 # separator (not @tsv/tab): `read` treats tab as IFS whitespace and
 # collapses consecutive delimiters, which silently shifts every field
 # after an empty one (e.g. an absent effort level or rate limit).
-IFS=$'\x1f' read -r raw_dir model style effort cost pct added removed duration_ms rl5h rl5h_secs rl7d rl7d_secs <<EOF
+IFS=$'\x1f' read -r raw_dir model style effort cost pct added removed duration_ms <<EOF
 $(printf '%s' "$input" | jq -r '
   [ (.workspace.current_dir // .cwd // ""),
     (.model.display_name // "?"),
@@ -21,11 +21,7 @@ $(printf '%s' "$input" | jq -r '
     (.context_window.used_percentage // 0),
     (.cost.total_lines_added // 0),
     (.cost.total_lines_removed // 0),
-    (.cost.total_duration_ms // 0),
-    (.rate_limits.five_hour.used_percentage // ""),
-    (if .rate_limits.five_hour.resets_at then (.rate_limits.five_hour.resets_at - now) else "" end),
-    (.rate_limits.seven_day.used_percentage // ""),
-    (if .rate_limits.seven_day.resets_at then (.rate_limits.seven_day.resets_at - now) else "" end)
+    (.cost.total_duration_ms // 0)
   ] | join("\u001f")')
 EOF
 
@@ -76,13 +72,46 @@ rl_color() {
     fi
 }
 
-# Print one rate-limit window: colored percent, then a dim "(time left)"
-# once we know when it resets.
+# Print one rate-limit window: an optional dim label (for per-model weekly
+# windows), the colored percent, then a dim "(time left)" once we know when
+# it resets.
 print_rl() {
-    local pct="$1" secs="$2"
+    local label="$1" pct="$2" secs="$3"
     [ -z "$pct" ] && return
+    [ -n "$label" ] && printf " ${DIM}%s${RESET}" "$label"
     printf " $(rl_color "$pct")%.0f%%${RESET}" "$pct"
     [ -n "$secs" ] && printf " ${DIM}(-%s)${RESET}" "$(human_duration "$secs")"
+}
+
+# Monthly spend limit (Team/Enterprise seats). This is NOT in the statusline
+# stdin — it comes from the account usage API the claude.ai settings page uses:
+#   GET https://api.anthropic.com/api/oauth/usage  ->  .spend { used, limit }
+# The statusline renders on every keystroke, so we never fetch inline. Instead
+# a detached background job refreshes a cache file at most once per TTL, and the
+# render only reads that cache. The endpoint is undocumented and may change.
+USAGE_CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/claude-code-usage.json"
+USAGE_TTL=300  # seconds; spend against a monthly cap moves slowly
+
+# True when the cache is missing or older than the TTL.
+usage_stale() {
+    local now mtime
+    now=$(date +%s)
+    mtime=$(stat -f %m "$USAGE_CACHE" 2>/dev/null || echo 0)
+    (( now - mtime >= USAGE_TTL ))
+}
+
+# Fetch usage with the OAuth token from the login keychain and atomically
+# replace the cache. Runs detached; failures leave the previous cache in place.
+refresh_usage() {
+    local token
+    token=$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null \
+            | jq -r '.claudeAiOauth.accessToken // empty' 2>/dev/null)
+    [ -z "$token" ] && return
+    curl -sS --max-time 5 https://api.anthropic.com/api/oauth/usage \
+        -H "Authorization: Bearer $token" \
+        -H "anthropic-beta: oauth-2025-04-20" \
+        -o "$USAGE_CACHE.tmp" 2>/dev/null \
+      && mv "$USAGE_CACHE.tmp" "$USAGE_CACHE"
 }
 
 # Section 1: session stats (context %, lines changed, elapsed time, cost).
@@ -107,11 +136,57 @@ printf " ${DIM}|${RESET} ${BLUE}%s${RESET}" "$model"
 [ -n "$effort" ] && printf " ${DIM}%s${RESET}" "$effort"
 [ "$style" != "default" ] && printf " ${CYAN}%s${RESET}" "$style"
 
-# Section 4: rate-limit quotas, only when present.
-if [ -n "$rl5h" ] || [ -n "$rl7d" ]; then
+# Section 4: rate-limit quotas, only when present. Render every window the
+# account sends, in a second jq pass. Pro/Max send five_hour + seven_day.
+# Team/Enterprise seats can also send per-model weekly windows. There is no
+# monthly window in Claude Code's model. Each record is "label|pct|secs".
+# `|` is a safe separator since labels/percents/times never contain it.
+rl_stream=$(printf '%s' "$input" | jq -r '
+  (.rate_limits // {}) as $r
+  | [ {k:"five_hour",         l:""},
+      {k:"seven_day",         l:""},
+      {k:"seven_day_opus",    l:"opus"},
+      {k:"seven_day_sonnet",  l:"sonnet"}
+    ]
+  | map( . as $w | ($r[$w.k]) as $v
+         | select($v.used_percentage != null)
+         | [ $w.l,
+             ($v.used_percentage | tostring),
+             (if $v.resets_at then (($v.resets_at - now) | tostring) else "" end)
+           ] | join("|") )
+  | .[]')
+
+# Kick a background refresh when the cache is stale, then read the current
+# spend line from whatever the cache holds. `touch` before spawning both backs
+# off repeated launches and preserves the prior value while the fetch is in
+# flight. The fetch is fully detached so it never delays this render.
+if command -v security >/dev/null 2>&1 && usage_stale; then
+    mkdir -p "$(dirname "$USAGE_CACHE")"
+    touch "$USAGE_CACHE"
+    ( refresh_usage & ) </dev/null >/dev/null 2>&1
+fi
+
+# Emit "pct|display" for the monthly spend (e.g. "0|$4.36/$5k"), only when the
+# account has an enabled dollar limit. amount_minor is scaled by 10^exponent.
+sp_pct=""; sp_disp=""
+if [ -f "$USAGE_CACHE" ]; then
+    IFS='|' read -r sp_pct sp_disp <<< "$(jq -r '
+      .spend as $s
+      | select(($s.enabled // false) and ($s.limit.amount_minor != null))
+      | ($s.used.amount_minor  / pow(10; $s.used.exponent  // 2)) as $u
+      | ($s.limit.amount_minor / pow(10; $s.limit.exponent // 2)) as $l
+      | (if ($s.percent != null) then $s.percent elif $l > 0 then ($u / $l * 100) else 0 end) as $p
+      | (if $l >= 1000 then "$\(($l / 1000) | floor)k" else "$\($l)" end) as $ltxt
+      | "\($p)|$\((($u * 100) | round) / 100)/\($ltxt)"
+    ' "$USAGE_CACHE" 2>/dev/null)"
+fi
+
+if [ -n "$rl_stream" ] || [ -n "$sp_disp" ]; then
     printf " ${DIM}|${RESET}"
-    print_rl "$rl5h" "$rl5h_secs"
-    print_rl "$rl7d" "$rl7d_secs"
+    while IFS='|' read -r rl_label rl_pct rl_secs; do
+        print_rl "$rl_label" "$rl_pct" "$rl_secs"
+    done <<< "$rl_stream"
+    [ -n "$sp_disp" ] && printf " $(rl_color "$sp_pct")%s${RESET}" "$sp_disp"
 fi
 
 printf "\n"
