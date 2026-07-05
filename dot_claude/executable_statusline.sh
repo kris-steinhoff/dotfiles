@@ -3,7 +3,7 @@
 # Claude Code status line.
 # Receives session JSON on stdin and prints a single status line, `|`
 # separating four sections:
-#   context % cost lines changed elapsed | dir (branch) | model style effort | quotas
+#   dir (branch) | model style effort | context % lines changed elapsed cost | usage
 
 input=$(cat)
 
@@ -114,8 +114,18 @@ refresh_usage() {
       && mv "$USAGE_CACHE.tmp" "$USAGE_CACHE"
 }
 
-# Section 1: session stats (context %, lines changed, elapsed time, cost).
-printf "${ctx_color}%.0f%%${RESET} ${GREEN}+%s${RESET}/${RED}-%s${RESET}" \
+# Section 1: directory and git branch.
+printf "${DIM}%s${RESET}" "$dir"
+[ -n "$branch" ] && printf " ${MAGENTA}%s${RESET}" "$branch"
+
+# Section 2: model, reasoning effort (if supported), output style
+# (only when it's not the default).
+printf " ${DIM}|${RESET} ${BLUE}%s${RESET}" "$model"
+[ -n "$effort" ] && printf " ${DIM}%s${RESET}" "$effort"
+[ "$style" != "default" ] && printf " ${CYAN}%s${RESET}" "$style"
+
+# Section 3: session stats (context %, lines changed, elapsed time, cost).
+printf " ${DIM}|${RESET} ${ctx_color}%.0f%%${RESET} ${GREEN}+%s${RESET}/${RED}-%s${RESET}" \
     "${pct:-0}" "$added" "$removed"
 
 # Omit elapsed time until it rounds to at least a full second
@@ -125,16 +135,6 @@ if [ -n "$duration_ms" ] && [ "${duration_ms:-0}" -ge 1000 ]; then
 fi
 
 printf " ${DIM}\$%.2f${RESET}" "${cost:-0}"
-
-# Section 2: directory and git branch.
-printf " ${DIM}|${RESET} ${DIM}%s${RESET}" "$dir"
-[ -n "$branch" ] && printf " ${MAGENTA}%s${RESET}" "$branch"
-
-# Section 3: model, reasoning effort (if supported), output style
-# (only when it's not the default).
-printf " ${DIM}|${RESET} ${BLUE}%s${RESET}" "$model"
-[ -n "$effort" ] && printf " ${DIM}%s${RESET}" "$effort"
-[ "$style" != "default" ] && printf " ${CYAN}%s${RESET}" "$style"
 
 # Section 4: rate-limit quotas, only when present. Render every window the
 # account sends, in a second jq pass. Pro/Max send five_hour + seven_day.
