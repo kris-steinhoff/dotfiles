@@ -8,6 +8,7 @@ Session.vim
 /venv
 
 **/.claude/settings.local.json
+**/.claude/worktrees/
 
 .antigravitycli
 **/.claude/.cc-writes/
