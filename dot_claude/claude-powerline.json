@@ -28,12 +28,19 @@
           "model": {
             "enabled": true
           },
+          "context": {
+            "enabled": true,
+            "displayStyle": "text",
+            "showPercentageOnly": true,
+            "percentageMode": "used",
+            "autocompactBuffer": 82000,
+            "showIcon": true
+          },
           "session": {
             "enabled": true,
-            "type": "tokens"
-          },
-          "context": {
-            "enabled": true
+            "type": "cost",
+            "costSource": "calculated",
+            "showUnits": true
           },
           "today": {
             "enabled": false,
@@ -41,13 +48,13 @@
             "showUnits": true
           },
           "block": {
-            "enabled": false,
+            "enabled": true,
             "type": "cost",
             "burnType": "cost",
             "displayStyle": "text"
           },
           "weekly": {
-            "enabled": false,
+            "enabled": true,
             "displayStyle": "text"
           },
           "version": {
