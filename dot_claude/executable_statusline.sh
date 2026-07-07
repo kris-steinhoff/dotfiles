@@ -108,12 +108,14 @@ usage_stale() {
 
 # Fetch usage with the OAuth token from the login keychain and atomically
 # replace the cache. Runs detached; failures leave the previous cache in place.
+# --fail keeps HTTP error bodies (429 rate limits, auth errors) from clobbering
+# the last good snapshot.
 refresh_usage() {
     local token
     token=$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null \
             | jq -r '.claudeAiOauth.accessToken // empty' 2>/dev/null)
     [ -z "$token" ] && return
-    curl -sS --max-time 5 https://api.anthropic.com/api/oauth/usage \
+    curl -sS --fail --max-time 5 https://api.anthropic.com/api/oauth/usage \
         -H "Authorization: Bearer $token" \
         -H "anthropic-beta: oauth-2025-04-20" \
         -o "$USAGE_CACHE.tmp" 2>/dev/null \
