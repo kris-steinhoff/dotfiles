@@ -84,9 +84,14 @@ print_rl() {
     [ -n "$secs" ] && printf " ${DIM}(-%s)${RESET}" "$(human_duration "$secs")"
 }
 
-# Monthly spend limit (Team/Enterprise seats). This is NOT in the statusline
-# stdin — it comes from the account usage API the claude.ai settings page uses:
-#   GET https://api.anthropic.com/api/oauth/usage  ->  .spend { used, limit }
+# Monthly spend limit (Team/Enterprise seats) or usage credits (Pro/Max
+# "extra usage"). Neither is in the statusline stdin — both come from the
+# account usage API the claude.ai settings page uses:
+#   GET https://api.anthropic.com/api/oauth/usage
+#     .spend       { used, limit, percent }            (Team/Enterprise)
+#     .extra_usage { used_credits, monthly_limit,      (Pro/Max, in cents —
+#                    utilization, is_enabled }          per Claude Code's own
+#                                                       usedCents/spendLimitCents)
 # The statusline renders on every keystroke, so we never fetch inline. Instead
 # a detached background job refreshes a cache file at most once per TTL, and the
 # render only reads that cache. The endpoint is undocumented and may change.
@@ -167,18 +172,31 @@ if command -v security >/dev/null 2>&1 && usage_stale; then
     ( refresh_usage & ) </dev/null >/dev/null 2>&1
 fi
 
-# Emit "pct|display" for the monthly spend (e.g. "0|$4.36/$5k"), only when the
-# account has an enabled dollar limit. amount_minor is scaled by 10^exponent.
+# Emit "pct|display" for dollar usage (e.g. "0|$4.36/$5k"): the monthly spend
+# cap when the account has one enabled, otherwise Pro/Max usage credits when
+# extra usage is enabled. Both normalize to used/limit/percent so the render
+# below is shared. spend uses amount_minor scaled by 10^exponent, extra_usage
+# is plain cents. A null credit limit shows the used amount alone.
 sp_pct=""; sp_disp=""
 if [ -f "$USAGE_CACHE" ]; then
     IFS='|' read -r sp_pct sp_disp <<< "$(jq -r '
-      .spend as $s
-      | select(($s.enabled // false) and ($s.limit.amount_minor != null))
-      | ($s.used.amount_minor  / pow(10; $s.used.exponent  // 2)) as $u
-      | ($s.limit.amount_minor / pow(10; $s.limit.exponent // 2)) as $l
-      | (if ($s.percent != null) then $s.percent elif $l > 0 then ($u / $l * 100) else 0 end) as $p
-      | (if $l >= 1000 then "$\(($l / 1000) | floor)k" else "$\($l)" end) as $ltxt
-      | "\($p)|$\((($u * 100) | round) / 100)/\($ltxt)"
+      ( if ((.spend.enabled // false) and (.spend.limit.amount_minor != null)) then
+          .spend
+          | { u: (.used.amount_minor  / pow(10; .used.exponent  // 2)),
+              l: (.limit.amount_minor / pow(10; .limit.exponent // 2)),
+              p: .percent }
+        elif ((.extra_usage.is_enabled // false) and (.extra_usage.used_credits != null)) then
+          .extra_usage
+          | { u: (.used_credits / 100),
+              l: (if .monthly_limit != null then .monthly_limit / 100 else null end),
+              p: .utilization }
+        else empty end )
+      | .u as $u | .l as $l
+      | (if .p != null then .p elif ($l // 0) > 0 then ($u / $l * 100) else 0 end) as $p
+      | (if $l == null then ""
+         elif $l >= 1000 then "/$\(($l / 1000) | floor)k"
+         else "/$\($l)" end) as $ltxt
+      | "\($p)|$\((($u * 100) | round) / 100)\($ltxt)"
     ' "$USAGE_CACHE" 2>/dev/null)"
 fi
 
