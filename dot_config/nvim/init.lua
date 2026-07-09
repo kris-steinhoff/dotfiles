@@ -161,7 +161,12 @@ require("lazy").setup({
       explorer = { enabled = true },
       input = { enabled = true },
       notifier = { enabled = true },
-      picker = { enabled = true },
+      picker = {
+        enabled = true,
+        sources = {
+          explorer = { hidden = true },
+        },
+      },
       terminal = {},
     },
   },
