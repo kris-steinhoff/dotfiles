@@ -9,3 +9,8 @@ font-feature = -dlig
 working-directory = home
 window-inherit-working-directory = false
 
+# Override Ghostty's default "performable:copy_to_clipboard" on Cmd-C, which
+# passes the key through when there's no selection (leaking a stray "c" while
+# herdr owns the selection). This always consumes Cmd-C instead.
+keybind = super+c=copy_to_clipboard
+
