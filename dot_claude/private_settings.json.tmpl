@@ -1,5 +1,8 @@
 {{- $nexus := hasKey . "nexusPluginPath" -}}
 {
+  "env": {
+    "DISABLE_AUTOUPDATER": "1"
+  },
   "statusLine": {
     "type": "command",
     "command": "npx -y @owloops/claude-powerline@latest"
