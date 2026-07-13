@@ -1,0 +1,24 @@
+services:
+  agent:
+    build: .
+    image: agent-container
+    ports:
+      - "2222:22"
+    extra_hosts:
+      # Colima's host.docker.internal support has version-dependent quirks;
+      # this makes it explicit rather than relying on the VM defaults.
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ssh_host_keys:/etc/ssh
+      - agent_home:/home/agent
+      - ./authorized_keys:/run/agent-container/authorized_keys:ro
+      # Mount a project in to work on it. Anything not mounted lives only
+      # in agent_home and disappears if that volume is removed.
+      # - ~/code/github.com/kris-steinhoff/some-project:/home/agent/workspace/some-project
+    environment:
+      - ANTHROPIC_API_KEY
+      - OPENCODE_API_KEY
+
+volumes:
+  ssh_host_keys:
+  agent_home:
