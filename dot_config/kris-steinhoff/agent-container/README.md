@@ -5,9 +5,9 @@ the host, attached to with [herdr](https://herdr.dev) over SSH. Runs locally
 for now; moving it to a remote host later is a matter of changing the SSH
 target, not the image.
 
-Ships: `claude`, `opencode`, `neovim` (latest release), `chezmoi` (applies
-this dotfiles repo on build), and `sshd` so herdr can attach to a persistent
-session inside the container.
+Ships: `claude`, `opencode`, `neovim` (latest release), `gh`, `uv`, `chezmoi`
+(applies this dotfiles repo on build), and `sshd` so herdr can attach to a
+persistent session inside the container.
 
 ## First-time setup
 
@@ -67,6 +67,9 @@ Not baked into the image. Either:
 - Set `ANTHROPIC_API_KEY` / `OPENCODE_API_KEY` in the shell before
   `docker compose up` (compose reads them from the environment; see
   `docker-compose.yml`).
+
+`gh` needs its own login too — `gh auth login` inside the container (persists
+in `agent_home`), separate from the `ForwardAgent`-based git-over-SSH access.
 
 ## Persistence
 

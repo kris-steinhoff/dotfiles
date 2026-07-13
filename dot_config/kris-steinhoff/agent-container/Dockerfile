@@ -27,6 +27,16 @@ RUN apt-get update \
 
 ENV LANG=en_US.UTF-8
 
+# Debian's apt doesn't carry gh; pull from GitHub's own apt repo per its
+# official install docs (https://github.com/cli/cli/blob/trunk/docs/install_linux.md).
+RUN mkdir -p -m 755 /etc/apt/keyrings \
+    && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+    && chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends gh \
+    && rm -rf /var/lib/apt/lists/*
+
 # Neovim's Debian/apt build lags releases by a lot; the dotfiles' lazy-lock.json
 # and treesitter setup expect a current release, so pull the GitHub binary.
 # uname -m (not TARGETARCH) since that ARG only gets auto-populated by
@@ -61,6 +71,7 @@ RUN chmod 755 /usr/local/bin/entrypoint.sh
 USER agent
 WORKDIR /home/agent
 RUN curl -fsSL https://herdr.dev/install.sh | sh
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 ENV PATH="/home/agent/.local/bin:${PATH}"
 RUN chezmoi init --apply kris-steinhoff/dotfiles
 
