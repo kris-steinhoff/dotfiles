@@ -224,6 +224,29 @@ require("lazy").setup({
     },
   },
   {
+    "WhoIsSethDaniel/mason-tool-installer.nvim",
+    dependencies = { "mason-org/mason.nvim" },
+    opts = {
+      ensure_installed = { "prettier" },
+    },
+  },
+  {
+    "stevearc/conform.nvim",
+    keys = {
+      {
+        "<leader>cf",
+        function() require("conform").format({ lsp_fallback = true }) end,
+        mode = { "n", "v" },
+        desc = "Format buffer",
+      },
+    },
+    opts = {
+      formatters_by_ft = {
+        markdown = { "prettier" },
+      },
+    },
+  },
+  {
     "nvim-lualine/lualine.nvim",
     event = "VeryLazy",
     opts = {
