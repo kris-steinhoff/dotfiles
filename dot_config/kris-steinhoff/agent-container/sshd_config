@@ -1,8 +1,0 @@
-PermitRootLogin no
-AllowUsers agent
-PasswordAuthentication no
-KbdInteractiveAuthentication no
-PubkeyAuthentication yes
-X11Forwarding no
-AllowAgentForwarding yes
-PrintMotd no

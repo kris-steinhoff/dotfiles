@@ -334,22 +334,3 @@ _ta() {
 	compadd -- $sessions
 }
 compdef _ta ta
-
-# agent-container: local Docker container (claude/opencode/nvim) attached
-# to over SSH via herdr. See ~/.config/kris-steinhoff/agent-container/README.md
-agent-container() {
-	local -x COMPOSE_FILE="${HOME}/.config/kris-steinhoff/agent-container/docker-compose.yml"
-	case "${1:-attach}" in
-		up)     docker compose up -d --build ;;
-		down)   docker compose down ;;
-		logs)   docker compose logs -f ;;
-		attach) herdr --remote agent-container ;;
-		*)      echo "usage: agent-container [up|down|logs|attach]" >&2; return 1 ;;
-	esac
-}
-
-# Complete `agent-container` with its subcommands.
-_agent_container() {
-	compadd -- up down logs attach
-}
-compdef _agent_container agent-container

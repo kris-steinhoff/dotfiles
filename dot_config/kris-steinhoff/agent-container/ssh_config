@@ -1,5 +1,0 @@
-Host agent-container
-    HostName localhost
-    Port 2222
-    User agent
-    ForwardAgent yes
