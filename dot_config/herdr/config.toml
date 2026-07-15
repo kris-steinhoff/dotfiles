@@ -11,6 +11,9 @@ enabled = true
 [ui.toast]
 delivery = "terminal"
 
+[ui.toast.clipboard]
+enabled = false
+
 [theme]
 name = "tokyo-night"
 auto_switch = false
