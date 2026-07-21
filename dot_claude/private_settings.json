@@ -1,4 +1,3 @@
-{{- $nexus := hasKey . "nexusPluginPath" -}}
 {
   "env": {
     "DISABLE_AUTOUPDATER": "1"
@@ -14,7 +13,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash '{{ .chezmoi.homeDir }}/.claude/hooks/herdr-agent-state.sh' session",
+            "command": "bash ~/.claude/hooks/herdr-agent-state.sh session",
             "timeout": 10
           }
         ]
@@ -26,8 +25,7 @@
   },
   "enabledPlugins": {
     "agent-skills@addy-agent-skills": true,
-    "aws-core@agent-toolkit-for-aws": true{{ if $nexus }},
-    "nexus-dev@nexus-dev": true{{ end }}
+    "aws-core@agent-toolkit-for-aws": true
   },
   "extraKnownMarketplaces": {
     "addy-agent-skills": {
@@ -41,13 +39,7 @@
         "source": "github",
         "repo": "aws/agent-toolkit-for-aws"
       }
-    }{{ if $nexus }},
-    "nexus-dev": {
-      "source": {
-        "source": "directory",
-        "path": {{ .nexusPluginPath | quote }}
-      }
-    }{{ end }}
+    }
   },
   "sandbox": {
     "enabled": true,
