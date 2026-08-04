@@ -1,5 +1,5 @@
 CLAUDE.md
-/README.md
+README.md
 
 {{- if ne .chezmoi.os "darwin" }}
 Library/**
