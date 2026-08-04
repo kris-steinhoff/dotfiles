@@ -45,6 +45,34 @@ Shared configs live under `dot_config/kris-steinhoff/` (deployed to `~/.config/k
 
 The `run_once_bootstrap.sh` script uses `ensure_config` to add the include line automatically, prompting the user when a file already exists but doesn't include the shared config.
 
+## Agent skills
+
+A skill is authored once and shared across every agent surface, so it is edited in exactly one place. The canonical copy is a real directory under `dot_agents/skills/`, which deploys to `~/.agents/skills/`.
+
+That location is the cross-agent convention, not an arbitrary pick. Codex and OpenCode both read `~/.agents/skills/` natively, so they need nothing beyond the canonical copy. Claude Code and Gemini look elsewhere, so each gets a chezmoi symlink pointing back at it.
+
+| Surface         | Source path                                                           |
+| --------------- | --------------------------------------------------------------------- |
+| Canonical       | `dot_agents/skills/<name>/`                                           |
+| Codex, OpenCode | none, they read `~/.agents/skills/` natively                          |
+| Claude Code     | `dot_claude/skills/symlink_<name>.tmpl`                               |
+| Gemini          | `dot_gemini/config/plugins/kris-steinhoff/skills/symlink_<name>.tmpl` |
+
+A `symlink_` template's entire body is the link target:
+
+```
+{{ .chezmoi.homeDir }}/.agents/skills/<name>
+```
+
+The Gemini surface is a plugin, not a plain skills directory. `dot_gemini/config/plugins/kris-steinhoff/plugin.json` declares it, and the symlinks live in that plugin's `skills/` subdirectory.
+
+To add a skill:
+
+1. `chezmoi add ~/.agents/skills/<name>` (chezmoi applies the `executable_` prefix to nested scripts such as `bin/` helpers, which a manual copy would miss). This alone is enough for Codex and OpenCode.
+2. Create the two `symlink_<name>.tmpl` files above, for Claude Code and Gemini.
+
+To remove a skill, delete it from all three source locations _and_ add the deployed paths to `.chezmoiremove`. chezmoi does not delete a target just because its source entry disappeared, so without the `.chezmoiremove` entries the skill lingers in `$HOME` on every machine that already applied it.
+
 ## Key tools configured
 
 - **Shell**: zsh with starship prompt, zsh-autosuggestions, zsh-syntax-highlighting, direnv
