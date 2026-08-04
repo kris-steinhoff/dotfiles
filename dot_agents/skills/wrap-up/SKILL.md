@@ -18,7 +18,7 @@ Personal notes to your future self. Private, not in the repo. Use for:
 - **Feedback patterns**: corrections or confirmed approaches from the user
 - **Reference pointers**: where to find things in external systems
 
-MEMORY has four types: `user`, `feedback`, `project`, `reference`. Each file has YAML frontmatter (`name`, `description`, `type`) and the memory body. An index lives at `MEMORY.md` — keep entries under ~150 chars.
+MEMORY has four types: `user`, `feedback`, `project`, `reference`. Each file has YAML frontmatter (`name`, `description`, `metadata.type`) and the memory body. An index lives at `MEMORY.md` — keep entries under ~150 chars.
 
 ### 2. Project rules (`.claude/rules/` in the project root)
 Shared instructions checked into the repo. Use for:
@@ -44,11 +44,12 @@ Only write to `.claude/rules/` when the convention is genuinely repo-wide (not j
 4. **Write memories** using the standard format:
    ```markdown
    ---
-   name: Descriptive name
+   name: short-kebab-case-slug
    description: One-line hook for the MEMORY.md index
-   type: user | feedback | project | reference
+   metadata:
+     type: user | feedback | project | reference
    ---
-   [Memory body. For feedback/project: lead with the fact/rule, then **Why:** and **How to apply:** lines.]
+   [Memory body. For feedback/project: lead with the fact/rule, then **Why:** and **How to apply:** lines. Link related memories with [[other-name]].]
    ```
 
 5. **Update MEMORY.md index** — one line per memory file, under ~150 chars: `- [Title](file.md) — one-line hook`
