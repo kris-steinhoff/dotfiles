@@ -1,0 +1,5 @@
+.agents/skills/lint-and-format
+.agents/skills/planning
+.claude/skills/lint-and-format
+.claude/skills/planning
+.gemini/config/plugins/kris-steinhoff-pulsar
