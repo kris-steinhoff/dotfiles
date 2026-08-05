@@ -16,7 +16,7 @@ It does not wait for the review, read the agent's output, or report findings. Th
 ## Run it
 
 ```bash
-~/.agents/skills/herdr-pr-review/scripts/pr-review [<pr>] [--kind <kind>] [--focus]
+scripts/pr-review [<pr>] [--kind <kind>] [--focus]
 ```
 
 With no argument it takes the current branch's pull request. It checks `HERDR_ENV`, resolves the PR, opens a tab in the current workspace, starts the agent, and submits `/review <pr>`, printing a JSON summary on stdout:

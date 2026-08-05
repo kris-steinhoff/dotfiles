@@ -16,7 +16,7 @@ It creates the worktree and stops. It does not start an agent. Compose it with `
 ## Run it
 
 ```bash
-~/.agents/skills/herdr-pr-worktree/scripts/pr-worktree [<pr>] [--path <path>] [--no-focus]
+scripts/pr-worktree [<pr>] [--path <path>] [--no-focus]
 ```
 
 With no argument it takes the current branch's pull request. It checks `HERDR_ENV`, resolves the PR, fetches the head, and creates the worktree, printing a JSON summary on stdout:
