@@ -16,22 +16,38 @@ It creates the worktree and stops. It does not start an agent. Compose it with `
 ## Run it
 
 ```bash
-scripts/pr-worktree [<pr>] [--path <path>] [--no-focus]
+scripts/pr-worktree [<pr>] [--path <path>] [--no-focus] [--no-update]
 ```
 
 With no argument it takes the current branch's pull request. It checks `HERDR_ENV`, resolves the PR, fetches the head, and creates the worktree, printing a JSON summary on stdout:
 
 ```json
-{ "pr": 1, "branch": "dependabot/uv/python-e5a28babbf", "path": "...", "workspace_id": "w3J", "pane_id": "w3J:p1", "fork": false, "reused": false }
+{ "pr": 1, "branch": "dependabot/uv/python-e5a28babbf", "path": "...", "workspace_id": "w3J", "pane_id": "w3J:p1", "fork": false, "reused": false, "already_open": false, "update": null }
 ```
 
-Report the path and the workspace to the user. That is the whole job.
+Report the path and the workspace to the user, plus `update.status` when it is not `up-to-date` or `fast-forwarded`. That is the whole job.
 
 **Exit 2 means it needs you to decide.** The PR was not named and the current branch has no pull request, or the one named does not exist. Open pull requests are listed on stderr. Ask which, then run it again with that number. Do not guess.
 
 **Focus** is on by default, since the user asked to open the PR. Pass `--no-focus` when staging several worktrees at once, or when the user is mid-task and said not to move them.
 
-**A branch already checked out** comes back with `"reused": true` and the existing path, and nothing is fetched. Git refuses to fetch into a branch checked out in a worktree, so refreshing it means pulling from inside that worktree.
+## Arriving somewhere that already exists
+
+Running it twice on the same PR is normal, so the script is written to converge rather than to fail. It never needs a manual pull or a manual focus afterwards.
+
+| State on disk                             | What happens                                                              |
+| ----------------------------------------- | ------------------------------------------------------------------------- |
+| Nothing yet                               | Fetch, create the worktree, open the workspace                            |
+| Branch already checked out in a worktree   | Fast-forward it, then open or focus its workspace, `"reused": true`       |
+| Worktree exists but no Herdr workspace     | `worktree open` attaches one to that path                                 |
+| Workspace already open                     | Same call reports `"already_open": true`, and it is focused               |
+| Worktree directory deleted, metadata left  | `git worktree prune`, then create fresh                                   |
+| Local branch left over, nothing using it   | Fast-forward the branch and check it out rather than creating it again     |
+| Branch checked out in the main checkout     | Reported with `workspace_id: null`, since git allows one checkout per branch |
+
+**`update` reports the refresh, and never resolves a conflict for you.** It is `null` on a fresh create and when `--no-update` is passed. Otherwise `status` is one of `up-to-date`, `fast-forwarded` (with `commits`), `ahead` (local commits not on the PR head), `diverged` (force-push or real divergence), `skipped-dirty`, `fetch-failed`, or `merge-failed`. The last four leave the worktree exactly as it was and are worth surfacing to the user, since each one means someone has to decide something. The refresh is a fetch plus `merge --ff-only`, never a reset, so nothing uncommitted is ever at risk.
+
+Pass `--no-update` when the user wants to look at the worktree as they left it.
 
 ## Worth knowing
 
@@ -39,7 +55,9 @@ Report the path and the workspace to the user. That is the whole job.
 
 **It creates a workspace, not a tab.** `worktree create` opens a new Herdr workspace, because a separate checkout is a separate context. This surprises people expecting a tab next to their current work.
 
-**Same-repository PRs come out tracking, forks do not.** For a branch on `origin`, the script fetches it by name and branches the worktree from `origin/<branch>`, which sets the upstream, so `git push` inside the worktree goes back to the PR. A fork's branch is not on `origin`, so it comes through the pull ref with no upstream, which is correct for someone else's branch. If the user needs to push to a fork's PR, run `gh pr checkout <pr>` inside the worktree, which configures the remote for it.
+**Same-repository PRs come out tracking, forks do not.** For a new branch on `origin`, the script fetches it by name and branches the worktree from `origin/<branch>`, which sets the upstream, so `git push` inside the worktree goes back to the PR. A fork's branch is not on `origin`, so it comes through the pull ref with no upstream, which is correct for someone else's branch. A leftover local branch is checked out as it stands, keeping whatever upstream it already had. If the user needs to push to a fork's PR, run `gh pr checkout <pr>` inside the worktree, which configures the remote for it.
+
+**The refresh runs inside the worktree, not in the repository you called from.** Git refuses to fetch into a branch that some worktree has checked out, so the update fetches and fast-forwards from within that checkout instead. The refresh never depends on an upstream being configured either, since it merges `FETCH_HEAD`, which both the branch fetch and the pull-ref fetch leave behind.
 
 ## Cleaning up
 

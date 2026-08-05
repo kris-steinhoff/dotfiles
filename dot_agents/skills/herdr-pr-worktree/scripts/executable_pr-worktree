@@ -2,8 +2,26 @@
 """Check out a pull request's branch into a Herdr worktree workspace.
 
 The local branch keeps the PR's own name. Fork and same-repository PRs need
-different fetch refspecs and different worktree arguments, and that conditional
-is applied twice, which is exactly the kind of thing worth not re-deriving.
+different fetch refspecs, and that conditional shows up in more than one place,
+which is exactly the kind of thing worth not re-deriving.
+
+Most of this file is about arriving somewhere that already half exists. A PR
+gets opened, looked at, closed, and opened again, so the interesting states are
+"branch already checked out in a worktree", "worktree on disk but no Herdr
+workspace", "workspace already open", and "local branch left behind by an
+earlier cleanup". Each of those used to end in a bare error or a dead end that
+the caller had to finish by hand, so each one is handled here instead:
+
+  - already checked out  -> refresh it in place, then open or focus its workspace
+  - not open in Herdr    -> `worktree open` attaches a workspace to the path
+  - already open         -> `worktree open` reports already_open, and we focus it
+  - stale metadata       -> prune and create fresh
+  - local branch exists  -> reuse it rather than asking git to create it again
+
+Refreshing is a fetch plus `merge --ff-only`, never a reset. A dirty worktree,
+local commits, or a force-push all stop the update and get reported rather than
+resolved, because deciding what to do with someone's work is not this script's
+job.
 
 Teardown is deliberately not here. Removing a workspace by ID is one typo away
 from removing someone else's, and this Herdr instance is shared. SKILL.md has
@@ -35,7 +53,7 @@ def run(args: list[str], cwd: str | None = None) -> subprocess.CompletedProcess[
     return subprocess.run(args, cwd=cwd, capture_output=True, text=True)
 
 
-def herdr(args: list[str]) -> dict:
+def herdr(args: list[str], *, allow_error: bool = False) -> dict:
     """A result comes back as JSON on stdout. A server error comes back as JSON
     on stderr with exit status 1, so read whichever stream has content."""
     done = run(["herdr", *args])
@@ -45,6 +63,8 @@ def herdr(args: list[str]) -> dict:
     except json.JSONDecodeError:
         die(f"herdr {' '.join(args[:2])} returned no JSON:\n{raw or '(no output)'}")
     if "error" in payload:
+        if allow_error:
+            return payload
         code = payload["error"].get("code", "unknown")
         die(f"herdr {' '.join(args[:2])} failed [{code}]: {payload['error'].get('message', '')}")
     return payload
@@ -82,15 +102,99 @@ def resolve_pr(arg: str | None, cwd: str) -> dict:
     raise SystemExit(2)
 
 
-def existing_worktree(root: str, branch: str) -> str | None:
+def worktrees(root: str) -> list[dict]:
+    """Every worktree of this repository, main one first, which is the order
+    git reports them in."""
     done = run(["git", "-C", root, "worktree", "list", "--porcelain"])
-    current: str | None = None
+    if done.returncode != 0:
+        die(f"could not list worktrees:\n{done.stderr.strip()}")
+    records: list[dict] = []
+    current: dict = {}
     for line in done.stdout.splitlines():
-        if line.startswith("worktree "):
-            current = line[len("worktree ") :]
-        elif line == f"branch refs/heads/{branch}":
-            return current
-    return None
+        if not line.strip():
+            if current:
+                records.append(current)
+                current = {}
+            continue
+        key, _, value = line.partition(" ")
+        if key == "worktree":
+            current = {"path": value}
+        elif key == "branch":
+            current["branch"] = value.removeprefix("refs/heads/")
+    if current:
+        records.append(current)
+    return records
+
+
+def local_branch_exists(root: str, branch: str) -> bool:
+    done = run(["git", "-C", root, "rev-parse", "--verify", "--quiet", f"refs/heads/{branch}"])
+    return done.returncode == 0
+
+
+def head_of(path: str) -> str:
+    return run(["git", "-C", path, "rev-parse", "HEAD"]).stdout.strip()
+
+
+def fetch_head_ref(pr_number: int, branch: str, fork: bool) -> list[str]:
+    """A fork's branch is not on origin, so it comes through the pull ref. Both
+    forms leave the fetched tip in FETCH_HEAD, which is what we merge, so the
+    rest of the update needs no second conditional."""
+    return ["fetch", "origin", f"pull/{pr_number}/head" if fork else branch]
+
+
+def is_ancestor(path: str, older: str, newer: str) -> bool:
+    return run(["git", "-C", path, "merge-base", "--is-ancestor", older, newer]).returncode == 0
+
+
+def refresh(path: str, pr_number: int, branch: str, fork: bool) -> dict:
+    """Fast-forward an existing worktree to the PR head. Anything that is not a
+    fast-forward is reported, not resolved.
+
+    The decision is made by ancestry rather than by whether the merge succeeds,
+    because `merge --ff-only` also succeeds when the fetched tip is already
+    behind HEAD, which would report a worktree holding unpushed commits as up to
+    date."""
+    dirty = run(["git", "-C", path, "status", "--porcelain"]).stdout.strip()
+    if dirty:
+        return {"status": "skipped-dirty", "detail": "uncommitted changes, left alone"}
+
+    fetch = run(["git", "-C", path, *fetch_head_ref(pr_number, branch, fork)])
+    if fetch.returncode != 0:
+        lines = fetch.stderr.strip().splitlines()
+        return {"status": "fetch-failed", "detail": lines[-1] if lines else "git said nothing"}
+
+    head = head_of(path)
+    fetched = run(["git", "-C", path, "rev-parse", "FETCH_HEAD"]).stdout.strip()
+    if not fetched:
+        return {"status": "fetch-failed", "detail": "FETCH_HEAD did not resolve"}
+    if fetched == head:
+        return {"status": "up-to-date"}
+    if is_ancestor(path, fetched, head):
+        return {"status": "ahead", "detail": "local commits not on the PR head yet"}
+    if not is_ancestor(path, head, fetched):
+        return {"status": "diverged", "detail": "not a fast-forward, resolve by hand"}
+
+    merge = run(["git", "-C", path, "merge", "--ff-only", "FETCH_HEAD"])
+    if merge.returncode != 0:
+        lines = merge.stderr.strip().splitlines()
+        return {"status": "merge-failed", "detail": lines[-1] if lines else "git said nothing"}
+    count = run(["git", "-C", path, "rev-list", "--count", f"{head}..{fetched}"]).stdout.strip()
+    return {"status": "fast-forwarded", "commits": int(count or 0)}
+
+
+def open_workspace(root: str, path: str, focus: bool) -> dict:
+    """Attach a Herdr workspace to a worktree that already exists on disk.
+
+    Idempotent by design: an already-open worktree comes back with
+    already_open true and the workspace that has it, so this covers both "no
+    workspace yet" and "the user already has it open". The explicit focus is
+    belt and braces for the second case. No --label, since a workspace the user
+    renamed should keep its name."""
+    result = herdr(["worktree", "open", "--cwd", root, "--path", path, "--json",
+                    "--focus" if focus else "--no-focus"])["result"]
+    if result.get("already_open") and focus:
+        herdr(["workspace", "focus", result["workspace"]["workspace_id"]], allow_error=True)
+    return result
 
 
 def main() -> None:
@@ -101,35 +205,81 @@ def main() -> None:
     parser.add_argument("pr", nargs="?", help="PR number or URL (default: the current branch's PR)")
     parser.add_argument("--path", help="worktree path (default: Herdr's, under ~/.herdr/worktrees/)")
     parser.add_argument("--no-focus", action="store_true", help="leave the user where they are")
+    parser.add_argument("--no-update", action="store_true",
+                        help="do not fast-forward a worktree that already exists")
     args = parser.parse_args()
 
     if os.environ.get("HERDR_ENV") != "1":
         die("not running inside Herdr (HERDR_ENV is not 1)")
 
+    focus = not args.no_focus
     root = repo_root()
     pr = resolve_pr(args.pr, root)
+    number = pr["number"]
     branch = pr["headRefName"]
     fork = pr["isCrossRepository"]
 
-    already = existing_worktree(root, branch)
+    listing = worktrees(root)
+    main_checkout = listing[0]["path"] if listing else root
+    already = next((w for w in listing if w.get("branch") == branch), None)
+
+    # A worktree whose directory is gone still occupies the branch as far as git
+    # is concerned, and blocks the create below with a confusing message.
+    if already is not None and not os.path.isdir(already["path"]):
+        note(f"pruning stale worktree metadata for {already['path']}")
+        run(["git", "-C", root, "worktree", "prune"])
+        already = None
+
     if already is not None:
-        note(f"{branch} is already checked out; update it from inside")
+        path = already["path"]
+        if args.path and os.path.realpath(args.path) != os.path.realpath(path):
+            note(f"ignoring --path, {branch} is already checked out at {path}")
+        update = None if args.no_update else refresh(path, number, branch, fork)
+
+        if os.path.realpath(path) == os.path.realpath(main_checkout):
+            # git allows one checkout per branch, so a separate worktree is not
+            # possible from here. Say so instead of failing inside herdr.
+            note(f"{branch} is checked out in the main checkout at {path}, not a worktree")
+            workspace_id = pane_id = None
+            already_open = None
+        else:
+            result = open_workspace(root, path, focus)
+            workspace_id = result["workspace"]["workspace_id"]
+            pane_id = result["root_pane"]["pane_id"]
+            already_open = bool(result.get("already_open"))
+            note(f"#{number} on {branch} reused at {path}"
+                 f"{' (workspace already open)' if already_open else ''}")
+
         print(json.dumps({
-            "pr": pr["number"], "branch": branch, "path": already, "reused": True
+            "pr": number,
+            "title": pr["title"],
+            "branch": branch,
+            "fork": fork,
+            "path": path,
+            "workspace_id": workspace_id,
+            "pane_id": pane_id,
+            "reused": True,
+            "already_open": already_open,
+            "update": update,
         }))
         return
 
-    if fork:
-        # The fork's branch is not on origin, so go through the pull ref and
-        # name the local branch ourselves. No upstream, which is correct.
-        fetch = ["git", "-C", root, "fetch", "origin", f"pull/{pr['number']}/head:{branch}"]
+    # Nothing checked out. Fetch, then let Herdr make the worktree.
+    existing_branch = local_branch_exists(root, branch)
+    if existing_branch:
+        # A leftover from an earlier checkout. Move it forward if that is a
+        # fast-forward, and leave it alone if it is not, since it may hold work.
+        # Fetching into a branch is allowed precisely because nothing has it
+        # checked out.
+        advance = run(["git", "-C", root, "fetch", "origin",
+                       f"pull/{number}/head:{branch}" if fork else f"{branch}:{branch}"])
+        if advance.returncode != 0:
+            note(f"local branch {branch} already exists and does not fast-forward, using it as is")
+            run(["git", "-C", root, *fetch_head_ref(number, branch, fork)])
     else:
-        # Fetching by name creates origin/<branch>, which the worktree then
-        # branches from, so the local branch comes out tracking the PR.
-        fetch = ["git", "-C", root, "fetch", "origin", branch]
-    done = run(fetch)
-    if done.returncode != 0:
-        die(f"could not fetch {branch}:\n{done.stderr.strip()}")
+        done = run(["git", "-C", root, *fetch_head_ref(number, branch, fork)])
+        if done.returncode != 0:
+            die(f"could not fetch {branch}:\n{done.stderr.strip()}")
 
     create = [
         "worktree", "create",
@@ -137,18 +287,22 @@ def main() -> None:
         "--branch", branch,
         "--label", branch,
         "--json",
-        "--no-focus" if args.no_focus else "--focus",
+        "--focus" if focus else "--no-focus",
     ]
-    if not fork:
+    # --base names the ref to branch from, so it is only right when the branch
+    # is being created. An existing local branch is checked out as it stands.
+    if not fork and not existing_branch:
         create += ["--base", f"origin/{branch}"]
     if args.path:
         create += ["--path", args.path]
 
     result = herdr(create)["result"]
 
-    note(f"#{pr['number']} on {branch}{' (fork, no upstream)' if fork else ''}")
+    note(f"#{number} on {branch}"
+         f"{' (fork, no upstream)' if fork else ''}"
+         f"{' (reused existing local branch)' if existing_branch else ''}")
     print(json.dumps({
-        "pr": pr["number"],
+        "pr": number,
         "title": pr["title"],
         "branch": branch,
         "fork": fork,
@@ -156,6 +310,8 @@ def main() -> None:
         "workspace_id": result["workspace"]["workspace_id"],
         "pane_id": result["root_pane"]["pane_id"],
         "reused": False,
+        "already_open": False,
+        "update": None,
     }))
 
 
