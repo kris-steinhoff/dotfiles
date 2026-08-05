@@ -1,0 +1,163 @@
+#!/usr/bin/env python3
+"""Start a review agent on a pull request in its own Herdr tab, then stop.
+
+Everything here is the deterministic middle of the skill: create a tab, read
+the pane out of the response, start an agent, and submit one prompt with the
+flag combination that gets a submission check without waiting for the review.
+Deciding which PR, and what to tell the user afterwards, stays in SKILL.md.
+
+Standard library only. If a herdr command changes shape, this fails loudly with
+herdr's own stderr rather than guessing, and SKILL.md explains the sequence well
+enough to run by hand.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+
+PROMPT_FLAGS = [
+    "--wait",
+    "--until", "working",
+    "--until", "idle",
+    "--until", "done",
+    "--timeout", "15000",
+]
+
+
+def die(message: str) -> "None":
+    print(f"pr-review: {message}", file=sys.stderr)
+    raise SystemExit(1)
+
+
+def note(message: str) -> None:
+    print(f"pr-review: {message}", file=sys.stderr)
+
+
+def run(args: list[str], cwd: str | None = None) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(args, cwd=cwd, capture_output=True, text=True)
+
+
+def herdr(args: list[str], *, allow_error: bool = False) -> dict:
+    """Run a herdr command and return its parsed envelope.
+
+    A result comes back as JSON on stdout. A server error comes back as JSON on
+    stderr with exit status 1, so read whichever stream has content.
+    """
+    done = run(["herdr", *args])
+    raw = done.stdout.strip() or done.stderr.strip()
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        die(f"herdr {' '.join(args[:2])} returned no JSON:\n{raw or '(no output)'}")
+    if "error" in payload and not allow_error:
+        code = payload["error"].get("code", "unknown")
+        die(f"herdr {' '.join(args[:2])} failed [{code}]: {payload['error'].get('message', '')}")
+    return payload
+
+
+def repo_root() -> str:
+    done = run(["git", "rev-parse", "--show-toplevel"])
+    if done.returncode != 0:
+        die("not inside a git repository")
+    return done.stdout.strip()
+
+
+def resolve_pr(arg: str | None, cwd: str) -> dict:
+    """Resolve the PR to work on, or exit 2 so the caller can ask."""
+    target = ["gh", "pr", "view"]
+    if arg:
+        target.append(arg)
+    done = run([*target, "--json", "number,title"], cwd=cwd)
+    if done.returncode == 0:
+        return json.loads(done.stdout)
+
+    listing = run(
+        ["gh", "pr", "list", "--state", "open", "--limit", "20", "--json", "number,title"],
+        cwd=cwd,
+    )
+    candidates = json.loads(listing.stdout) if listing.returncode == 0 else []
+    if arg:
+        print(f"pr-review: no such pull request: {arg}", file=sys.stderr)
+    else:
+        print("pr-review: the current branch has no pull request", file=sys.stderr)
+    if candidates:
+        print("pr-review: open pull requests:", file=sys.stderr)
+        for c in candidates:
+            print(f"  #{c['number']}  {c['title']}", file=sys.stderr)
+    raise SystemExit(2)
+
+
+def free_agent_name(base: str) -> str:
+    """First unused name in base, base-2, base-3, ..."""
+    for suffix in ["", *(f"-{n}" for n in range(2, 10))]:
+        name = f"{base}{suffix}"
+        payload = herdr(["agent", "get", name], allow_error=True)
+        if payload.get("error", {}).get("code") == "agent_not_found":
+            return name
+    die(f"no free agent name near {base}; close a finished review first")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        prog="pr-review",
+        description="Start a review agent on a pull request in its own Herdr tab.",
+    )
+    parser.add_argument("pr", nargs="?", help="PR number or URL (default: the current branch's PR)")
+    parser.add_argument("--kind", default="claude", help="agent kind (default: claude)")
+    parser.add_argument("--focus", action="store_true", help="switch to the new tab (default: do not)")
+    args = parser.parse_args()
+
+    if os.environ.get("HERDR_ENV") != "1":
+        die("not running inside Herdr (HERDR_ENV is not 1)")
+    workspace = os.environ.get("HERDR_WORKSPACE_ID")
+    if not workspace:
+        die("HERDR_WORKSPACE_ID is not set")
+
+    root = repo_root()
+    pr = resolve_pr(args.pr, root)
+    number = pr["number"]
+
+    name = free_agent_name(f"review-{number}")
+    tab = herdr([
+        "tab", "create",
+        "--workspace", workspace,
+        "--cwd", root,
+        "--label", name,
+        "--focus" if args.focus else "--no-focus",
+    ])["result"]
+    pane = tab["root_pane"]["pane_id"]
+
+    started = run(["herdr", "agent", "start", name, "--kind", args.kind, "--pane", pane])
+    if started.returncode != 0:
+        herdr(["tab", "close", tab["tab"]["tab_id"]], allow_error=True)
+        die(f"could not start {args.kind} in {pane}, tab closed again:\n{started.stderr.strip()}")
+
+    prompt = ["agent", "prompt", name, f"/review {number}", *PROMPT_FLAGS]
+    result = herdr(prompt, allow_error=True)
+    if result.get("error", {}).get("code") == "agent_prompt_stalled":
+        note("first submission was not observed; resubmitting once")
+        result = herdr(prompt, allow_error=True)
+    if "error" in result:
+        code = result["error"].get("code", "unknown")
+        die(
+            f"prompt not submitted [{code}]. The agent is running in {tab['tab']['tab_id']}.\n"
+            f"         Read it with: herdr agent read {name}"
+        )
+
+    note(f"{args.kind} reviewing #{number} as {name}")
+    print(json.dumps({
+        "pr": number,
+        "title": pr["title"],
+        "agent": name,
+        "kind": args.kind,
+        "tab_id": tab["tab"]["tab_id"],
+        "pane_id": pane,
+    }))
+
+
+if __name__ == "__main__":
+    main()

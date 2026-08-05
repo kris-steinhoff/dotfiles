@@ -1,0 +1,163 @@
+#!/usr/bin/env python3
+"""Check out a pull request's branch into a Herdr worktree workspace.
+
+The local branch keeps the PR's own name. Fork and same-repository PRs need
+different fetch refspecs and different worktree arguments, and that conditional
+is applied twice, which is exactly the kind of thing worth not re-deriving.
+
+Teardown is deliberately not here. Removing a workspace by ID is one typo away
+from removing someone else's, and this Herdr instance is shared. SKILL.md has
+the two commands to run by hand.
+
+Standard library only. If a herdr command changes shape, this fails loudly with
+herdr's own stderr rather than guessing.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+
+
+def die(message: str) -> "None":
+    print(f"pr-worktree: {message}", file=sys.stderr)
+    raise SystemExit(1)
+
+
+def note(message: str) -> None:
+    print(f"pr-worktree: {message}", file=sys.stderr)
+
+
+def run(args: list[str], cwd: str | None = None) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(args, cwd=cwd, capture_output=True, text=True)
+
+
+def herdr(args: list[str]) -> dict:
+    """A result comes back as JSON on stdout. A server error comes back as JSON
+    on stderr with exit status 1, so read whichever stream has content."""
+    done = run(["herdr", *args])
+    raw = done.stdout.strip() or done.stderr.strip()
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        die(f"herdr {' '.join(args[:2])} returned no JSON:\n{raw or '(no output)'}")
+    if "error" in payload:
+        code = payload["error"].get("code", "unknown")
+        die(f"herdr {' '.join(args[:2])} failed [{code}]: {payload['error'].get('message', '')}")
+    return payload
+
+
+def repo_root() -> str:
+    done = run(["git", "rev-parse", "--show-toplevel"])
+    if done.returncode != 0:
+        die("not inside a git repository")
+    return done.stdout.strip()
+
+
+def resolve_pr(arg: str | None, cwd: str) -> dict:
+    fields = "number,title,headRefName,isCrossRepository"
+    target = ["gh", "pr", "view"]
+    if arg:
+        target.append(arg)
+    done = run([*target, "--json", fields], cwd=cwd)
+    if done.returncode == 0:
+        return json.loads(done.stdout)
+
+    listing = run(
+        ["gh", "pr", "list", "--state", "open", "--limit", "20", "--json", "number,title,headRefName"],
+        cwd=cwd,
+    )
+    candidates = json.loads(listing.stdout) if listing.returncode == 0 else []
+    if arg:
+        print(f"pr-worktree: no such pull request: {arg}", file=sys.stderr)
+    else:
+        print("pr-worktree: the current branch has no pull request", file=sys.stderr)
+    if candidates:
+        print("pr-worktree: open pull requests:", file=sys.stderr)
+        for c in candidates:
+            print(f"  #{c['number']}  {c['headRefName']}  {c['title']}", file=sys.stderr)
+    raise SystemExit(2)
+
+
+def existing_worktree(root: str, branch: str) -> str | None:
+    done = run(["git", "-C", root, "worktree", "list", "--porcelain"])
+    current: str | None = None
+    for line in done.stdout.splitlines():
+        if line.startswith("worktree "):
+            current = line[len("worktree ") :]
+        elif line == f"branch refs/heads/{branch}":
+            return current
+    return None
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        prog="pr-worktree",
+        description="Check out a pull request's branch into a Herdr worktree workspace.",
+    )
+    parser.add_argument("pr", nargs="?", help="PR number or URL (default: the current branch's PR)")
+    parser.add_argument("--path", help="worktree path (default: Herdr's, under ~/.herdr/worktrees/)")
+    parser.add_argument("--no-focus", action="store_true", help="leave the user where they are")
+    args = parser.parse_args()
+
+    if os.environ.get("HERDR_ENV") != "1":
+        die("not running inside Herdr (HERDR_ENV is not 1)")
+
+    root = repo_root()
+    pr = resolve_pr(args.pr, root)
+    branch = pr["headRefName"]
+    fork = pr["isCrossRepository"]
+
+    already = existing_worktree(root, branch)
+    if already is not None:
+        note(f"{branch} is already checked out; update it from inside")
+        print(json.dumps({
+            "pr": pr["number"], "branch": branch, "path": already, "reused": True
+        }))
+        return
+
+    if fork:
+        # The fork's branch is not on origin, so go through the pull ref and
+        # name the local branch ourselves. No upstream, which is correct.
+        fetch = ["git", "-C", root, "fetch", "origin", f"pull/{pr['number']}/head:{branch}"]
+    else:
+        # Fetching by name creates origin/<branch>, which the worktree then
+        # branches from, so the local branch comes out tracking the PR.
+        fetch = ["git", "-C", root, "fetch", "origin", branch]
+    done = run(fetch)
+    if done.returncode != 0:
+        die(f"could not fetch {branch}:\n{done.stderr.strip()}")
+
+    create = [
+        "worktree", "create",
+        "--cwd", root,
+        "--branch", branch,
+        "--label", branch,
+        "--json",
+        "--no-focus" if args.no_focus else "--focus",
+    ]
+    if not fork:
+        create += ["--base", f"origin/{branch}"]
+    if args.path:
+        create += ["--path", args.path]
+
+    result = herdr(create)["result"]
+
+    note(f"#{pr['number']} on {branch}{' (fork, no upstream)' if fork else ''}")
+    print(json.dumps({
+        "pr": pr["number"],
+        "title": pr["title"],
+        "branch": branch,
+        "fork": fork,
+        "path": result["worktree"]["path"],
+        "workspace_id": result["workspace"]["workspace_id"],
+        "pane_id": result["root_pane"]["pane_id"],
+        "reused": False,
+    }))
+
+
+if __name__ == "__main__":
+    main()
