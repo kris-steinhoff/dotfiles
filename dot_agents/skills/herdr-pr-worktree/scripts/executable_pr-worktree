@@ -17,6 +17,7 @@ the caller had to finish by hand, so each one is handled here instead:
   - already open         -> `worktree open` reports already_open, and we focus it
   - stale metadata       -> prune and create fresh
   - local branch exists  -> reuse it rather than asking git to create it again
+  - held by the main checkout -> exit 3, and take the branch with --vacate
 
 Refreshing is a fetch plus `merge --ff-only`, never a reset. A dirty worktree,
 local commits, or a force-push all stop the update and get reported rather than
@@ -126,6 +127,40 @@ def worktrees(root: str) -> list[dict]:
     return records
 
 
+def default_branch(root: str) -> str:
+    """What the main checkout goes back to when it gives up the PR branch.
+
+    GitHub is asked first, since that is the branch the PR merges into. The
+    remote's HEAD is the offline fallback."""
+    done = run(["gh", "repo", "view", "--json", "defaultBranchRef"], cwd=root)
+    if done.returncode == 0:
+        try:
+            name = json.loads(done.stdout)["defaultBranchRef"]["name"]
+        except (json.JSONDecodeError, KeyError, TypeError):
+            name = ""
+        if name:
+            return name
+    done = run(["git", "-C", root, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"])
+    if done.returncode == 0 and done.stdout.strip():
+        return done.stdout.strip().removeprefix("origin/")
+    die("could not determine the default branch")
+
+
+def vacate(path: str, branch: str, target: str) -> None:
+    """Move the main checkout off the PR branch so a worktree can take it.
+
+    Only tracked changes block this. Untracked files ride along harmlessly and
+    are common in a checkout someone works in, so refusing on them would refuse
+    almost always. Anything git itself would clobber, git refuses to switch."""
+    dirty = run(["git", "-C", path, "status", "--porcelain", "--untracked-files=no"]).stdout.strip()
+    if dirty:
+        die(f"{path} has uncommitted changes on {branch}, commit or stash them first")
+    done = run(["git", "-C", path, "switch", target])
+    if done.returncode != 0:
+        die(f"could not switch {path} to {target}:\n{done.stderr.strip()}")
+    note(f"switched {path} from {branch} to {target}")
+
+
 def local_branch_exists(root: str, branch: str) -> bool:
     done = run(["git", "-C", root, "rev-parse", "--verify", "--quiet", f"refs/heads/{branch}"])
     return done.returncode == 0
@@ -207,6 +242,9 @@ def main() -> None:
     parser.add_argument("--no-focus", action="store_true", help="leave the user where they are")
     parser.add_argument("--no-update", action="store_true",
                         help="do not fast-forward a worktree that already exists")
+    parser.add_argument("--vacate", action="store_true",
+                        help="if the main checkout holds the branch, switch it to the "
+                             "default branch and take the branch for the worktree")
     args = parser.parse_args()
 
     if os.environ.get("HERDR_ENV") != "1":
@@ -230,25 +268,31 @@ def main() -> None:
         run(["git", "-C", root, "worktree", "prune"])
         already = None
 
+    # git allows one checkout per branch, so a worktree cannot take the branch
+    # while the main checkout holds it. That checkout is where someone works,
+    # and moving it is their call, not this script's, so ask by exiting 3.
+    if already is not None and os.path.realpath(already["path"]) == os.path.realpath(main_checkout):
+        if not args.vacate:
+            target = default_branch(root)
+            note(f"{branch} is checked out in the main checkout at {main_checkout}")
+            note("git allows one checkout per branch, so the worktree cannot have it yet")
+            note(f"ask whether to switch that checkout to {target}, then re-run with --vacate")
+            raise SystemExit(3)
+        vacate(main_checkout, branch, default_branch(root))
+        already = None
+
     if already is not None:
         path = already["path"]
         if args.path and os.path.realpath(args.path) != os.path.realpath(path):
             note(f"ignoring --path, {branch} is already checked out at {path}")
         update = None if args.no_update else refresh(path, number, branch, fork)
 
-        if os.path.realpath(path) == os.path.realpath(main_checkout):
-            # git allows one checkout per branch, so a separate worktree is not
-            # possible from here. Say so instead of failing inside herdr.
-            note(f"{branch} is checked out in the main checkout at {path}, not a worktree")
-            workspace_id = pane_id = None
-            already_open = None
-        else:
-            result = open_workspace(root, path, focus)
-            workspace_id = result["workspace"]["workspace_id"]
-            pane_id = result["root_pane"]["pane_id"]
-            already_open = bool(result.get("already_open"))
-            note(f"#{number} on {branch} reused at {path}"
-                 f"{' (workspace already open)' if already_open else ''}")
+        result = open_workspace(root, path, focus)
+        workspace_id = result["workspace"]["workspace_id"]
+        pane_id = result["root_pane"]["pane_id"]
+        already_open = bool(result.get("already_open"))
+        note(f"#{number} on {branch} reused at {path}"
+             f"{' (workspace already open)' if already_open else ''}")
 
         print(json.dumps({
             "pr": number,

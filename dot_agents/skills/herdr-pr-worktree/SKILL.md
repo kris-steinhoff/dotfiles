@@ -16,7 +16,7 @@ It creates the worktree and stops. It does not start an agent. Compose it with `
 ## Run it
 
 ```bash
-scripts/pr-worktree [<pr>] [--path <path>] [--no-focus] [--no-update]
+scripts/pr-worktree [<pr>] [--path <path>] [--no-focus] [--no-update] [--vacate]
 ```
 
 With no argument it takes the current branch's pull request. It checks `HERDR_ENV`, resolves the PR, fetches the head, and creates the worktree, printing a JSON summary on stdout:
@@ -27,7 +27,13 @@ With no argument it takes the current branch's pull request. It checks `HERDR_EN
 
 Report the path and the workspace to the user, plus `update.status` when it is not `up-to-date` or `fast-forwarded`. That is the whole job.
 
-**Exit 2 means it needs you to decide.** The PR was not named and the current branch has no pull request, or the one named does not exist. Open pull requests are listed on stderr. Ask which, then run it again with that number. Do not guess.
+**Exit 2 means it needs you to decide which PR.** The PR was not named and the current branch has no pull request, or the one named does not exist. Open pull requests are listed on stderr. Ask which, then run it again with that number. Do not guess.
+
+**Exit 3 means the checkout you are sitting in already has the branch.** git allows one checkout per branch, so the worktree cannot have it until that checkout gives it up. This is routine, not an error: it is what happens when someone asks to open the PR they are already on. stderr names the branch, the checkout, and the default branch it would go back to.
+
+Ask the user whether to switch that checkout to the default branch, then re-run with `--vacate`, which switches it and creates the worktree in one pass. It refuses on uncommitted tracked changes rather than stashing them, so if that comes back, report it and let the user commit or stash. Untracked files are left alone and do not block the switch.
+
+Ask first. Vacating moves the user's own working directory to another branch, which is theirs to approve, and the flag exists so that approval is a real choice rather than a default.
 
 **Focus** is on by default, since the user asked to open the PR. Pass `--no-focus` when staging several worktrees at once, or when the user is mid-task and said not to move them.
 
@@ -43,7 +49,7 @@ Running it twice on the same PR is normal, so the script is written to converge 
 | Workspace already open                     | Same call reports `"already_open": true`, and it is focused               |
 | Worktree directory deleted, metadata left  | `git worktree prune`, then create fresh                                   |
 | Local branch left over, nothing using it   | Fast-forward the branch and check it out rather than creating it again     |
-| Branch checked out in the main checkout     | Reported with `workspace_id: null`, since git allows one checkout per branch |
+| Branch checked out in the main checkout     | Exit 3, so you can ask. `--vacate` switches that checkout to the default branch, then creates |
 
 **`update` reports the refresh, and never resolves a conflict for you.** It is `null` on a fresh create and when `--no-update` is passed. Otherwise `status` is one of `up-to-date`, `fast-forwarded` (with `commits`), `ahead` (local commits not on the PR head), `diverged` (force-push or real divergence), `skipped-dirty`, `fetch-failed`, or `merge-failed`. The last four leave the worktree exactly as it was and are worth surfacing to the user, since each one means someone has to decide something. The refresh is a fetch plus `merge --ff-only`, never a reset, so nothing uncommitted is ever at risk.
 
