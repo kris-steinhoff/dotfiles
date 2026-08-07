@@ -9,6 +9,12 @@ else
 fi
 export PIP_DISABLE_PIP_VERSION_CHECK=1
 
+# pre-commit draws its status chips as ANSI background colors, and GREEN
+# ('\033[42m') sets no foreground, so "Passed" renders in the terminal's
+# default fg. Against tokyonight's pastel green that's unreadable. Plain
+# text beats a low-contrast block.
+export PRE_COMMIT_COLOR=never
+
 # === Homebrew ===
 
 if [[ -f /opt/homebrew/bin/brew ]]; then
