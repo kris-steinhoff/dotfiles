@@ -13,4 +13,3 @@ window-inherit-working-directory = false
 # passes the key through when there's no selection (leaking a stray "c" while
 # herdr owns the selection). This always consumes Cmd-C instead.
 keybind = super+c=copy_to_clipboard
-
