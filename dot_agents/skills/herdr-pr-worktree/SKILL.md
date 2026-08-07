@@ -41,15 +41,15 @@ Ask first. Vacating moves the user's own working directory to another branch, wh
 
 Running it twice on the same PR is normal, so the script is written to converge rather than to fail. It never needs a manual pull or a manual focus afterwards.
 
-| State on disk                             | What happens                                                              |
-| ----------------------------------------- | ------------------------------------------------------------------------- |
-| Nothing yet                               | Fetch, create the worktree, open the workspace                            |
-| Branch already checked out in a worktree   | Fast-forward it, then open or focus its workspace, `"reused": true`       |
-| Worktree exists but no Herdr workspace     | `worktree open` attaches one to that path                                 |
-| Workspace already open                     | Same call reports `"already_open": true`, and it is focused               |
-| Worktree directory deleted, metadata left  | `git worktree prune`, then create fresh                                   |
-| Local branch left over, nothing using it   | Fast-forward the branch and check it out rather than creating it again     |
-| Branch checked out in the main checkout     | Exit 3, so you can ask. `--vacate` switches that checkout to the default branch, then creates |
+| State on disk                             | What happens                                                                                  |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Nothing yet                               | Fetch, create the worktree, open the workspace                                                |
+| Branch already checked out in a worktree  | Fast-forward it, then open or focus its workspace, `"reused": true`                           |
+| Worktree exists but no Herdr workspace    | `worktree open` attaches one to that path                                                     |
+| Workspace already open                    | Same call reports `"already_open": true`, and it is focused                                   |
+| Worktree directory deleted, metadata left | `git worktree prune`, then create fresh                                                       |
+| Local branch left over, nothing using it  | Fast-forward the branch and check it out rather than creating it again                        |
+| Branch checked out in the main checkout   | Exit 3, so you can ask. `--vacate` switches that checkout to the default branch, then creates |
 
 **`update` reports the refresh, and never resolves a conflict for you.** It is `null` on a fresh create and when `--no-update` is passed. Otherwise `status` is one of `up-to-date`, `fast-forwarded` (with `commits`), `ahead` (local commits not on the PR head), `diverged` (force-push or real divergence), `skipped-dirty`, `fetch-failed`, or `merge-failed`. The last four leave the worktree exactly as it was and are worth surfacing to the user, since each one means someone has to decide something. The refresh is a fetch plus `merge --ff-only`, never a reset, so nothing uncommitted is ever at risk.
 

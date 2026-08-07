@@ -35,9 +35,7 @@ scripts/ralph-loop start [--prompt FILE] [--max N] [--worktree [BRANCH]] [--yolo
 It creates a tab, splits a small driver pane below, starts the agent above, and hands the driver the loop. It prints a JSON summary on stdout:
 
 ```json
-{ "agent": "ralph-prompt", "workdir": "/…", "branch": null, "tab_id": "wE:t8",
-  "agent_pane": "wE:pQ", "driver_pane": "wE:pR",
-  "stop_file": "/…/.ralph/STOP", "log": "/…/.ralph/loop.jsonl" }
+{ "agent": "ralph-prompt", "workdir": "/…", "branch": null, "tab_id": "wE:t8", "agent_pane": "wE:pQ", "driver_pane": "wE:pR", "stop_file": "/…/.ralph/STOP", "log": "/…/.ralph/loop.jsonl" }
 ```
 
 Tell the user the tab, the iteration cap, and the stop file, then stop.
@@ -54,7 +52,7 @@ Tell the user the tab, the iteration cap, and the stop file, then stop.
 
 Iteration 1 goes to the freshly started agent as-is. Every later iteration sends `/clear` first, confirms the reset actually happened, then submits the prompt file's current contents with `--wait`.
 
-That confirmation is not decoration. The agent's lifecycle status is already `idle` or `done` the instant `/clear` is typed, so waiting on the status proves nothing and the next prompt lands in the *old* context. The loop then quietly stops being a Ralph loop and becomes one long accumulating conversation, with nothing in the log to say so. The script instead watches the agent's session identity, which only changes once the clear is real, and stops the loop if it never does.
+That confirmation is not decoration. The agent's lifecycle status is already `idle` or `done` the instant `/clear` is typed, so waiting on the status proves nothing and the next prompt lands in the _old_ context. The loop then quietly stops being a Ralph loop and becomes one long accumulating conversation, with nothing in the log to say so. The script instead watches the agent's session identity, which only changes once the clear is real, and stops the loop if it never does.
 
 Two things still follow from using `/clear`, and both are worth saying out loud to the user:
 
@@ -64,11 +62,11 @@ Two things still follow from using `/clear`, and both are worth saying out loud 
 
 ## Stopping
 
-| Want | Do |
-| ---------------------------- | ------------------------------------------------- |
-| Stop after the current pass  | `touch <workdir>/.ralph/STOP`                     |
-| Stop now                     | Ctrl-C in the driver pane                          |
-| See what it has done         | `cat <workdir>/.ralph/loop.jsonl`                  |
+| Want                        | Do                                |
+| --------------------------- | --------------------------------- |
+| Stop after the current pass | `touch <workdir>/.ralph/STOP`     |
+| Stop now                    | Ctrl-C in the driver pane         |
+| See what it has done        | `cat <workdir>/.ralph/loop.jsonl` |
 
 The loop also stops on its own when the agent goes `blocked`, when the agent exits, when a prompt cannot be submitted, or at the cap. The driver prints the reason as its last line.
 

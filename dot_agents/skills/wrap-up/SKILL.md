@@ -12,7 +12,9 @@ At the end of a session, review the conversation and persist anything valuable f
 Choose the right target for each piece of information:
 
 ### 1. MEMORY (`~/.claude/projects/{project-slug}/memory/`)
+
 Personal notes to your future self. Private, not in the repo. Use for:
+
 - **Project status**: what phase/milestone was reached, what's next
 - **Why decisions were made**: constraints, tradeoffs, external factors not visible in the code
 - **Feedback patterns**: corrections or confirmed approaches from the user
@@ -21,7 +23,9 @@ Personal notes to your future self. Private, not in the repo. Use for:
 MEMORY has four types: `user`, `feedback`, `project`, `reference`. Each file has YAML frontmatter (`name`, `description`, `metadata.type`) and the memory body. An index lives at `MEMORY.md` — keep entries under ~150 chars.
 
 ### 2. Project rules (`.claude/rules/` in the project root)
+
 Shared instructions checked into the repo. Use for:
+
 - Conventions and patterns that should apply to **all future work** on the project, including by other contributors
 - Architectural decisions or constraints that the assistant or agent should follow when editing code
 - Anything that belongs in an instructions file (e.g., `CLAUDE.md`) rather than personal notes
@@ -31,6 +35,7 @@ Only write to `.claude/rules/` when the convention is genuinely repo-wide (not j
 ## Process
 
 1. **Scan the conversation** for:
+
    - Milestones reached or work completed (→ update `project` memory for status/next-steps)
    - Corrections or confirmed approaches from the user (→ `feedback` memory)
    - New patterns or conventions established in this session (→ `project` memory or `.claude/rules/` if repo-wide)
@@ -42,6 +47,7 @@ Only write to `.claude/rules/` when the convention is genuinely repo-wide (not j
 3. **Apply the "would this help future-me?" test**: if the information is already recoverable by reading the code, running `git log`, or checking the project instructions file (e.g., `CLAUDE.md`), skip it. Only persist what's genuinely hard to re-derive.
 
 4. **Write memories** using the standard format:
+
    ```markdown
    ---
    name: short-kebab-case-slug
@@ -49,6 +55,7 @@ Only write to `.claude/rules/` when the convention is genuinely repo-wide (not j
    metadata:
      type: user | feedback | project | reference
    ---
+
    [Memory body. For feedback/project: lead with the fact/rule, then **Why:** and **How to apply:** lines. Link related memories with [[other-name]].]
    ```
 
@@ -56,7 +63,7 @@ Only write to `.claude/rules/` when the convention is genuinely repo-wide (not j
 
 6. **Write to `.claude/rules/`** only if a genuine repo-wide convention was established this session that isn't already captured in the project instructions file (e.g., `CLAUDE.md`) or existing rules files. Check those first.
 
-7. **Report what you saved** — a brief summary so the user knows what was captured and can correct anything. Don't summarize things you *didn't* save.
+7. **Report what you saved** — a brief summary so the user knows what was captured and can correct anything. Don't summarize things you _didn't_ save.
 
 ## What NOT to save
 
@@ -64,4 +71,4 @@ Only write to `.claude/rules/` when the convention is genuinely repo-wide (not j
 - Git history, recent commits, or who changed what
 - In-progress work or temporary state from this session
 - Anything already in the project instructions file (e.g., `CLAUDE.md`) or existing rules files
-- Verbose summaries of everything that happened — distill to what's *surprising* or *non-obvious*
+- Verbose summaries of everything that happened — distill to what's _surprising_ or _non-obvious_

@@ -13,7 +13,7 @@ GitLab accepts [push options](https://docs.gitlab.com/ee/user/project/push_optio
 2. Find the default branch: `git remote show origin | sed -n 's/.*HEAD branch: //p'`. This is the MR target.
 3. Determine the MR title and description. Derive them from the branch's commits, or use what the user supplied.
    - Title: one concise line.
-   - Description: more detail if it's warranted. Explain *why* the change is being made when that isn't obvious.
+   - Description: more detail if it's warranted. Explain _why_ the change is being made when that isn't obvious.
    - Neither should recap the diff. Don't explain what changed — the diff already shows that.
 4. Push with the options below.
 
