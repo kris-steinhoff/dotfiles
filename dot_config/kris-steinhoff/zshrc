@@ -119,8 +119,13 @@ aws-profile-logout() {
 # === Aliases ===
 
 # General
-alias l='ls -lah --color=auto'
-alias ll='ls -lh --color=auto'
+if command -v eza &>/dev/null; then
+	alias l='eza -lah --git'
+	alias ll='eza -lh --git'
+else
+	alias l='ls -lah --color=auto'
+	alias ll='ls -lh --color=auto'
+fi
 
 # Pre-commit
 
