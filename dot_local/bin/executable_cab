@@ -227,7 +227,7 @@ def cli(
     written to the container's filesystem.
     """
     if ctx.invoked_subcommand is None:
-        console.print("Specify a proejct name, for example [bold]cab myproject[/].")
+        console.print("Specify a project name, for example [bold]cab myproject[/].")
         console.print("[dim]Run [bold]cab --help[/] for all commands.[/]")
         raise typer.Exit(1)
     require_docker()

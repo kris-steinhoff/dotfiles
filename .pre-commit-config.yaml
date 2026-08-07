@@ -1,4 +1,9 @@
 repos:
+  - repo: https://github.com/crate-ci/typos
+    rev: v1.49.0
+    hooks:
+      - id: typos
+        args: [--force-exclude]
   - repo: local
     hooks:
       - id: prettier
