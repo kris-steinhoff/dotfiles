@@ -1,0 +1,178 @@
+#!/usr/bin/env python3
+"""Report whether markdown is hard- or soft-wrapped, so the answer isn't eyeballed.
+
+Soft wrapping is the default preference, and the markdown-formatting skill covers
+writing that way. Hard wrapping is only right where it is already the established
+style of the files around the one being edited, and that is a question about what
+is on disk.
+
+Two signals, strongest first:
+
+  1. A prettier config that sets proseWrap. A project declaring a wrap style is
+     the most definite statement of local style there is, so it settles it and
+     nothing else is counted.
+  2. The files themselves. A paragraph spread over several lines that all stop
+     short of a plausible margin was wrapped on purpose. A single line well past
+     that margin was not. Everything with its own wrapping rules is skipped:
+     front matter, fenced and indented code, tables, headings, blockquotes.
+
+Only ever reads. Changing a file is never this script's job.
+"""
+
+import re
+import sys
+from pathlib import Path
+
+SUFFIXES = {".md", ".markdown", ".mdown", ".mkd"}
+SKIP_DIRS = {".git", "node_modules", ".venv", "venv", "vendor", "dist", "build"}
+
+PROSE_WRAP = re.compile(r"""["']?prose[-_]?[Ww]rap["']?\s*[:=]\s*["']?(never|always|preserve)["']?""")
+
+# The widest column anyone wraps to. A paragraph whose lines all fit under this
+# looks deliberately wrapped.
+WRAP_CEILING = 100
+# Past this, a line was not produced by wrapping to any conventional column.
+LONG_LINE = 120
+
+
+def declared_prose_wrap(start: Path) -> tuple[Path, str] | None:
+    """The nearest prettier config's proseWrap, if one sets it.
+
+    A text search rather than a parse, because the config may be JSON, YAML,
+    TOML, JSON5 or JavaScript and only one key matters. Missing an exotic config
+    just falls through to counting lines, so the failure mode is harmless."""
+    for directory in [start, *start.parents]:
+        for config in sorted(directory.glob(".prettierrc*")) + sorted(
+            directory.glob("prettier.config.*")
+        ) + [directory / "package.json"]:
+            if not config.is_file():
+                continue
+            found = PROSE_WRAP.search(config.read_text(encoding="utf-8", errors="replace"))
+            if found:
+                return config, found.group(1)
+        if (directory / ".git").exists():
+            break
+    return None
+
+
+def prose_blocks(text: str) -> list[list[str]]:
+    """Paragraphs and list items, with everything that wraps by its own rules left out."""
+    lines = text.split("\n")
+    start = 0
+    if lines and lines[0].strip() in {"---", "+++"}:
+        closer = lines[0].strip()
+        start = next((i + 1 for i in range(1, len(lines)) if lines[i].strip() == closer), 0)
+
+    blocks: list[list[str]] = []
+    current: list[str] = []
+    in_fence = False
+
+    def flush() -> None:
+        nonlocal current
+        if current:
+            blocks.append(current)
+        current = []
+
+    for line in lines[start:]:
+        stripped = line.strip()
+        if in_fence:
+            in_fence = not stripped.startswith(("```", "~~~"))
+            continue
+        if stripped.startswith(("```", "~~~")):
+            flush()
+            in_fence = True
+        elif not stripped:
+            flush()
+        elif (
+            stripped.startswith(("|", "#", ">", "<"))
+            or re.fullmatch(r"[-*_=]{3,}", stripped)
+            # Indentation means code only when nothing is open, since a wrapped
+            # list item continues onto indented lines and those are the point.
+            or (line.startswith(("    ", "\t")) and not current)
+        ):
+            flush()
+        else:
+            if re.match(r"([-*+]|\d+[.)])\s", stripped) and current:
+                flush()  # a new list item is its own block
+            current.append(line)
+
+    flush()
+    return blocks
+
+
+def count(path: Path) -> tuple[int, int]:
+    """Blocks that look wrapped on purpose, and lines too long to have been."""
+    blocks = prose_blocks(path.read_text(encoding="utf-8", errors="replace"))
+    wrapped = sum(1 for b in blocks if len(b) > 1 and all(len(x) <= WRAP_CEILING for x in b[:-1]))
+    soft = sum(1 for b in blocks if len(b) == 1 and len(b[0]) >= LONG_LINE)
+    return wrapped, soft
+
+
+def collect(paths: list[str]) -> list[Path]:
+    found: list[Path] = []
+    for raw in paths:
+        path = Path(raw)
+        if path.is_dir():
+            found += sorted(
+                f for f in path.rglob("*")
+                if f.suffix.lower() in SUFFIXES and f.is_file() and SKIP_DIRS.isdisjoint(f.parts)
+            )
+        elif path.is_file():
+            found.append(path)
+    return found
+
+
+def main() -> int:
+    paths = sys.argv[1:] or ["."]
+    if paths[0] in {"-h", "--help"}:
+        print(__doc__.strip())
+        print("\nusage: check-wrapping [FILE|DIR]...   (default: .)")
+        return 0
+
+    files = collect(paths)
+    if not files:
+        print("check-wrapping: no markdown files found", file=sys.stderr)
+        return 1
+
+    # Resolved from the first file, so the config path is printed rather than
+    # assumed. Files from two different projects at once are not worth handling.
+    declared = declared_prose_wrap(files[0].resolve().parent)
+    if declared and declared[1] != "preserve":
+        config, value = declared
+        style = "hard-wrapped" if value == "always" else "soft-wrapped"
+        print(f"{config} sets proseWrap: {value}")
+        print(f"{style} by declaration, which settles it")
+        return 0
+    if declared:
+        # `preserve` declares only that prettier will not touch wrapping, which
+        # says nothing about what the files actually do. Count them.
+        print(f"{declared[0]} sets proseWrap: preserve, which decides nothing. Reading the files:\n")
+
+    width = max(len(str(f)) for f in files)
+    hard = soft = 0
+    for path in files:
+        wrapped, unwrapped = count(path)
+        verdict = "no evidence"
+        if wrapped or unwrapped:
+            verdict = "hard-wrapped" if wrapped > unwrapped else "soft-wrapped"
+            hard += verdict == "hard-wrapped"
+            soft += verdict == "soft-wrapped"
+        print(f"{str(path):<{width}}  {verdict:<12}  wrapped={wrapped} long={unwrapped}")
+
+    decided = hard + soft
+    if not decided:
+        verdict = "no evidence either way, so soft wrap"
+    elif not hard:
+        verdict = "soft-wrapped throughout"
+    elif not soft:
+        verdict = "hard-wrapped throughout, so match it"
+    else:
+        verdict = f"mixed, {hard} hard and {soft} soft, so there is no style to match. Soft wrap"
+    plural = "file" if len(files) == 1 else "files"
+    print(f"\n{len(files)} {plural}: {hard} hard, {soft} soft, {len(files) - decided} without evidence")
+    print(verdict)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

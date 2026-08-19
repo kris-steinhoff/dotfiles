@@ -137,6 +137,13 @@ fi
 
 alias pcra="pre-commit run --all-files"
 
+# Markdown
+# Soft-wrap prose: one line per paragraph, wrap width left to the editor.
+# Version-pinned to match the prettier hook in .pre-commit-config.yaml.
+# printWidth is deliberately not passed, since prettier also formats code
+# inside fenced blocks and a width forced here would reflow that too.
+alias mdfmt='npx --yes prettier@3.3.3 --prose-wrap never --write'
+
 # Docker
 alias dc='docker compose'
 alias dco='docker compose'

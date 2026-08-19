@@ -1,0 +1,78 @@
+#!/usr/bin/env python3
+"""Run prettier over markdown with prose wrapping forced off.
+
+This exists to be the target of a PostToolUse hook, which README.md explains how
+to install. The skill itself never runs it: an agent's job is to write markdown
+correctly, and a hook's job is to make that unconditional.
+
+Thin on purpose. Over calling prettier by hand it adds two things: an extension
+guard, and --hook.
+
+The guard is what makes it safe in a PostToolUse hook. `prettier --write` will
+rewrite a .ts or .json file just as happily as a .md one, and in a hook the path
+is whatever the agent last wrote, so anything that is not markdown has to be a
+no-op rather than a reformat.
+
+Whether a project wants hard wraps is the markdown-wrapping skill's question,
+not this script's. This one always forces soft wrapping. Keeping the judgment in
+one place is why it is not also implemented here.
+
+Globs are the shell's job, so pass expanded paths (zsh does `docs/**/*.md`).
+"""
+
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+# One pinned prettier, matching the pre-commit hook and the mdfmt alias, so the
+# same input formats the same way everywhere. $PRETTIER is the escape hatch.
+PRETTIER = os.environ.get("PRETTIER", "npx --yes prettier@3.3.3").split()
+
+# .mdx is left out: prose wrapping and JSX are a bad pair to reformat unattended.
+SUFFIXES = {".md", ".markdown", ".mdown", ".mkd"}
+
+
+def markdown_only(paths: list[str]) -> list[str]:
+    return [p for p in paths if Path(p).suffix.lower() in SUFFIXES and Path(p).is_file()]
+
+
+def hook_path() -> list[str]:
+    """A PostToolUse payload arrives as JSON on stdin. Anything unexpected means
+    there is nothing to format, which is not an error."""
+    try:
+        return [json.load(sys.stdin)["tool_input"]["file_path"]]
+    except (ValueError, KeyError, TypeError):
+        return []
+
+
+def main() -> int:
+    args = sys.argv[1:]
+    hook = args == ["--hook"]
+    if not args or (not hook and args[0].startswith("-")):
+        print(__doc__.strip().splitlines()[0], file=sys.stderr)
+        print("usage: format-markdown FILE... | format-markdown --hook", file=sys.stderr)
+        return 2
+
+    files = markdown_only(hook_path() if hook else args)
+    if not files:
+        # A hook fires on every write, so a non-markdown path is the normal case
+        # and deserves silence. Called by hand, it is worth saying why.
+        if hook:
+            return 0
+        print("format-markdown: nothing markdown named", file=sys.stderr)
+        return 1
+
+    # Silence in a hook covers failure too: a missing prettier must not
+    # interrupt anyone mid-turn. Run it by hand to see the real error.
+    done = subprocess.run(
+        [*PRETTIER, "--prose-wrap", "never", "--write", *files],
+        capture_output=hook,
+        text=True,
+    )
+    return 0 if hook else done.returncode
+
+
+if __name__ == "__main__":
+    sys.exit(main())
