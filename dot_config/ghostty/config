@@ -13,3 +13,9 @@ window-inherit-working-directory = false
 # passes the key through when there's no selection (leaking a stray "c" while
 # herdr owns the selection). This always consumes Cmd-C instead.
 keybind = super+c=copy_to_clipboard
+
+# Drop Ghostty's default Cmd-Enter fullscreen binding, which collides with the
+# muscle memory for "submit" in GitHub, Jira, etc. Unbinding (rather than
+# rebinding) lets the keypress pass through to the terminal. Ctrl-Cmd-F, the
+# macOS system-standard full screen shortcut, still works.
+keybind = super+enter=unbind
