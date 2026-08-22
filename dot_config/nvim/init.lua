@@ -31,9 +31,13 @@ vim.opt.expandtab = true
 vim.opt.number = true
 vim.opt.signcolumn = "yes"
 vim.opt.clipboard = "unnamedplus"
-if vim.env.HERDR_ENV == "1" then
-  -- Inside a herdr container there's no pbcopy/xclip, but herdr relays
-  -- OSC 52 escape sequences to the host clipboard.
+if vim.env.HERDR_ENV == "1" and vim.fn.executable("pbcopy") == 0 then
+  -- On a local herdr pane, pbcopy/pbpaste talk to the real macOS clipboard
+  -- directly and just work, so leave nvim's default clipboard provider in
+  -- place. Only remote/containerized herdr targets lack pbcopy/xclip; there,
+  -- fall back to OSC 52, which herdr relays to the host clipboard. (OSC 52
+  -- paste's terminal round-trip through herdr's pty relay is unreliable, so
+  -- this path is a last resort, not the default.)
   vim.g.clipboard = {
     name = "OSC 52",
     copy = {

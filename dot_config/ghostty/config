@@ -24,3 +24,10 @@ keybind = super+c=copy_to_clipboard
 # that leading ESC before the rest of the sequence arrives, dropping the
 # prompt into vi command mode instead of submitting.
 keybind = super+enter=text:\r
+
+# Default clipboard-read is "ask", which shows a permission prompt on every
+# OSC 52 paste. Neovim's built-in OSC 52 paste provider (used inside Herdr,
+# see nvim's init.lua) doesn't reliably detect that prompt's response and
+# hangs on "Waiting for OSC 52 response" until interrupted. Allowing reads
+# outright removes the prompt and the hang.
+clipboard-read = allow
