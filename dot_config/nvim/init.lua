@@ -96,6 +96,26 @@ vim.api.nvim_create_autocmd("LspAttach", {
   end,
 })
 
+-- Herdr names a pane only when it recognizes a coding agent inside it, so an
+-- nvim split shows a blank border. Label it "nvim" for the session, and hand
+-- the border back on exit. Labeling from here rather than from a shell hook
+-- also covers nvim opened as $EDITOR and nvim resumed after ctrl-z.
+local herdr_pane = vim.env.HERDR_PANE_ID
+if herdr_pane and herdr_pane ~= "" and vim.fn.executable("herdr") == 1 then
+  vim.api.nvim_create_autocmd("VimEnter", {
+    callback = function()
+      vim.system({ "herdr", "pane", "rename", herdr_pane, "nvim" })
+    end,
+  })
+
+  vim.api.nvim_create_autocmd("VimLeavePre", {
+    callback = function()
+      -- nvim would otherwise exit before the rename reaches herdr's socket.
+      vim.system({ "herdr", "pane", "rename", herdr_pane, "--clear" }):wait(500)
+    end,
+  })
+end
+
 vim.keymap.set("n", "<leader>th", function()
   Snacks.terminal.toggle(nil, { win = { position = "bottom" } })
 end, { desc = "Toggle horizontal terminal" })
