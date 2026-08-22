@@ -25,3 +25,8 @@ repos:
         language: node
         additional_dependencies: ["prettier@3.3.3"]
         types: [markdown]
+      - id: sort-claude-settings-json
+        name: sort Claude settings.json keys
+        entry: sh -c 'for f in "$@"; do jq -S . "$f" >"$f.tmp" && mv "$f.tmp" "$f"; done' --
+        language: system
+        files: ^dot_claude/private_settings\.json$

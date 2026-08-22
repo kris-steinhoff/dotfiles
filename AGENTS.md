@@ -33,6 +33,17 @@ When updating plugins:
 
 Without step 3, the next `chezmoi apply` will revert the lockfile to whatever's checked in.
 
+## Claude Code settings.json key ordering
+
+Claude Code rewrites `~/.claude/settings.json` with its own key ordering whenever it changes something internally (e.g. saving a permission), even when the values are unchanged. Because `chezmoi apply` refuses to overwrite a target that has changed since it last wrote it, this reordering alone trips that guard and produces a warning that's usually just noise.
+
+Both sides are kept sorted the same way so ordering never causes a spurious diff:
+
+- `dot_claude/private_settings.json` (the checked-in source) is sorted by the local `sort-claude-settings-json` pre-commit hook (`jq -S`).
+- `~/.claude/settings.json` (the live file) is kept sorted by a `ConfigChange` hook, `dot_claude/hooks/executable_sort-settings-json.sh`, which re-sorts it with the same `jq -S` after every change.
+
+A `chezmoi apply` warning on this file should now only mean a real value changed, not just key order.
+
 ## Config architecture
 
 Shared configs live under `dot_config/kris-steinhoff/` (deployed to `~/.config/kris-steinhoff/`) and are _included_ by the machine-local config files (not replaced). This lets local overrides coexist with the shared baseline:

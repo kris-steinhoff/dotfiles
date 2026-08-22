@@ -1,50 +1,55 @@
 {
-  "env": {
-    "DISABLE_AUTOUPDATER": "1"
-  },
-  "statusLine": {
-    "type": "command",
-    "command": "npx -y @owloops/claude-powerline@latest"
-  },
-  "hooks": {
-    "SessionStart": [
-      {
-        "matcher": "*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ~/.claude/hooks/herdr-agent-state.sh session",
-            "timeout": 10
-          }
-        ]
-      }
-    ]
-  },
-  "worktree": {
-    "baseRef": "fresh"
-  },
   "enabledPlugins": {
     "agent-skills@addy-agent-skills": true,
     "aws-core@agent-toolkit-for-aws": true
   },
+  "env": {
+    "DISABLE_AUTOUPDATER": "1"
+  },
   "extraKnownMarketplaces": {
     "addy-agent-skills": {
       "source": {
-        "source": "github",
-        "repo": "addyosmani/agent-skills"
+        "repo": "addyosmani/agent-skills",
+        "source": "github"
       }
     },
     "agent-toolkit-for-aws": {
       "source": {
-        "source": "github",
-        "repo": "aws/agent-toolkit-for-aws"
+        "repo": "aws/agent-toolkit-for-aws",
+        "source": "github"
       }
     }
   },
+  "hooks": {
+    "ConfigChange": [
+      {
+        "hooks": [
+          {
+            "command": "bash ~/.claude/hooks/sort-settings-json.sh",
+            "timeout": 10,
+            "type": "command"
+          }
+        ],
+        "matcher": "user_settings"
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "command": "bash ~/.claude/hooks/herdr-agent-state.sh session",
+            "timeout": 10,
+            "type": "command"
+          }
+        ],
+        "matcher": "*"
+      }
+    ]
+  },
   "sandbox": {
-    "enabled": true,
-    "autoAllowBashIfSandboxed": true,
     "allowUnsandboxedCommands": false,
+    "autoAllowBashIfSandboxed": true,
+    "enabled": true,
     "filesystem": {
       "denyRead": [
         "~/.ssh",
@@ -58,6 +63,13 @@
       ]
     }
   },
+  "statusLine": {
+    "command": "npx -y @owloops/claude-powerline@latest",
+    "type": "command"
+  },
   "theme": "dark",
-  "tui": "fullscreen"
+  "tui": "fullscreen",
+  "worktree": {
+    "baseRef": "fresh"
+  }
 }
