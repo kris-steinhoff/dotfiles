@@ -1,0 +1,97 @@
+#!/usr/bin/env python3
+
+## Note this is an experimental implemenation. It's not clear that this is a 
+## viable way to get AGENTS.md support for Claude Code
+
+"""Generate .claude/rules/ files that import AGENTS.md files for Claude Code.
+
+Claude Code reads CLAUDE.md, not AGENTS.md. For every AGENTS.md found, this
+writes a rule file under a single top-level .claude/rules/ tree, mirroring
+the AGENTS.md's own directory, that `@import`s it. A rule for a non-root
+directory carries `paths:` frontmatter scoping it to that directory, so
+Claude only loads it into context when it reads a file under that
+directory. The rule for the repo root's own AGENTS.md, if any, has no
+`paths:` and loads unconditionally, same as a root CLAUDE.md.
+
+In a git repo, this walks every AGENTS.md tracked in (or new and not
+ignored by) the repo. Outside a git repo, it only looks at the current
+directory.
+"""
+
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+RULES_DIR_NAME = "import-agents-md.md"
+
+
+def git_repo_root() -> Path | None:
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return None
+    return Path(result.stdout.strip())
+
+
+def repo_agents_md_files(root: Path) -> list[Path]:
+    result = subprocess.run(
+        ["git", "-C", str(root), "ls-files", "--cached", "--others", "--exclude-standard"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return [
+        root / line
+        for line in result.stdout.splitlines()
+        if Path(line).name == "AGENTS.md"
+    ]
+
+
+def rule_path_for(root: Path, agents_md: Path) -> Path:
+    rel_dir = agents_md.parent.resolve().relative_to(root.resolve())
+    return root / ".claude" / "rules" / rel_dir / RULES_DIR_NAME
+
+
+def rule_content(root: Path, agents_md: Path, rule_path: Path) -> str:
+    import_path = os.path.relpath(agents_md.resolve(), start=rule_path.parent.resolve())
+    rel_dir = agents_md.parent.resolve().relative_to(root.resolve()).as_posix()
+    if rel_dir == ".":
+        return f"@{import_path}\n"
+    return f'---\npaths:\n  - "{rel_dir}/**"\n---\n\n@{import_path}\n'
+
+
+def write_rule_for(root: Path, agents_md: Path) -> None:
+    rule_path = rule_path_for(root, agents_md)
+    content = rule_content(root, agents_md, rule_path)
+    if rule_path.is_file() and rule_path.read_text() == content:
+        return
+    rule_path.parent.mkdir(parents=True, exist_ok=True)
+    rule_path.write_text(content)
+    print(f"wrote {rule_path}")
+
+
+def main() -> None:
+    root = git_repo_root()
+    if root is not None:
+        agents_files = repo_agents_md_files(root)
+    else:
+        root = Path(".")
+        cwd_agents_md = Path("AGENTS.md")
+        agents_files = [cwd_agents_md] if cwd_agents_md.is_file() else []
+
+    if not agents_files:
+        print("no AGENTS.md files found", file=sys.stderr)
+        return
+
+    for agents_md in agents_files:
+        write_rule_for(root, agents_md)
+
+
+if __name__ == "__main__":
+    main()
