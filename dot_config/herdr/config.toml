@@ -24,4 +24,4 @@ name = "tokyo-night"
 auto_switch = false
 
 [keys]
-prefix = "ctrl+a"
+prefix = "ctrl+space"
