@@ -46,6 +46,7 @@
       }
     ]
   },
+  "model": "claude-opus-4-8",
   "sandbox": {
     "allowUnsandboxedCommands": false,
     "autoAllowBashIfSandboxed": true,
