@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-## Note this is an experimental implemenation. It's not clear that this is a 
+## Note this is an experimental implementation. It's not clear that this is a
 ## viable way to get AGENTS.md support for Claude Code
 
 """Generate .claude/rules/ files that import AGENTS.md files for Claude Code.
