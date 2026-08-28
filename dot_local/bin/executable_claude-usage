@@ -3,21 +3,25 @@
 # requires-python = ">=3.11"
 # dependencies = ["rich>=13"]
 # ///
-"""Show a summary of current Claude subscription usage, then exit.
+"""Show a live summary of current Claude subscription usage.
 
 Reads the OAuth token that Claude Code stores locally and queries the same
 usage endpoint the `/usage` view uses. Works for whatever account the stored
 token belongs to (Pro, Max, Team, Enterprise), rendering whichever limit
 windows that account reports.
+
+On a terminal it refreshes in place until interrupted. `--once` prints a
+single snapshot and exits.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import os
+import math
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -26,6 +30,7 @@ from pathlib import Path
 
 from rich.align import Align
 from rich.console import Console, Group
+from rich.live import Live
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
@@ -42,11 +47,28 @@ console = Console()
 err_console = Console(stderr=True)
 
 
+class UsageError(Exception):
+    """A recoverable failure to load credentials or fetch usage.
+
+    Carries an optional one-line hint. Fatal at startup (single-shot), but in
+    the live view it is shown in the footer while the previous data stays up.
+    """
+
+    def __init__(self, message: str, hint: str | None = None):
+        super().__init__(message)
+        self.message = message
+        self.hint = hint
+
+
 # --------------------------------------------------------------------------- #
 # Credential loading
 # --------------------------------------------------------------------------- #
 def load_oauth() -> dict:
-    """Return the claudeAiOauth blob from the file store or the macOS Keychain."""
+    """Return the claudeAiOauth blob from the file store or the macOS Keychain.
+
+    Re-read on every poll so a long-running view picks up tokens that Claude
+    Code has refreshed in the meantime.
+    """
     raw = None
     if CREDENTIALS_PATH.exists():
         raw = CREDENTIALS_PATH.read_text()
@@ -62,7 +84,7 @@ def load_oauth() -> dict:
             raw = None
 
     if not raw:
-        die(
+        raise UsageError(
             "Could not find Claude credentials.",
             "Log in with Claude Code first (run `claude` and complete sign-in).",
         )
@@ -70,11 +92,11 @@ def load_oauth() -> dict:
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
-        die("Claude credentials are not valid JSON.")
+        raise UsageError("Claude credentials are not valid JSON.")
 
     oauth = data.get("claudeAiOauth")
     if not oauth or not oauth.get("accessToken"):
-        die("No OAuth access token found in Claude credentials.")
+        raise UsageError("No OAuth access token found in Claude credentials.")
     return oauth
 
 
@@ -96,15 +118,15 @@ def fetch_usage(token: str) -> dict:
             return json.loads(resp.read())
     except urllib.error.HTTPError as e:
         if e.code in (401, 403):
-            die(
+            raise UsageError(
                 "Claude rejected the stored token (expired or revoked).",
                 "Open Claude Code once to refresh it, then try again.",
             )
-        die(f"Usage request failed: HTTP {e.code} {e.reason}")
+        raise UsageError(f"Usage request failed: HTTP {e.code} {e.reason}")
     except urllib.error.URLError as e:
-        die(f"Could not reach the Claude usage API: {e.reason}")
+        raise UsageError(f"Could not reach the Claude usage API: {e.reason}")
     except TimeoutError:
-        die("Timed out contacting the Claude usage API.")
+        raise UsageError("Timed out contacting the Claude usage API.")
 
 
 # --------------------------------------------------------------------------- #
@@ -275,59 +297,122 @@ def extra_usage_line(data: dict) -> Text | None:
     return parts
 
 
-def render(data: dict, oauth: dict) -> None:
-    windows = build_windows(data)
-
+def account_subtitle(oauth: dict) -> Text:
     sub = (oauth.get("subscriptionType") or "unknown").replace("_", " ")
     tier = (oauth.get("rateLimitTier") or "").replace("_", " ")
-
-    if not windows:
-        console.print(
-            Panel(
-                Align.center(Text("No active usage windows reported.", style="grey62")),
-                title="Claude Usage",
-                border_style="grey42",
-            )
-        )
-        return
-
-    table = Table.grid(padding=(0, 2), expand=False)
-    table.add_column(justify="left", no_wrap=True)          # label
-    table.add_column(justify="left", no_wrap=True)          # bar
-    table.add_column(justify="right", no_wrap=True)         # amount
-    table.add_column(justify="left", no_wrap=True)          # reset
-
-    bar_width = BAR_WIDTH_DOLLAR if any(w.is_dollar for w in windows) else BAR_WIDTH
-    for w in windows:
-        table.add_row(
-            Text(w.label, style="bold white"),
-            bar(w, bar_width),
-            amount_text(w),
-            reset_text(w.resets_at),
-        )
-
-    body: list = [table]
-
-    extra = extra_usage_line(data)
-    if extra is not None:
-        body.append(Text(""))
-        body.append(extra)
-
     subtitle = Text(sub, style="magenta")
     if tier and tier not in {"default claude ai", sub}:
         subtitle.append(f"  ·  {tier}", style="grey58")
+    return subtitle
 
-    console.print(
-        Panel(
-            Group(*body),
-            title="[bold]Claude Usage[/bold]",
-            title_align="left",
-            subtitle=subtitle,
-            subtitle_align="right",
-            border_style="grey42",
-            padding=(1, 2),
-        )
+
+def build_panel(data: dict, oauth: dict, footer: Text | None = None) -> Panel:
+    windows = build_windows(data)
+    body: list = []
+
+    if not windows:
+        body.append(Align.center(Text("No active usage windows reported.", style="grey62")))
+    else:
+        table = Table.grid(padding=(0, 2), expand=False)
+        table.add_column(justify="left", no_wrap=True)      # label
+        table.add_column(justify="left", no_wrap=True)      # bar
+        table.add_column(justify="right", no_wrap=True)     # amount
+        table.add_column(justify="left", no_wrap=True)      # reset
+
+        bar_width = BAR_WIDTH_DOLLAR if any(w.is_dollar for w in windows) else BAR_WIDTH
+        for w in windows:
+            table.add_row(
+                Text(w.label, style="bold white"),
+                bar(w, bar_width),
+                amount_text(w),
+                reset_text(w.resets_at),
+            )
+        body.append(table)
+
+        extra = extra_usage_line(data)
+        if extra is not None:
+            body.append(Text(""))
+            body.append(extra)
+
+    if footer is not None:
+        body.append(Text(""))
+        body.append(footer)
+
+    return Panel(
+        Group(*body),
+        title="[bold]Claude Usage[/bold]",
+        title_align="left",
+        subtitle=account_subtitle(oauth),
+        subtitle_align="right",
+        border_style="grey42",
+        padding=(1, 2),
     )
+
+
+def error_panel(error: UsageError, footer: Text | None = None) -> Panel:
+    body: list = [Align.center(Text(error.message, style="red"))]
+    if error.hint:
+        body.append(Align.center(Text(error.hint, style="grey62")))
+    if footer is not None:
+        body.append(Text(""))
+        body.append(footer)
+    return Panel(
+        Group(*body),
+        title="[bold]Claude Usage[/bold]",
+        title_align="left",
+        border_style="red",
+        padding=(1, 2),
+    )
+
+
+def footer_line(updated_at: datetime | None, secs_left: int, error: UsageError | None) -> Text:
+    t = Text()
+    if updated_at is not None:
+        t.append(f"updated {updated_at.strftime('%H:%M:%S')}", style="grey50")
+        t.append("   ·   ", style="grey35")
+    t.append(f"next refresh {secs_left}s", style="grey50")
+    if error is not None:
+        t.append("   ·   ", style="grey35")
+        t.append(f"last update failed: {error.message}", style="red")
+    t.append("   ·   ", style="grey35")
+    t.append("Ctrl-C to quit", style="grey50")
+    return t
+
+
+def run_live(interval: int) -> None:
+    """Poll every `interval` seconds and redraw once a second so countdowns tick."""
+    data: dict | None = None
+    oauth: dict | None = None
+    updated_at: datetime | None = None
+    error: UsageError | None = None
+    last_attempt = 0.0
+
+    with Live(console=console, auto_refresh=False, screen=False) as live:
+        try:
+            while True:
+                now = time.monotonic()
+                if data is None or now - last_attempt >= interval:
+                    last_attempt = now
+                    try:
+                        oauth = load_oauth()
+                        data = fetch_usage(oauth["accessToken"])
+                        updated_at = datetime.now()
+                        error = None
+                    except UsageError as e:
+                        error = e
+
+                secs_left = max(0, math.ceil(interval - (time.monotonic() - last_attempt)))
+                if data is not None and oauth is not None:
+                    footer = footer_line(updated_at, secs_left, error)
+                    live.update(build_panel(data, oauth, footer), refresh=True)
+                else:
+                    # No data yet: the error panel already states the message, so
+                    # the footer just carries the countdown and quit hint.
+                    footer = footer_line(None, secs_left, None)
+                    live.update(error_panel(error, footer), refresh=True)  # type: ignore[arg-type]
+                time.sleep(1)
+        except KeyboardInterrupt:
+            pass
 
 
 # --------------------------------------------------------------------------- #
@@ -340,20 +425,38 @@ def die(*lines: str) -> None:
     sys.exit(1)
 
 
+def snapshot() -> tuple[dict, dict]:
+    """Fetch once, converting a UsageError into a fatal, friendly exit."""
+    try:
+        oauth = load_oauth()
+        return oauth, fetch_usage(oauth["accessToken"])
+    except UsageError as e:
+        die(e.message, *([e.hint] if e.hint else []))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Show current Claude subscription usage.")
     parser.add_argument("--json", action="store_true", help="print the raw usage payload and exit")
+    parser.add_argument("--once", action="store_true", help="print a single snapshot instead of the live view")
+    parser.add_argument(
+        "-n", "--interval", type=int, default=60, metavar="SECONDS",
+        help="live refresh interval in seconds (default: 60, minimum: 5)",
+    )
     args = parser.parse_args()
 
-    oauth = load_oauth()
-    data = fetch_usage(oauth["accessToken"])
-
     if args.json:
+        _, data = snapshot()
         json.dump(data, sys.stdout, indent=2)
         sys.stdout.write("\n")
         return
 
-    render(data, oauth)
+    # The live view needs a terminal; anything else prints once and exits.
+    if args.once or not sys.stdout.isatty():
+        oauth, data = snapshot()
+        console.print(build_panel(data, oauth))
+        return
+
+    run_live(max(5, args.interval))
 
 
 if __name__ == "__main__":
