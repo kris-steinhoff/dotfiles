@@ -92,4 +92,6 @@ To remove a skill, delete it from all three source locations _and_ add the deplo
 - **Terminal**: Ghostty (ligatures disabled)
 - **Prompt**: Starship — configured without Nerd Font glyphs, kubernetes module enabled
 - **Git**: pull.rebase=true, rebase.updateRefs=true, rebase.autoSquash=true
-- **Scripts**: `dot_local/bin/executable_aws-profile-login` — sets `AWS_PROFILE` and triggers SSO login if needed
+- **Scripts**:
+  - `dot_local/bin/executable_aws-profile-login` — sets `AWS_PROFILE` and triggers SSO login if needed
+  - `dot_local/bin/executable_claude-usage` — prints current Claude subscription usage (session and weekly limit windows) and exits. A `uv run --script` Python tool that reads the OAuth token Claude Code stores (`~/.claude/.credentials.json`, or the macOS Keychain) and queries the same usage endpoint the `/usage` view uses. Renders whichever windows the account reports, so it adapts to Pro, Max, Team, and Enterprise. `--json` dumps the raw payload.
