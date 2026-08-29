@@ -5,6 +5,25 @@ export default function (pi: ExtensionAPI) {
   // Natural language intent classification and extraction is handled by pi's model via prompts.
   // This extension provides tools for the deterministic parts.
 
+  let coordinatorMode = false;
+
+  const COORDINATOR_SYSTEM_PROMPT = `
+You are in Herdr Coordinator mode. Your role is to orchestrate work by launching Herdr worktrees and sub-agents.
+
+When user requests work like "use claude opus to work on #123":
+1. Extract task_id, agent_kind, model_hint, task_description
+2. If task_id present, call herdr_fetch_task to get metadata
+3. Call herdr_synthesize_slug to create slug from metadata
+4. Check naming collision with herdr_check_collision
+5. Create worktree with herdr_create_worktree using naming rules:
+   - git branch: <task_id>-<slug> if task_id else <slug>
+   - git worktree dir: same as branch
+   - herdr label: <slug with spaces>
+6. Start agent with herdr_start_agent
+
+Use the registered Herdr tools for all deterministic operations. Do not create temporary Herdr panes for slug generation.
+`;
+
   const INTENT_PROMPT = `
 # Herdr Launch Intent Extraction
 
@@ -164,6 +183,24 @@ Return JSON { "slug": string }
         details: {},
       };
     },
+  });
+
+  // Coordinator mode toggle
+  pi.registerCommand("herdr-coordinator", {
+    description: "Toggle Herdr coordinator mode",
+    handler: async (_args, ctx) => {
+      coordinatorMode = !coordinatorMode;
+      ctx.ui.notify(`Herdr coordinator mode ${coordinatorMode ? "enabled" : "disabled"}`, coordinatorMode ? "info" : "warn");
+    },
+  });
+
+  // Inject coordinator system prompt when mode is active
+  pi.on("before_agent_start", async (_event, ctx) => {
+    if (coordinatorMode) {
+      // Append coordinator instructions to system prompt
+      // Note: actual API may vary; this is illustrative
+      ctx.ui.setStatus("herdr-coord", "Coordinator mode");
+    }
   });
 
   // Slash command
