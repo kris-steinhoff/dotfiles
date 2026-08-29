@@ -1,0 +1,8 @@
+{
+  "name": "herdr-coordinator",
+  "version": "0.1.0",
+  "type": "module",
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  }
+}
