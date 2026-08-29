@@ -170,7 +170,7 @@ Return JSON { "slug": string }
   pi.registerCommand("herdr-launch", {
     description: "Launch Herdr worktree + agent from natural language",
     handler: async (args, ctx) => {
-      const prompt = args.join(" ");
+      const prompt = typeof args === "string" ? args : Array.isArray(args) ? args.join(" ") : String(args);
       ctx.ui.notify(`Herdr launch: ${prompt}`, "info");
       // Model uses INTENT_PROMPT to extract task_id, agent_kind, model_hint, task_description
       // Then calls herdr_fetch_task if task_id present, herdr_synthesize_slug, etc.
