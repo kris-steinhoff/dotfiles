@@ -1,11 +1,25 @@
 #!/usr/bin/env python3
-"""Check out a pull request's branch into a Herdr worktree workspace.
+"""Create a Herdr worktree workspace, from a pull request or a fresh branch.
+
+Two subcommands, because "the branch already exists on GitHub" and "make me a
+new branch" are different jobs that happen to end the same way, in a worktree
+with a shell pane ready for an agent:
+
+    pr      check out an existing pull request's branch
+    create  make a worktree for a branch, creating the branch if it is new
+
+Both print the same JSON envelope (branch, path, workspace_id, pane_id, ...),
+so whatever starts an agent afterwards does not care which one ran. Neither
+starts an agent; that is `herdr-start-agent`'s job, and `herdr-work-issue`
+chains the two.
+
+## pr
 
 The local branch keeps the PR's own name. Fork and same-repository PRs need
 different fetch refspecs, and that conditional shows up in more than one place,
 which is exactly the kind of thing worth not re-deriving.
 
-Most of this file is about arriving somewhere that already half exists. A PR
+Most of the pr path is about arriving somewhere that already half exists. A PR
 gets opened, looked at, closed, and opened again, so the interesting states are
 "branch already checked out in a worktree", "worktree on disk but no Herdr
 workspace", "workspace already open", and "local branch left behind by an
@@ -24,9 +38,18 @@ local commits, or a force-push all stop the update and get reported rather than
 resolved, because deciding what to do with someone's work is not this script's
 job.
 
-Teardown is deliberately not here. Removing a workspace by ID is one typo away
-from removing someone else's, and this Herdr instance is shared. SKILL.md has
-the two commands to run by hand.
+## create
+
+The generic path: given a branch name and label, make a worktree for it. A
+fresh branch is created from --base (or the repo HEAD); an existing local branch
+is checked out as it stands. Re-running converges: an existing worktree on the
+branch is opened and focused rather than recreated. The branch name and slug are
+the caller's to decide (that judgement lives in `herdr-work-issue`), so this
+subcommand does not fetch a task or invent a name.
+
+Teardown is deliberately not here, for either path. Removing a workspace by ID
+is one typo away from removing someone else's, and this Herdr instance is
+shared. SKILL.md has the two commands to run by hand.
 
 Standard library only. If a herdr command changes shape, this fails loudly with
 herdr's own stderr rather than guessing.
@@ -42,12 +65,12 @@ import sys
 
 
 def die(message: str) -> "None":
-    print(f"pr-worktree: {message}", file=sys.stderr)
+    print(f"worktree: {message}", file=sys.stderr)
     raise SystemExit(1)
 
 
 def note(message: str) -> None:
-    print(f"pr-worktree: {message}", file=sys.stderr)
+    print(f"worktree: {message}", file=sys.stderr)
 
 
 def run(args: list[str], cwd: str | None = None) -> subprocess.CompletedProcess[str]:
@@ -93,11 +116,11 @@ def resolve_pr(arg: str | None, cwd: str) -> dict:
     )
     candidates = json.loads(listing.stdout) if listing.returncode == 0 else []
     if arg:
-        print(f"pr-worktree: no such pull request: {arg}", file=sys.stderr)
+        print(f"worktree: no such pull request: {arg}", file=sys.stderr)
     else:
-        print("pr-worktree: the current branch has no pull request", file=sys.stderr)
+        print("worktree: the current branch has no pull request", file=sys.stderr)
     if candidates:
-        print("pr-worktree: open pull requests:", file=sys.stderr)
+        print("worktree: open pull requests:", file=sys.stderr)
         for c in candidates:
             print(f"  #{c['number']}  {c['headRefName']}  {c['title']}", file=sys.stderr)
     raise SystemExit(2)
@@ -232,24 +255,25 @@ def open_workspace(root: str, path: str, focus: bool) -> dict:
     return result
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        prog="pr-worktree",
-        description="Check out a pull request's branch into a Herdr worktree workspace.",
-    )
-    parser.add_argument("pr", nargs="?", help="PR number or URL (default: the current branch's PR)")
-    parser.add_argument("--path", help="worktree path (default: Herdr's, under ~/.herdr/worktrees/)")
-    parser.add_argument("--no-focus", action="store_true", help="leave the user where they are")
-    parser.add_argument("--no-update", action="store_true",
-                        help="do not fast-forward a worktree that already exists")
-    parser.add_argument("--vacate", action="store_true",
-                        help="if the main checkout holds the branch, switch it to the "
-                             "default branch and take the branch for the worktree")
-    args = parser.parse_args()
+def resolve_existing(root: str, branch: str) -> tuple[list[dict], str, dict | None]:
+    """The worktree bookkeeping shared by both subcommands.
 
-    if os.environ.get("HERDR_ENV") != "1":
-        die("not running inside Herdr (HERDR_ENV is not 1)")
+    Returns the worktree listing, the main checkout's path, and the record for
+    a worktree already holding this branch (or None). Stale metadata for a
+    deleted directory is pruned before answering, since git still counts it as
+    holding the branch and would otherwise block a create with a confusing
+    message."""
+    listing = worktrees(root)
+    main_checkout = listing[0]["path"] if listing else root
+    already = next((w for w in listing if w.get("branch") == branch), None)
+    if already is not None and not os.path.isdir(already["path"]):
+        note(f"pruning stale worktree metadata for {already['path']}")
+        run(["git", "-C", root, "worktree", "prune"])
+        already = None
+    return listing, main_checkout, already
 
+
+def cmd_pr(args: argparse.Namespace) -> None:
     focus = not args.no_focus
     root = repo_root()
     pr = resolve_pr(args.pr, root)
@@ -257,16 +281,7 @@ def main() -> None:
     branch = pr["headRefName"]
     fork = pr["isCrossRepository"]
 
-    listing = worktrees(root)
-    main_checkout = listing[0]["path"] if listing else root
-    already = next((w for w in listing if w.get("branch") == branch), None)
-
-    # A worktree whose directory is gone still occupies the branch as far as git
-    # is concerned, and blocks the create below with a confusing message.
-    if already is not None and not os.path.isdir(already["path"]):
-        note(f"pruning stale worktree metadata for {already['path']}")
-        run(["git", "-C", root, "worktree", "prune"])
-        already = None
+    _, main_checkout, already = resolve_existing(root, branch)
 
     # git allows one checkout per branch, so a worktree cannot take the branch
     # while the main checkout holds it. That checkout is where someone works,
@@ -357,6 +372,108 @@ def main() -> None:
         "already_open": False,
         "update": None,
     }))
+
+
+def cmd_create(args: argparse.Namespace) -> None:
+    focus = not args.no_focus
+    branch = args.branch
+    label = args.label or branch
+    root = repo_root()
+
+    _, main_checkout, already = resolve_existing(root, branch)
+
+    # The branch is held by the main checkout. Unlike the pr path there is no
+    # --vacate here: a fresh branch nobody asked to move should just be reported.
+    if already is not None and os.path.realpath(already["path"]) == os.path.realpath(main_checkout):
+        note(f"{branch} is checked out in the main checkout at {main_checkout}")
+        note("git allows one checkout per branch, so a worktree cannot have it")
+        note("check out a different branch there, or pick another branch name")
+        raise SystemExit(3)
+
+    # Re-running converges: an existing worktree on the branch is opened and
+    # focused rather than recreated. This is what makes starting the same issue
+    # twice land in the same place.
+    if already is not None:
+        path = already["path"]
+        if args.path and os.path.realpath(args.path) != os.path.realpath(path):
+            note(f"ignoring --path, {branch} is already checked out at {path}")
+        result = open_workspace(root, path, focus)
+        already_open = bool(result.get("already_open"))
+        note(f"{branch} reused at {path}{' (workspace already open)' if already_open else ''}")
+        print(json.dumps({
+            "branch": branch,
+            "label": label,
+            "path": path,
+            "workspace_id": result["workspace"]["workspace_id"],
+            "pane_id": result["root_pane"]["pane_id"],
+            "reused": True,
+            "already_open": already_open,
+        }))
+        return
+
+    create = [
+        "worktree", "create",
+        "--cwd", root,
+        "--branch", branch,
+        "--label", label,
+        "--json",
+        "--focus" if focus else "--no-focus",
+    ]
+    # --base names the ref the new branch starts from, so it is only right when
+    # the branch is being created. An existing local branch (a leftover from an
+    # earlier run) is checked out as it stands.
+    if not local_branch_exists(root, branch):
+        if args.base:
+            create += ["--base", args.base]
+    elif args.base:
+        note(f"ignoring --base, local branch {branch} already exists and is checked out as is")
+    if args.path:
+        create += ["--path", args.path]
+
+    result = herdr(create)["result"]
+
+    note(f"created {branch}")
+    print(json.dumps({
+        "branch": branch,
+        "label": label,
+        "path": result["worktree"]["path"],
+        "workspace_id": result["workspace"]["workspace_id"],
+        "pane_id": result["root_pane"]["pane_id"],
+        "reused": False,
+        "already_open": False,
+    }))
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        prog="worktree",
+        description="Create a Herdr worktree workspace, from a pull request or a fresh branch.",
+    )
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    p = sub.add_parser("pr", help="check out an existing pull request's branch")
+    p.add_argument("pr", nargs="?", help="PR number or URL (default: the current branch's PR)")
+    p.add_argument("--path", help="worktree path (default: Herdr's, under ~/.herdr/worktrees/)")
+    p.add_argument("--no-focus", action="store_true", help="leave the user where they are")
+    p.add_argument("--no-update", action="store_true",
+                   help="do not fast-forward a worktree that already exists")
+    p.add_argument("--vacate", action="store_true",
+                   help="if the main checkout holds the branch, switch it to the "
+                        "default branch and take the branch for the worktree")
+
+    c = sub.add_parser("create", help="make a worktree for a branch, creating it if new")
+    c.add_argument("--branch", required=True, help="branch name (created from --base if it does not exist)")
+    c.add_argument("--label", help="workspace label (default: the branch name)")
+    c.add_argument("--base", help="ref the new branch starts from (default: the repo HEAD)")
+    c.add_argument("--path", help="worktree path (default: Herdr's, under ~/.herdr/worktrees/)")
+    c.add_argument("--no-focus", action="store_true", help="leave the user where they are")
+
+    args = parser.parse_args()
+
+    if os.environ.get("HERDR_ENV") != "1":
+        die("not running inside Herdr (HERDR_ENV is not 1)")
+
+    (cmd_pr if args.command == "pr" else cmd_create)(args)
 
 
 if __name__ == "__main__":

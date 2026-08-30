@@ -6,3 +6,8 @@
 # check-wrapping moved to its own markdown-wrapping skill; without this it
 # lingers in the old skill on machines that already applied it.
 .agents/skills/markdown-formatting/scripts/check-wrapping
+# herdr-pr-worktree was generalized and renamed to herdr-worktree; without
+# these it lingers under the old name on machines that already applied it.
+.agents/skills/herdr-pr-worktree
+.claude/skills/herdr-pr-worktree
+.gemini/config/plugins/kris-steinhoff/skills/herdr-pr-worktree
