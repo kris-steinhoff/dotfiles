@@ -9,7 +9,7 @@ Starts a supported agent in a pane something else already made, maps a short mod
 
 This skill assumes the `herdr` skill for CLI discovery, ID handling, and the safety rules. It does not repeat them.
 
-It does not create layout. `agent start` needs an available shell pane, so you supply `--pane`. Get one from `herdr-worktree` (its `pane_id`), from a `pane split`, or from a tab you opened. `herdr-work-issue` chains task lookup, `herdr-worktree`, and this skill for the "have <agent> work on #123" flow.
+It does not create layout. `agent start` needs an available shell pane, so you supply `--pane`. Get one from `herdr-worktree` (its `pane_id`), from a `pane split`, or from a tab you opened. `herdr-work-task` chains task lookup, `herdr-worktree`, and this skill for the "have <agent> work on #123" flow.
 
 ## Run it
 

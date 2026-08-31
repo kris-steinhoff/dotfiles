@@ -7,7 +7,7 @@ JIRA_EMAIL, and JIRA_API_TOKEN in the environment; without them it reports a
 clear error rather than guessing. Jira's rich-text (ADF) descriptions are
 flattened to plain text.
 
-This is the deterministic half of `herdr-work-issue`. Synthesizing a slug from
+This is the deterministic half of `herdr-work-task`. Synthesizing a slug from
 the title, and deciding the branch name, is judgement and stays in SKILL.md;
 this only fetches. Prints one JSON object on stdout:
 

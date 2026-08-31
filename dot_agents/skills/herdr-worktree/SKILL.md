@@ -9,7 +9,7 @@ Puts a branch in its own worktree, opened as a Herdr workspace, without touching
 
 This skill assumes the `herdr` skill for CLI discovery, ID handling, and the safety rules. It does not repeat them.
 
-It creates the worktree and stops. It does not start an agent. Compose it with `herdr-start-agent` to put an agent in the worktree's pane, or with `herdr-work-issue`, which chains task lookup, this skill, and `herdr-start-agent` into "have <agent> work on #123".
+It creates the worktree and stops. It does not start an agent. Compose it with `herdr-start-agent` to put an agent in the worktree's pane, or with `herdr-work-task`, which chains task lookup, this skill, and `herdr-start-agent` into "have <agent> work on #123".
 
 Two subcommands, both printing a JSON summary with the same `path`, `workspace_id`, and `pane_id`, so whatever runs next does not care which one you used.
 
@@ -47,7 +47,7 @@ Makes a worktree for `--branch`. A branch that does not exist yet is created fro
 { "branch": "123-rate-limit-headers", "label": "rate limit headers", "path": "...", "workspace_id": "w3J", "pane_id": "w3J:p1", "reused": false, "already_open": false }
 ```
 
-This subcommand does not fetch a task or invent a branch name. Deciding the branch and slug is judgement, and it lives in `herdr-work-issue`. Call `create` once you already have the name.
+This subcommand does not fetch a task or invent a branch name. Deciding the branch and slug is judgement, and it lives in `herdr-work-task`. Call `create` once you already have the name.
 
 **Exit 3 means the main checkout holds that branch**, so a worktree cannot. Unlike `pr` there is no `--vacate` here: a branch nobody asked to move is just reported. Check out a different branch there, or pick another branch name.
 

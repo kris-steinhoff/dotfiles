@@ -11,3 +11,9 @@
 .agents/skills/herdr-pr-worktree
 .claude/skills/herdr-pr-worktree
 .gemini/config/plugins/kris-steinhoff/skills/herdr-pr-worktree
+# herdr-work-issue broadened past issues (Jira, plan units) and was renamed to
+# herdr-work-task; without these it lingers under the old name on machines that
+# already applied it.
+.agents/skills/herdr-work-issue
+.claude/skills/herdr-work-issue
+.gemini/config/plugins/kris-steinhoff/skills/herdr-work-issue
