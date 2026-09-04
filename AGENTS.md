@@ -90,7 +90,7 @@ To remove a skill, delete it from all three source locations _and_ add the deplo
 
 Claude and Gemini each read a single always-loaded instruction file (`~/.claude/CLAUDE.md` and `~/.gemini/GEMINI.md`). Their shared content is written once as chezmoi template partials under `.chezmoitemplates/agent-behaviors/`, so one edit updates both:
 
-- `agent-behaviors/writing-style` — the writing-style and quirk-suppression directives.
+- `agent-behaviors/communication` — how to write for a human who has an AI agent at hand: lead with the conclusion, explain references instead of pointing, favor judgment over exhaustive precision. Also carries the attribution rule: when posting a message on the user's behalf, name yourself so it is clear an agent wrote it.
 - `agent-behaviors/coordinator` — the coordinator delegation default: prefer handing work to a worker (a background task or a subagent) over doing it inline, to keep the main conversation free. It lives in the always-loaded instructions rather than a skill because it must be in context before the agent's first move, which a lazily loaded skill can't guarantee.
 
 Each harness file is a thin `.tmpl` that includes both partials: `dot_claude/CLAUDE.md.tmpl` and `dot_gemini/GEMINI.md.tmpl`. A harness that needs its own content adds it before or after the includes. Edit a partial to change shared behavior. Pi is out of scope for the coordinator default: it has no subagents.
