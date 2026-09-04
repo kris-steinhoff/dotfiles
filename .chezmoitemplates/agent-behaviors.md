@@ -6,12 +6,12 @@ Do not run coding tasks in parallel. Concurrent edits need separate worktrees an
 
 ## Herdr delegation
 
-When Herdr is available (`HERDR_ENV=1`) and the user asks in plain language to run an agent or command elsewhere — "review #254 with codex in a worktree", "new pane for codex to explore X and report back here", "open a worktree for NXC-162" — treat it as a Herdr request. No slash command is needed: recognize the intent, drive the mechanics through the `herdr` skill, and follow the guidance below.
+When Herdr is available (`HERDR_ENV=1`) and the user asks in plain language to run an agent or command elsewhere — "review #254 with codex in a worktree", "new pane for codex to explore X and report back here", "open a worktree for NXC-162" — treat it as a Herdr request: recognize the intent and drive the mechanics through the `herdr` skill.
 
 ### Parse the request
 
 - **Placement** — worktree, sibling pane, or tab. Take it from the words; when unstated, choose by task nature: code-writing → worktree, investigation → pane, a review that reads via API → tab.
-- **Agent kind** — codex, claude, gemini, …, or none (a bare worktree, so don't start an agent unless one was asked for). Pass a model as a native arg after `--`: `-- --model opus`, or `-- -m opus` for gemini and codex.
+- **Agent kind** — which agent to run (codex, claude, gemini, …), and any model hint like opus. Or none — create the placement empty, and don't start an agent unless one was asked for.
 - **Task source** — detect by shape, then repo context; when genuinely ambiguous, ask rather than guess:
   - `ABC-123` → a Jira key.
   - `#78` or a bare `78` → a GitHub issue.
@@ -21,7 +21,7 @@ When Herdr is available (`HERDR_ENV=1`) and the user asks in plain language to r
 
 ### Name what you create
 
-Name for whoever consumes the name, not by formula:
+Name for whoever consumes the name:
 
 - A branch Jira will associate wants the lowercased key as its prefix: `nxc-162-household-editing`.
 - A GitHub branch wants the number where it helps: `78-rate-limit-headers`.
@@ -46,9 +46,8 @@ A worktree puts a branch on its own checkout without disturbing the current one.
 
 ### Act on clear, confirm on doubt
 
-- **Clear** — when placement, source, and name are all unambiguous, create immediately, then report exactly what you made: the branch, the worktree path, the agent name, and its tab or workspace.
+- **Clear** — when placement, source, and name are all unambiguous, create immediately and hand the worker its task; then report exactly what you made (the branch, the worktree path, the agent name, and its tab or workspace) and stop — don't poll it to completion.
 - **Doubt** — pause and ask only on a degraded fallback (unreachable source, missing slug), an ambiguous parse, or an uncertain source.
-- **Fire-and-forget** — hand the worker its task and stop; don't poll it to completion.
 
 ## Communication
 
