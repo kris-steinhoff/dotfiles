@@ -88,13 +88,22 @@ To remove a skill, delete it from all three source locations _and_ add the deplo
 
 ## Global instructions (composed from shared partials)
 
-Claude and Gemini each read a single always-loaded instruction file (`~/.claude/CLAUDE.md` and `~/.gemini/GEMINI.md`). Their shared content is written once as the chezmoi template partial `.chezmoitemplates/agent-behaviors.md`, so one edit updates both. It holds three sections:
+Claude and Gemini each read a single always-loaded instruction file (`~/.claude/CLAUDE.md` and `~/.gemini/GEMINI.md`). The shared content is written once as three chezmoi template partials under `.chezmoitemplates/`, each a section a surface can opt into, so one edit updates every surface that includes it:
 
-- **Coordinator disposition** — the delegation default: prefer handing work to a worker (a background task or a subagent) over doing it inline, to keep the main conversation free. It lives in the always-loaded instructions rather than a skill because it must be in context before the agent's first move, which a lazily loaded skill can't guarantee.
-- **Herdr delegation** — the entry layer for Herdr: recognize a plain-language "run `<agent>` on `<task>` in a worktree/pane/tab" without a slash command, parse placement/agent/source/report-back, name artifacts for their downstream consumer, and act-on-clear/confirm-on-doubt. It routes mechanics through the `herdr` skill and carries the worktree basics inline (fresh-branch create; PR-onto-disk via the `pull/<n>/head` fetch ref). This replaced the retired `herdr-pr-review`, `herdr-start-agent`, `herdr-work-task`, `herdr-ralph-loop`, and `herdr-worktree` recipe skills; it must be always-loaded for the same reason as the coordinator default. Gated on `HERDR_ENV=1`, so it's inert where Herdr isn't running.
-- **Communication** — how to write for a human who has an AI agent at hand: lead with the conclusion, explain references instead of pointing, favor judgment over exhaustive precision. Also carries the attribution rule: when posting a message on the user's behalf, name yourself so it is clear an agent wrote it.
+- **`coordinator.md`** — the delegation default: prefer handing work to a worker (a background task or a subagent) over doing it inline, to keep the main conversation free. It lives in the always-loaded instructions rather than a skill because it must be in context before the agent's first move, which a lazily loaded skill can't guarantee.
+- **`herdr.md`** — the entry layer for Herdr: recognize a plain-language "run `<agent>` on `<task>` in a worktree/pane/tab" without a slash command, parse placement/agent/source/report-back, name artifacts for their downstream consumer, and act-on-clear/confirm-on-doubt. It routes mechanics through the `herdr` skill and carries the worktree basics inline (fresh-branch create; PR-onto-disk via the `pull/<n>/head` fetch ref). This replaced the retired `herdr-pr-review`, `herdr-start-agent`, `herdr-work-task`, `herdr-ralph-loop`, and `herdr-worktree` recipe skills; it must be always-loaded for the same reason as the coordinator default. Gated on `HERDR_ENV=1`, so it's inert where Herdr isn't running.
+- **`communication.md`** — how to write for a human who has an AI agent at hand: lead with the conclusion, explain references instead of pointing, favor judgment over exhaustive precision. Also carries the attribution rule: when posting a message on the user's behalf, name yourself so it is clear an agent wrote it.
 
-Each harness file is a thin `.tmpl` that includes the partial: `dot_claude/CLAUDE.md.tmpl` and `dot_gemini/GEMINI.md.tmpl`. A harness that needs its own content adds it before or after the include. Edit the partial to change shared behavior. Pi is out of scope for the coordinator default: it has no subagents.
+Each harness file is a thin `.tmpl` that includes the section partials that apply to it, one `{{ template ... }}` line per section:
+
+| Harness                     | Sections included                         |
+| --------------------------- | ----------------------------------------- |
+| `dot_claude/CLAUDE.md.tmpl` | `coordinator` + `herdr` + `communication` |
+| `dot_gemini/GEMINI.md.tmpl` | `coordinator` + `herdr` + `communication` |
+
+The per-section split is the mechanism for subsetting: a surface can include only the sections that apply to it, even though both current surfaces take all three. Pi, for instance, is out of scope for the coordinator disposition — it has no subagents or background tasks, so that section would be inert there.
+
+The harness files are `.tmpl`, not `.md`, so the `prettier` pre-commit hook (which runs with `proseWrap: never`) leaves their one-include-per-line layout alone; that layout matters because the render joins the sections with the blank lines between them. The section partials themselves are prose `.md` and stay prettier-managed. This is why there is no `agent-behaviors.md` wrapper partial: a `.md` composition file would get its include lines collapsed onto one line by prettier. A harness that needs its own content adds it before or after the includes. Edit a section partial to change that shared behavior everywhere it appears.
 
 ## Key tools configured
 
