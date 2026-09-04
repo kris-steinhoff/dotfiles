@@ -35,18 +35,28 @@ if vim.env.HERDR_ENV == "1" and vim.fn.executable("pbcopy") == 0 then
   -- On a local herdr pane, pbcopy/pbpaste talk to the real macOS clipboard
   -- directly and just work, so leave nvim's default clipboard provider in
   -- place. Only remote/containerized herdr targets lack pbcopy/xclip; there,
-  -- fall back to OSC 52, which herdr relays to the host clipboard. (OSC 52
-  -- paste's terminal round-trip through herdr's pty relay is unreliable, so
-  -- this path is a last resort, not the default.)
+  -- fall back to OSC 52, which herdr relays to the host clipboard.
+  --
+  -- Write-only, deliberately. OSC 52 paste queries the terminal for the
+  -- clipboard and blocks on the reply, but herdr's pty relay never returns
+  -- one, so a put would hang on "Waiting for OSC 52 response from the
+  -- terminal." Instead, paste returns nvim's own unnamed register: a
+  -- yank-then-put round-trips inside nvim without touching the terminal. The
+  -- tradeoff is that you can't pull text copied in another host app into nvim
+  -- via "+ on these targets, but that path was already unreliable.
+  local osc52 = require("vim.ui.clipboard.osc52")
+  local paste_from_reg = function()
+    return { vim.fn.split(vim.fn.getreg('"'), "\n"), vim.fn.getregtype('"') }
+  end
   vim.g.clipboard = {
     name = "OSC 52",
     copy = {
-      ["+"] = require("vim.ui.clipboard.osc52").copy("+"),
-      ["*"] = require("vim.ui.clipboard.osc52").copy("*"),
+      ["+"] = osc52.copy("+"),
+      ["*"] = osc52.copy("*"),
     },
     paste = {
-      ["+"] = require("vim.ui.clipboard.osc52").paste("+"),
-      ["*"] = require("vim.ui.clipboard.osc52").paste("*"),
+      ["+"] = paste_from_reg,
+      ["*"] = paste_from_reg,
     },
   }
 end
