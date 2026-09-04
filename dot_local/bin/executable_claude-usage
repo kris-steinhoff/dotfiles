@@ -21,7 +21,9 @@ import json
 import math
 import subprocess
 import sys
+import termios
 import time
+import tty
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -409,32 +411,45 @@ def run_live(interval: int) -> None:
     error: UsageError | None = None
     last_attempt = 0.0
 
-    with Live(console=console, auto_refresh=False, screen=False) as live:
-        try:
-            while True:
-                now = time.monotonic()
-                if data is None or now - last_attempt >= interval:
-                    last_attempt = now
-                    try:
-                        oauth = load_oauth()
-                        data = fetch_usage(oauth["accessToken"])
-                        updated_at = datetime.now()
-                        error = None
-                    except UsageError as e:
-                        error = e
+    # Silence keystroke echo while the Live view owns the screen. Echoed
+    # characters shove Rich's render region and leave stacked, ghosted panels.
+    # cbreak drops ECHO and line-buffering but keeps ISIG, so Ctrl-C still quits.
+    fd = sys.stdin.fileno() if sys.stdin.isatty() else None
+    saved_attrs = termios.tcgetattr(fd) if fd is not None else None
+    if fd is not None:
+        tty.setcbreak(fd)
 
-                secs_left = max(0, math.ceil(interval - (time.monotonic() - last_attempt)))
-                if data is not None and oauth is not None:
-                    footer = footer_line(updated_at, secs_left, error)
-                    live.update(build_panel(data, oauth, footer), refresh=True)
-                else:
-                    # No data yet: the error panel already states the message, so
-                    # the footer just carries the countdown and quit hint.
-                    footer = footer_line(None, secs_left, None)
-                    live.update(error_panel(error, footer), refresh=True)  # type: ignore[arg-type]
-                time.sleep(1)
-        except KeyboardInterrupt:
-            pass
+    try:
+        with Live(console=console, auto_refresh=False, screen=False) as live:
+            try:
+                while True:
+                    now = time.monotonic()
+                    if data is None or now - last_attempt >= interval:
+                        last_attempt = now
+                        try:
+                            oauth = load_oauth()
+                            data = fetch_usage(oauth["accessToken"])
+                            updated_at = datetime.now()
+                            error = None
+                        except UsageError as e:
+                            error = e
+
+                    secs_left = max(0, math.ceil(interval - (time.monotonic() - last_attempt)))
+                    if data is not None and oauth is not None:
+                        footer = footer_line(updated_at, secs_left, error)
+                        live.update(build_panel(data, oauth, footer), refresh=True)
+                    else:
+                        # No data yet: the error panel already states the message, so
+                        # the footer just carries the countdown and quit hint.
+                        footer = footer_line(None, secs_left, None)
+                        live.update(error_panel(error, footer), refresh=True)  # type: ignore[arg-type]
+                    time.sleep(1)
+            except KeyboardInterrupt:
+                pass
+    finally:
+        if fd is not None and saved_attrs is not None:
+            termios.tcflush(fd, termios.TCIFLUSH)  # drop keys typed during the run
+            termios.tcsetattr(fd, termios.TCSADRAIN, saved_attrs)
 
 
 # --------------------------------------------------------------------------- #
