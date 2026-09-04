@@ -318,12 +318,11 @@ def extra_usage_line(data: dict) -> Text | None:
 
 
 def account_subtitle(oauth: dict) -> Text:
+    # Just the plan (enterprise / pro / max); it distinguishes accounts. The
+    # rateLimitTier string ("default_claude_zero" etc.) adds no signal the
+    # usage bars don't already convey, so it is not shown.
     sub = (oauth.get("subscriptionType") or "unknown").replace("_", " ")
-    tier = (oauth.get("rateLimitTier") or "").replace("_", " ")
-    subtitle = Text(sub, style="magenta")
-    if tier and tier not in {"default claude ai", sub}:
-        subtitle.append(f"  ·  {tier}", style="grey58")
-    return subtitle
+    return Text(sub, style="magenta")
 
 
 def build_panel(data: dict, oauth: dict, footer: Text | None = None) -> Panel:
