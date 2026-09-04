@@ -21,9 +21,9 @@
 # this the old rules file lingers on machines that already applied it.
 .claude/rules/writing_style.md
 # The herdr-* recipe skills were folded into the "Herdr delegation" section of
-# the shared agent-behaviors instructions; only herdr and herdr-worktree remain
-# as skills. Without these the retired recipes linger on machines that already
-# applied them.
+# the shared agent-behaviors instructions; only herdr remains as a skill (the
+# worktree basics were inlined too). Without these the retired skills linger on
+# machines that already applied them.
 .agents/skills/herdr-pr-review
 .claude/skills/herdr-pr-review
 .gemini/config/plugins/kris-steinhoff/skills/herdr-pr-review
@@ -36,3 +36,6 @@
 .agents/skills/herdr-ralph-loop
 .claude/skills/herdr-ralph-loop
 .gemini/config/plugins/kris-steinhoff/skills/herdr-ralph-loop
+.agents/skills/herdr-worktree
+.claude/skills/herdr-worktree
+.gemini/config/plugins/kris-steinhoff/skills/herdr-worktree
