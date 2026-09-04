@@ -10,8 +10,8 @@ with a shell pane ready for an agent:
 
 Both print the same JSON envelope (branch, path, workspace_id, pane_id, ...),
 so whatever starts an agent afterwards does not care which one ran. Neither
-starts an agent; that is `herdr-start-agent`'s job, and `herdr-work-task`
-chains the two.
+starts an agent; the caller does that with the `herdr` skill after this
+returns, driven by the always-loaded Herdr delegation instructions.
 
 ## pr
 
@@ -44,8 +44,8 @@ The generic path: given a branch name and label, make a worktree for it. A
 fresh branch is created from --base (or the repo HEAD); an existing local branch
 is checked out as it stands. Re-running converges: an existing worktree on the
 branch is opened and focused rather than recreated. The branch name and slug are
-the caller's to decide (that judgement lives in `herdr-work-task`), so this
-subcommand does not fetch a task or invent a name.
+the caller's to decide (that judgement lives in the Herdr delegation
+instructions), so this subcommand does not fetch a task or invent a name.
 
 Teardown is deliberately not here, for either path. Removing a workspace by ID
 is one typo away from removing someone else's, and this Herdr instance is

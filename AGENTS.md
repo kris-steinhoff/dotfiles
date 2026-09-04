@@ -88,9 +88,10 @@ To remove a skill, delete it from all three source locations _and_ add the deplo
 
 ## Global instructions (composed from shared partials)
 
-Claude and Gemini each read a single always-loaded instruction file (`~/.claude/CLAUDE.md` and `~/.gemini/GEMINI.md`). Their shared content is written once as the chezmoi template partial `.chezmoitemplates/agent-behaviors.md`, so one edit updates both. It holds two sections:
+Claude and Gemini each read a single always-loaded instruction file (`~/.claude/CLAUDE.md` and `~/.gemini/GEMINI.md`). Their shared content is written once as the chezmoi template partial `.chezmoitemplates/agent-behaviors.md`, so one edit updates both. It holds three sections:
 
 - **Coordinator disposition** — the delegation default: prefer handing work to a worker (a background task or a subagent) over doing it inline, to keep the main conversation free. It lives in the always-loaded instructions rather than a skill because it must be in context before the agent's first move, which a lazily loaded skill can't guarantee.
+- **Herdr delegation** — the entry layer for Herdr: recognize a plain-language "run `<agent>` on `<task>` in a worktree/pane/tab" without a slash command, parse placement/agent/source/report-back, name artifacts for their downstream consumer, and act-on-clear/confirm-on-doubt. It routes mechanics through the `herdr` skill (and `herdr-worktree` for a branch on disk). This replaced the retired `herdr-pr-review`, `herdr-start-agent`, `herdr-work-task`, and `herdr-ralph-loop` recipe skills; it must be always-loaded for the same reason as the coordinator default. Gated on `HERDR_ENV=1`, so it's inert where Herdr isn't running.
 - **Communication** — how to write for a human who has an AI agent at hand: lead with the conclusion, explain references instead of pointing, favor judgment over exhaustive precision. Also carries the attribution rule: when posting a message on the user's behalf, name yourself so it is clear an agent wrote it.
 
 Each harness file is a thin `.tmpl` that includes the partial: `dot_claude/CLAUDE.md.tmpl` and `dot_gemini/GEMINI.md.tmpl`. A harness that needs its own content adds it before or after the include. Edit the partial to change shared behavior. Pi is out of scope for the coordinator default: it has no subagents.

@@ -20,3 +20,19 @@
 # writing-style moved from ~/.claude/rules/ into ~/.claude/CLAUDE.md; without
 # this the old rules file lingers on machines that already applied it.
 .claude/rules/writing_style.md
+# The herdr-* recipe skills were folded into the "Herdr delegation" section of
+# the shared agent-behaviors instructions; only herdr and herdr-worktree remain
+# as skills. Without these the retired recipes linger on machines that already
+# applied them.
+.agents/skills/herdr-pr-review
+.claude/skills/herdr-pr-review
+.gemini/config/plugins/kris-steinhoff/skills/herdr-pr-review
+.agents/skills/herdr-start-agent
+.claude/skills/herdr-start-agent
+.gemini/config/plugins/kris-steinhoff/skills/herdr-start-agent
+.agents/skills/herdr-work-task
+.claude/skills/herdr-work-task
+.gemini/config/plugins/kris-steinhoff/skills/herdr-work-task
+.agents/skills/herdr-ralph-loop
+.claude/skills/herdr-ralph-loop
+.gemini/config/plugins/kris-steinhoff/skills/herdr-ralph-loop
