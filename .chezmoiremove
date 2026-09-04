@@ -17,3 +17,6 @@
 .agents/skills/herdr-work-issue
 .claude/skills/herdr-work-issue
 .gemini/config/plugins/kris-steinhoff/skills/herdr-work-issue
+# writing-style moved from ~/.claude/rules/ into ~/.claude/CLAUDE.md; without
+# this the old rules file lingers on machines that already applied it.
+.claude/rules/writing_style.md
