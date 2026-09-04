@@ -195,6 +195,26 @@ def build_windows(data: dict) -> list[Window]:
                 limit_dollars=w.get("limit_dollars"),
             )
         )
+
+    # Enterprise "Claude Zero" accounts report no named windows; usage is tracked
+    # as credit spend in the top-level `spend` block instead. Synthesize a single
+    # dollar window from it so the account gets a real bar. extra_usage_line()
+    # renders the same data, so it is skipped when this window is present.
+    if not windows:
+        spend = data.get("spend") or {}
+        used = spend.get("used") or {}
+        limit = spend.get("limit") or {}
+        if spend.get("enabled") and used.get("amount_minor") is not None and limit.get("amount_minor") is not None:
+            windows.append(
+                Window(
+                    label="Credits · monthly",
+                    percent=None,
+                    severity=spend.get("severity"),
+                    used_dollars=used["amount_minor"] / (10 ** used.get("exponent", 2)),
+                    limit_dollars=limit["amount_minor"] / (10 ** limit.get("exponent", 2)),
+                )
+            )
+
     return windows
 
 
@@ -329,10 +349,13 @@ def build_panel(data: dict, oauth: dict, footer: Text | None = None) -> Panel:
             )
         body.append(table)
 
-        extra = extra_usage_line(data)
-        if extra is not None:
-            body.append(Text(""))
-            body.append(extra)
+        # The synthesized spend window already shows this data, so only add the
+        # extra-usage summary when spend was not rendered as a window.
+        if not any(w.label == "Credits · monthly" for w in windows):
+            extra = extra_usage_line(data)
+            if extra is not None:
+                body.append(Text(""))
+                body.append(extra)
 
     if footer is not None:
         body.append(Text(""))
