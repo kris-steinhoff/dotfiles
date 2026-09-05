@@ -428,6 +428,11 @@ def build_panel(
                 # Right-justified and flexible: absorbs the slack and sits at the edge.
                 t.add_column(justify="right", no_wrap=True, ratio=1)  # updated-at (row 0 only)
             for i, w in enumerate(windows):
+                # A blank row between windows keeps adjacent bars from merging
+                # into one block — two solid-green fills stacked flush read as a
+                # single L-shape otherwise.
+                if i > 0:
+                    t.add_row()
                 cells = [
                     Text(w.label, style="bold white"),
                     bar(w, bar_width),
