@@ -19,6 +19,8 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
+import select
 import subprocess
 import sys
 import termios
@@ -28,11 +30,13 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 
 from rich.align import Align
 from rich.console import Console, Group
 from rich.live import Live
+from rich.measure import Measurement
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
@@ -45,6 +49,13 @@ KEYCHAIN_SERVICE = "Claude Code-credentials"  # macOS Keychain entry name
 BAR_WIDTH = 26
 BAR_WIDTH_DOLLAR = 16  # dollar amounts are wider, so shorten the bar to fit
 
+# Backoff to honor when a 429 arrives without a usable Retry-After hint.
+DEFAULT_BACKOFF = 60.0
+# Extra seconds added past a 429's stated deadline before retrying, so the retry
+# lands after the window has actually cleared rather than at the exact boundary
+# (where it tends to draw a fresh 429 with a full-window Retry-After).
+RETRY_BUFFER = 3.0
+
 console = Console()
 err_console = Console(stderr=True)
 
@@ -56,10 +67,18 @@ class UsageError(Exception):
     the live view it is shown in the footer while the previous data stays up.
     """
 
-    def __init__(self, message: str, hint: str | None = None):
+    def __init__(
+        self,
+        message: str,
+        hint: str | None = None,
+        retry_after: float | None = None,
+        status: int | None = None,
+    ):
         super().__init__(message)
         self.message = message
         self.hint = hint
+        self.retry_after = retry_after
+        self.status = status
 
 
 # --------------------------------------------------------------------------- #
@@ -105,6 +124,29 @@ def load_oauth() -> dict:
 # --------------------------------------------------------------------------- #
 # API
 # --------------------------------------------------------------------------- #
+def parse_retry_after(value: str | None) -> float | None:
+    """Seconds to wait per an HTTP Retry-After header, or None if unusable.
+
+    Accepts the numeric-seconds form ("42", "42.5") and the HTTP-date form,
+    which is resolved to seconds-from-now (floored at 0). Never raises.
+    """
+    if not value:
+        return None
+    value = value.strip()
+    try:
+        return float(value)
+    except ValueError:
+        pass
+    try:
+        when = parsedate_to_datetime(value)
+    except (TypeError, ValueError):
+        return None
+    if when is None or when.tzinfo is None:
+        return None
+    delta = (when - datetime.now(timezone.utc)).total_seconds()
+    return max(0.0, delta)
+
+
 def fetch_usage(token: str) -> dict:
     req = urllib.request.Request(
         USAGE_URL,
@@ -121,10 +163,14 @@ def fetch_usage(token: str) -> dict:
     except urllib.error.HTTPError as e:
         if e.code in (401, 403):
             raise UsageError(
-                "Claude rejected the stored token (expired or revoked).",
-                "Open Claude Code once to refresh it, then try again.",
+                f"{e.code} {e.reason}",
+                hint="Open Claude Code once to refresh the stored token, then try again.",
+                status=e.code,
             )
-        raise UsageError(f"Usage request failed: HTTP {e.code} {e.reason}")
+        if e.code == 429:
+            retry = parse_retry_after(e.headers.get("Retry-After"))
+            raise UsageError(f"{e.code} {e.reason}", retry_after=retry, status=e.code)
+        raise UsageError(f"{e.code} {e.reason}", status=e.code)
     except urllib.error.URLError as e:
         raise UsageError(f"Could not reach the Claude usage API: {e.reason}")
     except TimeoutError:
@@ -327,27 +373,79 @@ def account_subtitle(oauth: dict) -> Text:
     return Text(sub, style="magenta")
 
 
-def build_panel(data: dict, oauth: dict, footer: Text | None = None) -> Panel:
+FLASH_SECONDS = 1.0  # how long the timestamp stays bright right after a refresh
+
+
+def updated_cell(updated_at: datetime | None, fresh_age: float | None) -> Text:
+    if updated_at is None:
+        return Text("")
+    # Flash the time bright the moment it updates, then snap to dim — a single
+    # bright→dim step, no gradual fade in between.
+    bright = fresh_age is not None and fresh_age < FLASH_SECONDS
+    t = Text("updated at ", style="grey50")
+    t.append(updated_at.strftime("%H:%M"), style="bold white" if bright else "grey50")
+    return t
+
+
+def error_lines(error: UsageError, retry_remaining: float | None) -> list[Text]:
+    """A red 'Error: …' line. While backing off, the retry countdown is appended
+    to it in grey (same line); otherwise the error's hint goes on a second line."""
+    first = Text(f"Error: {error.message}", style="red")
+    if retry_remaining is not None:
+        first.append(f"   retrying in {math.ceil(retry_remaining)} seconds", style="grey62")
+        return [first]
+    if error.hint:
+        return [first, Text(error.hint, style="grey62")]
+    return [first]
+
+
+def build_panel(
+    data: dict,
+    oauth: dict,
+    footer: Text | Group | None = None,
+    updated_at: datetime | None = None,
+    fresh_age: float | None = None,
+) -> Panel:
     windows = build_windows(data)
     body: list = []
 
     if not windows:
         body.append(Align.center(Text("No active usage windows reported.", style="grey62")))
     else:
-        table = Table.grid(padding=(0, 2), expand=False)
-        table.add_column(justify="left", no_wrap=True)      # label
-        table.add_column(justify="left", no_wrap=True)      # bar
-        table.add_column(justify="right", no_wrap=True)     # amount
-        table.add_column(justify="left", no_wrap=True)      # reset
-
         bar_width = BAR_WIDTH_DOLLAR if any(w.is_dollar for w in windows) else BAR_WIDTH
-        for w in windows:
-            table.add_row(
-                Text(w.label, style="bold white"),
-                bar(w, bar_width),
-                amount_text(w),
-                reset_text(w.resets_at),
-            )
+        updated = updated_cell(updated_at, fresh_age)
+
+        def build_table(include_updated: bool) -> Table:
+            # Expand only when showing "updated at", so the flexible last column
+            # can push it to the panel's right edge; otherwise the row stays its
+            # natural width.
+            t = Table.grid(padding=(0, 2), expand=include_updated)
+            t.add_column(justify="left", no_wrap=True)   # label
+            t.add_column(justify="left", no_wrap=True)   # bar
+            t.add_column(justify="right", no_wrap=True)  # amount
+            t.add_column(justify="left", no_wrap=True)   # reset
+            if include_updated:
+                # Right-justified and flexible: absorbs the slack and sits at the edge.
+                t.add_column(justify="right", no_wrap=True, ratio=1)  # updated-at (row 0 only)
+            for i, w in enumerate(windows):
+                cells = [
+                    Text(w.label, style="bold white"),
+                    bar(w, bar_width),
+                    amount_text(w),
+                    reset_text(w.resets_at),
+                ]
+                if include_updated:
+                    cells.append(updated if i == 0 else Text(""))
+                t.add_row(*cells)
+            return t
+
+        # Show "updated at" only when the row still fits; on a narrow terminal
+        # drop it rather than let the row overflow. Panel chrome is the border (2)
+        # plus horizontal padding (2*2).
+        table = build_table(updated.cell_len > 0)
+        if updated.cell_len > 0:
+            if Measurement.get(console, console.options, table).maximum > console.width - 6:
+                table = build_table(False)
         body.append(table)
 
         # The synthesized spend window already shows this data, so only add the
@@ -373,13 +471,8 @@ def build_panel(data: dict, oauth: dict, footer: Text | None = None) -> Panel:
     )
 
 
-def error_panel(error: UsageError, footer: Text | None = None) -> Panel:
-    body: list = [Align.center(Text(error.message, style="red"))]
-    if error.hint:
-        body.append(Align.center(Text(error.hint, style="grey62")))
-    if footer is not None:
-        body.append(Text(""))
-        body.append(footer)
+def error_panel(error: UsageError, retry_remaining: float | None = None) -> Panel:
+    body = [Align.center(line) for line in error_lines(error, retry_remaining)]
     return Panel(
         Group(*body),
         title="[bold]Claude Usage[/bold]",
@@ -389,27 +482,39 @@ def error_panel(error: UsageError, footer: Text | None = None) -> Panel:
     )
 
 
-def footer_line(updated_at: datetime | None, secs_left: int, error: UsageError | None) -> Text:
-    t = Text()
-    if updated_at is not None:
-        t.append(f"updated {updated_at.strftime('%H:%M:%S')}", style="grey50")
-        t.append("   ·   ", style="grey35")
-    t.append(f"next refresh {secs_left}s", style="grey50")
-    if error is not None:
-        t.append("   ·   ", style="grey35")
-        t.append(f"last update failed: {error.message}", style="red")
-    t.append("   ·   ", style="grey35")
-    t.append("Ctrl-C to quit", style="grey50")
-    return t
+def wait_for_key(fd: int | None, timeout: float) -> str:
+    """Sleep up to `timeout` seconds, returning an action for any key pressed.
+
+    Returns "quit" for q/Q, a bare Esc, Ctrl-D, or closed stdin; "refresh" for
+    Ctrl-R; "" otherwise. Ctrl-C already raises KeyboardInterrupt via ISIG.
+    Requires the tty to be in cbreak mode (see run_live) so keystrokes arrive
+    unbuffered. With no tty (fd is None) it just sleeps.
+    """
+    if fd is None:
+        time.sleep(timeout)
+        return ""
+    ready, _, _ = select.select([fd], [], [], timeout)
+    if not ready:
+        return ""
+    chunk = os.read(fd, 64)
+    # b"" is a closed stdin; a lone Esc is a quit (arrow keys and the like
+    # arrive as longer "\x1b[..." sequences, so only a bare Esc counts).
+    if chunk in (b"", b"\x1b") or any(c in (0x04, ord("q"), ord("Q")) for c in chunk):
+        return "quit"  # Ctrl-D, q, Q
+    if 0x12 in chunk:  # Ctrl-R
+        return "refresh"
+    return ""
 
 
 def run_live(interval: int) -> None:
-    """Poll every `interval` seconds and redraw once a second so countdowns tick."""
+    """Poll every `interval` seconds and redraw once a second so the retry countdown ticks and the flash clears."""
     data: dict | None = None
     oauth: dict | None = None
     updated_at: datetime | None = None
+    last_success: float | None = None
     error: UsageError | None = None
     last_attempt = 0.0
+    retry_until: float | None = None  # monotonic deadline while backing off a 429
 
     # Silence keystroke echo while the Live view owns the screen. Echoed
     # characters shove Rich's render region and leave stacked, ghosted panels.
@@ -424,26 +529,48 @@ def run_live(interval: int) -> None:
             try:
                 while True:
                     now = time.monotonic()
-                    if data is None or now - last_attempt >= interval:
+                    backing_off = retry_until is not None and now < retry_until
+                    if not backing_off and (data is None or now - last_attempt >= interval):
                         last_attempt = now
                         try:
                             oauth = load_oauth()
                             data = fetch_usage(oauth["accessToken"])
                             updated_at = datetime.now()
+                            last_success = time.monotonic()
                             error = None
+                            retry_until = None
                         except UsageError as e:
                             error = e
+                            if e.status == 429:
+                                # Clamp 0.0/None to the default so a bogus Retry-After
+                                # near zero doesn't turn into a hammering loop.
+                                backoff = e.retry_after if e.retry_after else DEFAULT_BACKOFF
+                                retry_until = time.monotonic() + backoff + RETRY_BUFFER
+                                # Make the retry due the instant the backoff lifts, rather
+                                # than an extra `interval` later.
+                                last_attempt = 0.0
+                        now = time.monotonic()
+                        backing_off = retry_until is not None and now < retry_until
 
-                    secs_left = max(0, math.ceil(interval - (time.monotonic() - last_attempt)))
+                    fresh_age = (time.monotonic() - last_success) if last_success is not None else None
+                    retry_remaining = (
+                        (retry_until - now)
+                        if (error is not None and retry_until is not None and now < retry_until)
+                        else None
+                    )
                     if data is not None and oauth is not None:
-                        footer = footer_line(updated_at, secs_left, error)
-                        live.update(build_panel(data, oauth, footer), refresh=True)
+                        footer = Group(*error_lines(error, retry_remaining)) if error is not None else None
+                        live.update(
+                            build_panel(data, oauth, footer, updated_at=updated_at, fresh_age=fresh_age),
+                            refresh=True,
+                        )
                     else:
-                        # No data yet: the error panel already states the message, so
-                        # the footer just carries the countdown and quit hint.
-                        footer = footer_line(None, secs_left, None)
-                        live.update(error_panel(error, footer), refresh=True)  # type: ignore[arg-type]
-                    time.sleep(1)
+                        live.update(error_panel(error, retry_remaining), refresh=True)  # type: ignore[arg-type]
+                    action = wait_for_key(fd, 1.0)
+                    if action == "quit":
+                        break
+                    if action == "refresh":
+                        last_attempt = 0.0  # force a fetch on the next iteration
             except KeyboardInterrupt:
                 pass
     finally:
@@ -476,8 +603,8 @@ def main() -> None:
     parser.add_argument("--json", action="store_true", help="print the raw usage payload and exit")
     parser.add_argument("--once", action="store_true", help="print a single snapshot instead of the live view")
     parser.add_argument(
-        "-n", "--interval", type=int, default=60, metavar="SECONDS",
-        help="live refresh interval in seconds (default: 60, minimum: 5)",
+        "-n", "--interval", type=int, default=300, metavar="SECONDS",
+        help="live refresh interval in seconds (default: 300 / 5 minutes, minimum: 5)",
     )
     args = parser.parse_args()
 
@@ -490,7 +617,7 @@ def main() -> None:
     # The live view needs a terminal; anything else prints once and exits.
     if args.once or not sys.stdout.isatty():
         oauth, data = snapshot()
-        console.print(build_panel(data, oauth))
+        console.print(build_panel(data, oauth, updated_at=datetime.now(), fresh_age=0.0))
         return
 
     run_live(max(5, args.interval))
