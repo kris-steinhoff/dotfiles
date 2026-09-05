@@ -85,6 +85,33 @@ SAVEHIST=10000
 HISTFILE=~/.zsh_history
 
 # === Functions ===
+
+# Inspect a path: `s <dir>` gives the eza listing, `s <file>` a
+# syntax-highlighted view via bat. No arg inspects the current directory.
+# Both tools are in the Brewfile; fall back to ls/cat if they're missing.
+s() {
+	emulate -L zsh
+	local target="${1:-.}"
+	if [[ -d $target ]]; then
+		if command -v eza &>/dev/null; then
+			eza -lah --git "$target"
+		else
+			ls -lah --color=auto "$target"
+		fi
+	elif [[ -e $target ]]; then
+		if command -v bat &>/dev/null; then
+			bat "$target"
+		elif command -v batcat &>/dev/null; then
+			batcat "$target"
+		else
+			cat "$target"
+		fi
+	else
+		print -u2 "s: no such path: $target"
+		return 1
+	fi
+}
+
 activate() {
 	if [ -d ".venv" ]; then
 		source ".venv/bin/activate"
