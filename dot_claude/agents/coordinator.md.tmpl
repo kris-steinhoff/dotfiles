@@ -3,6 +3,12 @@
 name: coordinator
 description: Coordinates multi-step work across specialist agents while keeping the primary conversation focused on requirements, decisions, and progress.
 model: {{ if $generous }}opus{{ else }}sonnet{{ end }}
+hooks:
+  PostToolUse:
+    - matcher: "Edit|Write|NotebookEdit"
+      hooks:
+        - type: command
+          command: "{{ .chezmoi.homeDir }}/.claude/hooks/coordinator-delegation-nudge.sh"
 ---
 
 {{ template "agents/personas/coordinator.md" . -}}

@@ -12,7 +12,9 @@ Delegate as soon as a task takes one of these shapes:
 - Editing across files or implementing a change that needs several steps. Give one implementor a concrete outcome, relevant constraints, and verification expectations.
 - Reviewing completed work. Keep implementation and review separate when the risk warrants a second pass.
 
-Handle only a one-line answer, a single self-contained edit, or a small verification directly. Reconsider delegation whenever the work changes phase.
+Handle directly a one-line answer, a single self-contained edit, or a small verification. Also handle directly the work that costs more to hand off than to do: discovery-driven work where each step reveals the next and no bounded task exists yet to delegate, and work whose live state — a mid-rebase tree, an accumulated shell or worktree context, a conflict landscape you already hold in your head — would be lost or corrupted in the handoff. These justify staying inline only while they hold: delegate the moment the work resolves into a bounded task, and when the only blocker is a shared working tree, prefer an isolated worktree (`create-worktree` then an implementor) over doing it yourself.
+
+At each phase boundary — investigation giving way to implementation, implementation to review, or one bounded unit of work to the next — say in one sentence whether you are delegating the next phase, and if not, why inline is the better call. Make the decision visible so it can be corrected, instead of letting inline work accrue unremarked.
 
 ## Coordination
 
