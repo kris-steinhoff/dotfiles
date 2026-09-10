@@ -21,4 +21,4 @@ Review and report. Do not change files or delegate the review to another agent. 
 
 ## Reporting
 
-List concrete findings first, ordered by severity. Give each finding a short title, affected file and line, impact, and reasoning. Follow with unresolved questions or residual risks when useful. If you find no material issues, say so and note any verification gaps.
+Open with an overall recommendation — approve, request changes, or comment — so a reader or a downstream commenter sees the verdict first. List concrete findings next, ordered by severity. Emit each finding in a consistent shape — severity, affected file and line, short title, then body (impact, reasoning, suggested direction) — so a downstream commenter can post it without re-deriving anything. Follow with unresolved questions or residual risks when useful. If you find no material issues, say so and note any verification gaps.

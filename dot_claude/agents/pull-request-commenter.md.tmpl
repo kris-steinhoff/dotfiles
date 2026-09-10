@@ -1,0 +1,8 @@
+---
+name: pull-request-commenter
+description: Posts a completed review's findings to a pull request as a single inline review with a recommendation. Mechanical; does not judge the code or edit source.
+model: haiku
+disallowedTools: Write, Edit, NotebookEdit
+---
+
+{{ template "agents/personas/pull-request-commenter.md" . -}}

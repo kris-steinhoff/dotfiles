@@ -101,18 +101,23 @@ Each harness file is a thin `.tmpl` that includes the section partials that appl
 | `dot_gemini/GEMINI.md.tmpl` | `herdr` + `communication` |
 | `dot_codex/AGENTS.md.tmpl`  | `herdr` + `communication` |
 
-Coordinator behavior is opt-in. The four persona prompts live under `.chezmoitemplates/agents/personas/`, with one canonical prompt each for `coordinator`, `implementor`, `investigator`, and `reviewer`. Claude Code agent files under `dot_claude/agents/` add YAML frontmatter and include the shared prompt; the same definition works as a subagent and as a primary persona through `claude --agent <name>`.
+Coordinator behavior is opt-in. The five persona prompts live under `.chezmoitemplates/agents/personas/`, with one canonical prompt each for `coordinator`, `implementor`, `investigator`, `reviewer`, and `pull-request-commenter`. Claude Code agent files under `dot_claude/agents/` add YAML frontmatter and include the shared prompt; the same definition works as a subagent and as a primary persona through `claude --agent <name>`.
 
-Codex uses one profile for both entry points. `dot_codex/<name>.config.toml.tmpl` deploys a launch profile selected with `codex --profile <name>`, while `dot_codex/private_config.toml.tmpl` registers that same file under `[agents.<name>].config_file` so another Codex session can spawn it. Investigator and reviewer wrappers enforce read-only operation through each harness's supported permission controls.
+The `pull-request-commenter` is the mechanical downstream of `reviewer`: it takes a finished review and posts it to the PR as a single inline review, mapping the reviewer's recommendation to the `gh` review event (approve/request-changes/comment). It forms no opinions of its own, so `reviewer` and it share a finding contract — the reviewer emits each finding as severity, file and line, title, and body, plus an overall recommendation, and the commenter renders that without re-deriving anything.
+
+Codex uses one profile for both entry points. `dot_codex/<name>.config.toml.tmpl` deploys a launch profile selected with `codex --profile <name>`, while `dot_codex/private_config.toml.tmpl` registers that same file under `[agents.<name>].config_file` so another Codex session can spawn it. Investigator and reviewer wrappers enforce read-only operation through each harness's supported permission controls. The `pull-request-commenter` is the exception, because posting to GitHub needs network: its Codex wrapper runs `sandbox_mode = "workspace-write"` with `network_access = true` rather than read-only, and its Claude wrapper blocks file edits (`disallowedTools: Write, Edit, NotebookEdit`) while leaving Bash open for the `gh` calls it posts through. No harness can enforce network-yes / source-no at once, so the persona's role boundary is what keeps it from touching source.
 
 Persona model and concurrency choices come from the machine-local `agentBudget` datum. `.chezmoi.toml.tmpl` asks for `conservative` or `generous` during `chezmoi init` and defaults to `conservative`; consuming templates also fall back to conservative when the datum is absent or unrecognized. This keeps existing machines safe until their chezmoi config is regenerated or gains `agentBudget` under `[data]`.
 
-| Persona      | Claude conservative / generous | Codex conservative / generous |
-| ------------ | ------------------------------ | ----------------------------- |
-| Coordinator  | Sonnet / Opus                  | Terra medium / Sol high       |
-| Implementor  | Sonnet / Opus                  | Terra medium / Sol high       |
-| Investigator | Sonnet / Sonnet                | Terra medium / Terra high     |
-| Reviewer     | Sonnet / Opus                  | Terra high / Sol xhigh        |
+| Persona                | Claude conservative / generous | Codex conservative / generous |
+| ---------------------- | ------------------------------ | ----------------------------- |
+| Coordinator            | Sonnet / Opus                  | Terra medium / Sol high       |
+| Implementor            | Sonnet / Opus                  | Terra medium / Sol high       |
+| Investigator           | Sonnet / Sonnet                | Terra medium / Terra high     |
+| Reviewer               | Sonnet / Opus                  | Terra high / Sol xhigh        |
+| Pull-request-commenter | Haiku / Haiku                  | Luna medium / Luna medium     |
+
+The `pull-request-commenter` ignores `agentBudget` entirely: its work is mechanical, so it stays on a small model (Claude Haiku, Codex Luna at medium effort) on every machine regardless of budget.
 
 Codex caps spawned-agent threads at two for conservative machines and four for generous machines. These choices apply only to persona profiles and the subagent cap; the ordinary top-level Codex model remains the independently configured default.
 

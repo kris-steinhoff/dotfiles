@@ -58,3 +58,7 @@ config_file = "investigator.config.toml"
 [agents.reviewer]
 description = "Reviews proposed or completed changes for concrete defects, regressions, security risks, and missing tests without making changes."
 config_file = "reviewer.config.toml"
+
+[agents.pull-request-commenter]
+description = "Posts a completed review's findings to a pull request as a single inline review with a recommendation. Mechanical; does not judge the code or edit source."
+config_file = "pull-request-commenter.config.toml"
