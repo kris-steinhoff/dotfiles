@@ -1,0 +1,149 @@
+#!/usr/bin/env python3
+"""Turn a task reference into a typed, fetched result.
+
+A Herdr dispatch primitive. Detection is mechanical: a Jira key by its shape
+(ABC-123), otherwise a GitHub number whose issue-vs-PR is settled by querying
+the API rather than guessing — the PR endpoint first, then the issue endpoint.
+
+  {kind, id, title, url, base_branch?}   kind in {jira, pr, issue}
+
+base_branch is present only for a PR. Jira fetch uses JIRA_BASE_URL / JIRA_EMAIL
+/ JIRA_API_TOKEN with Basic auth; GitHub uses `gh`.
+
+Part of the Herdr dispatch flow (HERDR_ENV=1), though it drives only `gh` and the
+Jira REST API and needs no Herdr socket, so it also runs standalone.
+
+Exit codes (shared across the Herdr dispatch primitives):
+  0  success. The JSON result object is printed to stdout.
+  2  needs judgment. An expected situation the script cannot resolve
+     mechanically (the ref shape is unrecognized, the PR/issue is not found or
+     access is denied, or the Jira env vars are missing). stdout is JSON,
+     {"status": "needs_judgment", "reason": ...} plus any known partial fields.
+     The caller's cue to fall back to asking.
+  1  real error (an unexpected subprocess or network failure). Diagnostics go to
+     stderr; stdout may be empty.
+
+All subprocesses are invoked as argv lists, never a shell string.
+"""
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+import urllib.error
+import urllib.request
+from base64 import b64encode
+
+JIRA_KEY = re.compile(r"^[A-Z][A-Z0-9]+-\d+$")
+GITHUB_NUMBER = re.compile(r"^\d+$")
+
+
+def emit_success(obj):
+    print(json.dumps(obj))
+    sys.exit(0)
+
+
+def emit_judgment(reason, **partial):
+    print(json.dumps({"status": "needs_judgment", "reason": reason, **partial}))
+    sys.exit(2)
+
+
+def emit_error(message):
+    print(f"resolve-task: {message}", file=sys.stderr)
+    sys.exit(1)
+
+
+def gh_json(repo, args):
+    """Run a `gh` read and return (ok, parsed). ok is False when gh reports the
+    ref does not exist or is inaccessible, which is a needs-judgment case.
+
+    gh detects the repo from its working directory, so the repo path is passed as
+    the subprocess cwd rather than relied on ambiently."""
+    proc = subprocess.run(["gh", *args], capture_output=True, text=True, cwd=repo)
+    if proc.returncode != 0:
+        return False, proc.stderr.strip()
+    try:
+        return True, json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        raise RuntimeError(f"gh returned non-JSON: {proc.stdout[:200]}")
+
+
+def resolve_github(number, repo):
+    ok, data = gh_json(repo, ["pr", "view", number, "--json", "title,url,number,baseRefName"])
+    if ok:
+        emit_success({
+            "kind": "pr",
+            "id": str(data.get("number", number)),
+            "title": data.get("title", ""),
+            "url": data.get("url", ""),
+            "base_branch": data.get("baseRefName", ""),
+        })
+    ok, data = gh_json(repo, ["issue", "view", number, "--json", "title,url,number"])
+    if ok:
+        emit_success({
+            "kind": "issue",
+            "id": str(data.get("number", number)),
+            "title": data.get("title", ""),
+            "url": data.get("url", ""),
+        })
+    emit_judgment(f"GitHub ref {number} not found or access denied", id=number)
+
+
+def resolve_jira(key):
+    base = os.environ.get("JIRA_BASE_URL")
+    email = os.environ.get("JIRA_EMAIL")
+    token = os.environ.get("JIRA_API_TOKEN")
+    if not (base and email and token):
+        emit_judgment(
+            "Jira not configured (set JIRA_BASE_URL, JIRA_EMAIL, JIRA_API_TOKEN)",
+            id=key,
+        )
+
+    base = base.rstrip("/")
+    auth = b64encode(f"{email}:{token}".encode()).decode()
+    url = f"{base}/rest/api/3/issue/{key}?fields=summary"
+    request = urllib.request.Request(url, headers={
+        "Authorization": f"Basic {auth}",
+        "Accept": "application/json",
+    })
+    try:
+        with urllib.request.urlopen(request) as response:
+            data = json.load(response)
+    except urllib.error.HTTPError as error:
+        if error.code in (401, 403, 404):
+            emit_judgment(f"Jira {key}: HTTP {error.code} (not found or access denied)", id=key)
+        raise RuntimeError(f"Jira {key}: HTTP {error.code}")
+    except urllib.error.URLError as error:
+        raise RuntimeError(f"Jira {key}: {error.reason}")
+
+    emit_success({
+        "kind": "jira",
+        "id": key,
+        "title": (data.get("fields") or {}).get("summary", key),
+        "url": f"{base}/browse/{key}",
+    })
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Type and fetch a task reference.")
+    parser.add_argument("--ref", required=True, help="e.g. 123, #123, ABC-123")
+    parser.add_argument("--repo", default=os.getcwd(),
+                        help="git repo path for gh's repo detection (default: cwd)")
+    args = parser.parse_args()
+
+    ref = args.ref.lstrip("#").strip()
+    try:
+        if JIRA_KEY.match(ref):
+            resolve_jira(ref)
+        elif GITHUB_NUMBER.match(ref):
+            resolve_github(ref, args.repo)
+        else:
+            emit_judgment(f"unrecognized ref shape {args.ref!r} (expected 123, #123, or ABC-123)")
+    except RuntimeError as error:
+        emit_error(str(error))
+
+
+if __name__ == "__main__":
+    main()

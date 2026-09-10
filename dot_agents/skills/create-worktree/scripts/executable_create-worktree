@@ -1,0 +1,248 @@
+#!/usr/bin/env python3
+"""Create a git + Herdr worktree on a branch, converging on re-run.
+
+A Herdr dispatch primitive. It assembles the worktree deterministically and
+handles name collisions itself, so no caller runs a check-then-retry loop:
+
+  1. If a worktree already exists on the exact requested branch AND carries this
+     tool's provenance marker (<path>/.herdr-dispatch.json), it is our own prior
+     creation, so reuse it and return created=false.
+  2. Else if a worktree already exists on that branch but is NOT ours (no marker,
+     or another tool's checkout), auto-suffix (-2, -3, ...) to the next free name
+     and create fresh.
+  3. Else create fresh on the requested name (checking out an existing bare
+     branch if one is there, so fetch-pr-head -> create-worktree chains cleanly).
+
+Every created worktree is stamped with a marker file so teardown can later
+recognize it as dispatch-created, with no external registry.
+
+Requires HERDR_ENV=1: it drives the `herdr` CLI.
+
+Exit codes (shared across the Herdr dispatch primitives):
+  0  success. The JSON result object is printed to stdout.
+  2  needs judgment. An expected situation the script cannot resolve
+     mechanically (here: not running inside Herdr). stdout is JSON,
+     {"status": "needs_judgment", "reason": ...} plus any known partial fields.
+     The caller's cue to apply judgment or ask.
+  1  real error (unexpected failure: subprocess crash, malformed herdr JSON).
+     Diagnostics go to stderr; stdout may be empty.
+
+All subprocesses are invoked as argv lists, never a shell string, so branch
+names and labels cannot inject.
+"""
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+from datetime import datetime, timezone
+
+MARKER_NAME = ".herdr-dispatch.json"
+MARKER_TAG = "herdr-dispatch"
+
+
+class HerdrError(Exception):
+    """A herdr/git subprocess failed or returned something unparsable."""
+
+
+def run(argv):
+    return subprocess.run(argv, capture_output=True, text=True)
+
+
+def emit_success(obj):
+    print(json.dumps(obj))
+    sys.exit(0)
+
+
+def emit_judgment(reason, **partial):
+    print(json.dumps({"status": "needs_judgment", "reason": reason, **partial}))
+    sys.exit(2)
+
+
+def emit_error(message):
+    print(f"create-worktree: {message}", file=sys.stderr)
+    sys.exit(1)
+
+
+def herdr_json(args):
+    proc = run(["herdr", *args])
+    if proc.returncode != 0:
+        raise HerdrError(
+            f"herdr {' '.join(args)} failed ({proc.returncode}): "
+            f"{proc.stderr.strip() or proc.stdout.strip()}"
+        )
+    try:
+        return json.loads(proc.stdout).get("result", {})
+    except json.JSONDecodeError:
+        raise HerdrError(f"herdr {' '.join(args)} returned non-JSON: {proc.stdout[:200]}")
+
+
+def collect_dicts(obj, out=None):
+    """Every dict node anywhere in a parsed JSON value.
+
+    herdr's exact envelope shape is read defensively this way rather than pinned
+    to one nesting, since the pieces we want (workspace_id, path, pane_id) are
+    unambiguous by key even when their nesting varies."""
+    if out is None:
+        out = []
+    if isinstance(obj, dict):
+        out.append(obj)
+        for value in obj.values():
+            collect_dicts(value, out)
+    elif isinstance(obj, list):
+        for item in obj:
+            collect_dicts(item, out)
+    return out
+
+
+def first_value(nodes, *keys):
+    """First non-empty value for any of `keys`, node by node.
+
+    herdr's own subcommands don't agree on a key name for the same concept —
+    `worktree create`'s response uses "workspace_id" but `worktree list`'s
+    entries use "open_workspace_id" — so callers pass every name in play."""
+    for node in nodes:
+        for key in keys:
+            if node.get(key):
+                return node[key]
+    return None
+
+
+def git_branch_exists(repo, name):
+    proc = run(["git", "-C", repo, "branch", "--list", "--format=%(refname:short)", name])
+    return name in [line.strip() for line in proc.stdout.splitlines()]
+
+
+def git_worktrees(repo):
+    proc = run(["git", "-C", repo, "worktree", "list", "--porcelain"])
+    if proc.returncode != 0:
+        raise HerdrError(f"git worktree list failed: {proc.stderr.strip()}")
+    entries, current = [], {}
+    for line in proc.stdout.splitlines():
+        if line.startswith("worktree "):
+            if current:
+                entries.append(current)
+            current = {"path": line[len("worktree "):]}
+        elif line.startswith("branch "):
+            ref = line[len("branch "):]
+            current["branch"] = ref[len("refs/heads/"):] if ref.startswith("refs/heads/") else ref
+    if current:
+        entries.append(current)
+    return entries
+
+
+def worktree_path_for_branch(repo, branch):
+    for entry in git_worktrees(repo):
+        if entry.get("branch") == branch:
+            return entry["path"]
+    return None
+
+
+def marker_is_ours(path):
+    try:
+        with open(os.path.join(path, MARKER_NAME), encoding="utf-8") as handle:
+            return json.load(handle).get("created_by") == MARKER_TAG
+    except (OSError, ValueError):
+        return False
+
+
+def write_marker(path, branch):
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    payload = {"created_by": MARKER_TAG, "created_at": stamp, "branch": branch}
+    with open(os.path.join(path, MARKER_NAME), "w", encoding="utf-8") as handle:
+        json.dump(payload, handle)
+
+
+def next_free_branch(repo, base):
+    suffix = 2
+    while True:
+        candidate = f"{base}-{suffix}"
+        if not git_branch_exists(repo, candidate) and not worktree_path_for_branch(repo, candidate):
+            return candidate
+        suffix += 1
+
+
+def workspace_id_for_path(repo, target):
+    result = herdr_json(["worktree", "list", "--cwd", repo])
+    entries = None
+    if isinstance(result, dict):
+        entries = result.get("workspaces") or result.get("worktrees")
+    if entries is None:
+        entries = result if isinstance(result, list) else [result]
+    target_real = os.path.realpath(target)
+    for entry in entries:
+        nodes = collect_dicts(entry)
+        paths = [node["path"] for node in nodes if node.get("path")]
+        if any(os.path.realpath(p) == target_real for p in paths):
+            workspace_id = first_value(nodes, "workspace_id", "open_workspace_id")
+            if workspace_id:
+                return workspace_id
+    return None
+
+
+def shell_pane_id(workspace_id):
+    result = herdr_json(["pane", "list", "--workspace", workspace_id])
+    panes = result.get("panes") if isinstance(result, dict) else None
+    if not panes:
+        panes = [node for node in collect_dicts(result) if node.get("pane_id")]
+    for pane in panes:
+        if not pane.get("agent"):
+            return pane.get("pane_id")
+    return panes[0].get("pane_id") if panes else None
+
+
+def create_fresh(repo, branch, base, label):
+    args = ["worktree", "create", "--branch", branch, "--no-focus", "--cwd", repo]
+    if label:
+        args += ["--label", label]
+    if base:
+        args += ["--base", base]
+    result = herdr_json(args)
+    nodes = collect_dicts(result)
+    workspace_id = first_value(nodes, "workspace_id")
+    path = first_value(nodes, "path")
+    if not workspace_id:
+        raise HerdrError("worktree create returned no workspace id")
+    if not path:
+        raise HerdrError("worktree create returned no path")
+    write_marker(path, branch)
+    pane_id = shell_pane_id(workspace_id)
+    return {"workspace_id": workspace_id, "path": path, "pane_id": pane_id,
+            "branch": branch, "created": True}
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Create a git + Herdr worktree on a branch.")
+    parser.add_argument("--branch", required=True, help="branch to create or check out")
+    parser.add_argument("--base", help="base ref for a new branch")
+    parser.add_argument("--label", help="Herdr workspace label")
+    parser.add_argument("--repo", default=os.getcwd(), help="git repo to operate in (default: cwd)")
+    args = parser.parse_args()
+
+    if os.environ.get("HERDR_ENV") != "1":
+        emit_judgment("not running inside a Herdr session (HERDR_ENV != 1)")
+
+    repo = args.repo
+    try:
+        existing = worktree_path_for_branch(repo, args.branch)
+        if existing and marker_is_ours(existing):
+            workspace_id = workspace_id_for_path(repo, existing)
+            if not workspace_id:
+                raise HerdrError(f"found our worktree at {existing} but no Herdr workspace for it")
+            emit_success({
+                "workspace_id": workspace_id,
+                "path": existing,
+                "pane_id": shell_pane_id(workspace_id),
+                "branch": args.branch,
+                "created": False,
+            })
+
+        branch = next_free_branch(repo, args.branch) if existing else args.branch
+        emit_success(create_fresh(repo, branch, args.base, args.label))
+    except HerdrError as error:
+        emit_error(str(error))
+
+
+if __name__ == "__main__":
+    main()

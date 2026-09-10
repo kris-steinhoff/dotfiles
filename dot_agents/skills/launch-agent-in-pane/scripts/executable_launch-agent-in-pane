@@ -1,0 +1,211 @@
+#!/usr/bin/env python3
+"""Launch an agent in a pane, seed it, and thread a report-back target.
+
+A Herdr dispatch primitive. It takes any pane (from create-worktree, or a future
+create-pane / create-tab), derives a unique agent name from the kind, starts the
+agent, and — without blocking on the agent's turn — delivers the seed prompt.
+Seeding and report-back are the two pieces a bare `herdr agent start` omits.
+
+Idempotent: if the target pane already hosts a live agent (our own prior
+launch, since a pane holds one occupant at a time), it converges onto that
+agent rather than trying to start a second one in an occupied pane — it does
+not restart it or re-deliver the seed prompt, which may already be mid-turn.
+A pane occupied by a *different* kind than requested is a needs-judgment case,
+not a silent override.
+
+Otherwise, the agent name starts from the kind (e.g. `claude`) and auto-suffixes
+(-2, -3, ...) past any live agent already holding that name, keeping it inside
+Herdr's [a-z][a-z0-9_-]{0,31} rule.
+
+Adding an agent kind is a MODEL_FLAGS table entry, nothing else. Most kinds take
+`--model <hint>`; gemini and codex take `-m <hint>`.
+
+Requires HERDR_ENV=1: it drives the `herdr` CLI.
+
+Exit codes (shared across the Herdr dispatch primitives):
+  0  success. The JSON result object is printed to stdout.
+  2  needs judgment. An expected situation the script cannot resolve
+     mechanically (here: not running inside Herdr). stdout is JSON,
+     {"status": "needs_judgment", "reason": ...}. The caller's cue to apply
+     judgment or ask.
+  1  real error (the agent failed to start, or malformed herdr JSON).
+     Diagnostics go to stderr; stdout may be empty.
+
+All subprocesses are invoked as argv lists, never a shell string, so seed
+prompts and names cannot inject.
+"""
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+
+KINDS = ["claude", "codex", "gemini", "copilot", "opencode"]
+
+# Turn a short model hint (e.g. "opus") into the agent CLI's flag. Most kinds
+# accept --model; gemini and codex use -m. Extend the table to add a kind.
+MODEL_FLAGS = {
+    "gemini": "-m",
+    "codex": "-m",
+}
+
+
+class HerdrError(Exception):
+    """A herdr subprocess failed or returned something unparsable."""
+
+
+def run(argv):
+    return subprocess.run(argv, capture_output=True, text=True)
+
+
+def emit_success(obj):
+    print(json.dumps(obj))
+    sys.exit(0)
+
+
+def emit_judgment(reason, **partial):
+    print(json.dumps({"status": "needs_judgment", "reason": reason, **partial}))
+    sys.exit(2)
+
+
+def emit_error(message):
+    print(f"launch-agent-in-pane: {message}", file=sys.stderr)
+    sys.exit(1)
+
+
+def herdr_json(args):
+    proc = run(["herdr", *args])
+    if proc.returncode != 0:
+        raise HerdrError(
+            f"herdr {' '.join(args)} failed ({proc.returncode}): "
+            f"{proc.stderr.strip() or proc.stdout.strip()}"
+        )
+    try:
+        return json.loads(proc.stdout).get("result", {})
+    except json.JSONDecodeError:
+        raise HerdrError(f"herdr {' '.join(args)} returned non-JSON: {proc.stdout[:200]}")
+
+
+def collect_dicts(obj, out=None):
+    """Every dict node anywhere in a parsed JSON value.
+
+    herdr's exact envelope shape is read defensively this way rather than pinned
+    to one nesting (see create-worktree's workspace_id/open_workspace_id lesson:
+    herdr's own subcommands don't agree on field placement or naming)."""
+    if out is None:
+        out = []
+    if isinstance(obj, dict):
+        out.append(obj)
+        for value in obj.values():
+            collect_dicts(value, out)
+    elif isinstance(obj, list):
+        for item in obj:
+            collect_dicts(item, out)
+    return out
+
+
+def live_agents():
+    result = herdr_json(["agent", "list"])
+    agents = result.get("agents") if isinstance(result, dict) else result
+    if not isinstance(agents, list):
+        return []
+    return [agent for agent in agents if isinstance(agent, dict)]
+
+
+def live_agent_names():
+    return {agent["name"] for agent in live_agents() if agent.get("name")}
+
+
+def agent_in_pane(pane_id):
+    """The name and kind of whatever live agent already occupies pane_id, if any.
+
+    A pane hosts one occupant at a time, so a second `agent start` against an
+    already-occupied pane doesn't duplicate an agent, it fails. Converging here
+    (rather than letting that failure surface) is what makes a re-run safe."""
+    for agent in live_agents():
+        nodes = collect_dicts(agent)
+        if any(node.get("pane_id") == pane_id for node in nodes):
+            name = next((node["name"] for node in nodes if node.get("name")), None)
+            kind = next((node["kind"] for node in nodes if node.get("kind")), None)
+            if name:
+                return name, kind
+    return None, None
+
+
+def unique_agent_name(kind):
+    taken = live_agent_names()
+    if kind not in taken:
+        return kind
+    suffix = 2
+    while f"{kind}-{suffix}" in taken:
+        suffix += 1
+    return f"{kind}-{suffix}"
+
+
+def model_args(kind, hint):
+    if not hint:
+        return []
+    return [MODEL_FLAGS.get(kind, "--model"), hint]
+
+
+def compose_prompt(seed_prompt, report_to_pane):
+    parts = []
+    if seed_prompt:
+        parts.append(seed_prompt)
+    if report_to_pane:
+        parts.append(
+            "When you finish, report your results back to the pane that dispatched "
+            f"you: Herdr pane {report_to_pane}."
+        )
+    return "\n\n".join(parts)
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Launch and seed an agent in a Herdr pane.")
+    parser.add_argument("--pane-id", required=True, help="pane at an interactive shell prompt")
+    parser.add_argument("--kind", required=True, choices=KINDS, help="agent kind")
+    parser.add_argument("--model", help="model hint, e.g. opus")
+    parser.add_argument("--seed-prompt", help="prompt to deliver after launch")
+    parser.add_argument("--report-to-pane", help="pane the launched agent should report back to")
+    args = parser.parse_args()
+
+    if os.environ.get("HERDR_ENV") != "1":
+        emit_judgment("not running inside a Herdr session (HERDR_ENV != 1)")
+
+    try:
+        existing_name, existing_kind = agent_in_pane(args.pane_id)
+        if existing_name:
+            if existing_kind and existing_kind != args.kind:
+                emit_judgment(
+                    f"pane {args.pane_id} already hosts a {existing_kind} agent "
+                    f"({existing_name}), not {args.kind}",
+                    agent_name=existing_name, kind=existing_kind, pane_id=args.pane_id,
+                )
+            # Converge: this is our own prior launch. Don't restart it, and don't
+            # re-deliver the seed prompt — it may already be mid-turn on it.
+            emit_success({
+                "agent_name": existing_name,
+                "kind": existing_kind or args.kind,
+                "pane_id": args.pane_id,
+            })
+
+        name = unique_agent_name(args.kind)
+        start = ["agent", "start", name, "--kind", args.kind, "--pane", args.pane_id]
+        extra = model_args(args.kind, args.model)
+        if extra:
+            start += ["--", *extra]
+        herdr_json(start)
+
+        prompt = compose_prompt(args.seed_prompt, args.report_to_pane)
+        if prompt:
+            # No --wait: hand the prompt off without blocking on the agent's turn.
+            herdr_json(["agent", "prompt", name, prompt])
+
+        emit_success({"agent_name": name, "kind": args.kind, "pane_id": args.pane_id})
+    except HerdrError as error:
+        emit_error(str(error))
+
+
+if __name__ == "__main__":
+    main()

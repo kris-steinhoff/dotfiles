@@ -39,3 +39,7 @@
 .agents/skills/herdr-worktree
 .claude/skills/herdr-worktree
 .gemini/config/plugins/kris-steinhoff/skills/herdr-worktree
+# The pi herdr-coordinator extension was superseded by the create-worktree,
+# fetch-pr-head, launch-agent-in-pane, and resolve-task dispatch primitive
+# skills. Without this it lingers on machines that already applied it.
+.pi/agent/extensions/herdr-coordinator
