@@ -86,23 +86,26 @@ To add a skill:
 
 To remove a skill, delete it from all three source locations _and_ add the deployed paths to `.chezmoiremove`. chezmoi does not delete a target just because its source entry disappeared, so without the `.chezmoiremove` entries the skill lingers in `$HOME` on every machine that already applied it.
 
-## Global instructions (composed from shared partials)
+## Global instructions and personas
 
-Claude, Gemini, and Codex each read a single always-loaded instruction file (`~/.claude/CLAUDE.md`, `~/.gemini/GEMINI.md`, and `~/.codex/AGENTS.md`). The shared content is written once as three chezmoi template partials under `.chezmoitemplates/`, each a section a surface can opt into, so one edit updates every surface that includes it:
+Claude, Gemini, and Codex each read a single always-loaded instruction file (`~/.claude/CLAUDE.md`, `~/.gemini/GEMINI.md`, and `~/.codex/AGENTS.md`). Shared global content lives in chezmoi template partials under `.chezmoitemplates/`, so one edit updates every surface that includes it:
 
-- **`coordinator.md`** — the delegation default: prefer handing work to a worker (a background task or a subagent) over doing it inline, to keep the main conversation free. It lives in the always-loaded instructions rather than a skill because it must be in context before the agent's first move, which a lazily loaded skill can't guarantee.
-- **`herdr.md`** — the entry layer for Herdr: recognize a plain-language "run `<agent>` on `<task>` in a worktree/pane/tab" without a slash command, parse placement/agent/source/report-back, name artifacts for their downstream consumer, and act-on-clear/confirm-on-doubt. It routes mechanics through the `herdr` skill and carries the worktree basics inline (fresh-branch create; PR-onto-disk via the `pull/<n>/head` fetch ref). This replaced the retired `herdr-pr-review`, `herdr-start-agent`, `herdr-work-task`, `herdr-ralph-loop`, and `herdr-worktree` recipe skills; it must be always-loaded for the same reason as the coordinator default. Gated on `HERDR_ENV=1`, so it's inert where Herdr isn't running.
+- **`herdr.md`** — the entry layer for Herdr: recognize a plain-language "run `<agent>` on `<task>` in a worktree/pane/tab" without a slash command, parse placement/agent/source/report-back, name artifacts for their downstream consumer, and act-on-clear/confirm-on-doubt. It routes mechanics through the `herdr` skill and carries the worktree basics inline (fresh-branch create; PR-onto-disk via the `pull/<n>/head` fetch ref). This replaced the retired `herdr-pr-review`, `herdr-start-agent`, `herdr-work-task`, `herdr-ralph-loop`, and `herdr-worktree` recipe skills. It is gated on `HERDR_ENV=1`, so it stays inert where Herdr is not running.
 - **`communication.md`** — how to write for a human who has an AI agent at hand: lead with the conclusion, explain references instead of pointing, favor judgment over exhaustive precision. Also carries the attribution rule: when posting a message on the user's behalf, name yourself so it is clear an agent wrote it.
 
 Each harness file is a thin `.tmpl` that includes the section partials that apply to it, one `{{ template ... }}` line per section:
 
-| Harness                     | Sections included                         |
-| --------------------------- | ----------------------------------------- |
-| `dot_claude/CLAUDE.md.tmpl` | `coordinator` + `herdr` + `communication` |
-| `dot_gemini/GEMINI.md.tmpl` | `coordinator` + `herdr` + `communication` |
-| `dot_codex/AGENTS.md.tmpl`  | `coordinator` + `herdr` + `communication` |
+| Harness                     | Sections included         |
+| --------------------------- | ------------------------- |
+| `dot_claude/CLAUDE.md.tmpl` | `herdr` + `communication` |
+| `dot_gemini/GEMINI.md.tmpl` | `herdr` + `communication` |
+| `dot_codex/AGENTS.md.tmpl`  | `herdr` + `communication` |
 
-All three surfaces get the full set. Codex includes the coordinator disposition because it has real subagents — it spawns specialized agents in parallel, capped by `agents.max_concurrent_threads_per_session` in `config.toml`, with custom agents defined under `~/.codex/agents/` — so the delegation default has something to fire on. Only Pi is out of scope for the coordinator disposition: it has no subagents or background tasks, so the section would be inert there. The per-section split still earns its keep as the mechanism for that kind of subsetting, even though every current instruction surface happens to take all three. Codex's skills need no wiring — it reads `~/.agents/skills/` natively (see the Agent skills table above). A harness that needs its own content adds it before or after the includes. Edit a section partial to change that shared behavior everywhere it appears.
+Coordinator behavior is opt-in. The four persona prompts live under `.chezmoitemplates/agents/personas/`, with one canonical prompt each for `coordinator`, `implementor`, `investigator`, and `reviewer`. Claude Code agent files under `dot_claude/agents/` add YAML frontmatter and include the shared prompt; the same definition works as a subagent and as a primary persona through `claude --agent <name>`.
+
+Codex uses one profile for both entry points. `dot_codex/<name>.config.toml.tmpl` deploys a launch profile selected with `codex --profile <name>`, while `dot_codex/config.toml` registers that same file under `[agents.<name>].config_file` so another Codex session can spawn it. Investigator and reviewer wrappers enforce read-only operation through each harness's supported permission controls. No persona pins a model, so each inherits the session's model choice.
+
+The global harnesses do not include a persona. They keep Herdr dispatch and communication conventions available in ordinary sessions without forcing every session to coordinate. Codex's skills need no wiring because it reads `~/.agents/skills/` natively (see the Agent skills table above). A harness that needs its own global content adds it before or after the includes.
 
 The harness files are `.tmpl`, not `.md`, so the `prettier` pre-commit hook (which runs with `proseWrap: never`) leaves their one-include-per-line layout alone; that layout matters because the render joins the sections with the blank lines between them. The section partials themselves are prose `.md` and stay prettier-managed. This is why there is no `agent-behaviors.md` wrapper partial: a `.md` composition file would get its include lines collapsed onto one line by prettier.
 
