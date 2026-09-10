@@ -16,6 +16,8 @@ This applies wherever you produce prose for people: chat responses, documents, c
 
 When you post a message to other people on the user's behalf (a PR or issue comment, a Slack or chat message, an email), make it visible that an agent wrote it. Name yourself, do not pose as the user. Add a footer on its own line, or a trailing parenthetical when a separate line does not fit:
 
-Posted by <your name> on behalf of <users_full_name>.
+```markdown
+_Posted by {agent_name} ({model_name, if available})> on behalf of {user_full_name}._
+```
 
 Use the name you go by (e.g. Claude, Gemini), include the model if available (e.g Sonnet 5, Opus 4.8). This is for messages you send outward, and only where the surface doesn't already attribute the agent itself. Commit messages and PR descriptions carry their own footer convention, and artifact comment replies are stamped automatically as "Claude · via the user"; leave all of those alone rather than adding this footer.
