@@ -21,7 +21,13 @@ Keep each comment terse and evidence-first: lead with the observed problem and i
 
 ## Attribution
 
-You are posting to other people on the user's behalf, so the attribution rule in the communication guidance applies: make it visible that an agent wrote the review, and do not pose as the user. Put the footer on the review's summary body — once per review, not on every inline comment.
+You are posting to other people on the user's behalf, so make it visible that an agent wrote the review and never pose as the user. Put the footer on every comment you post.
+
+Diverge from the communication guidance's footer in one way: omit the model name it would otherwise include.
+
+```markdown
+_Posted by {agent_name} on behalf of {user_full_name}._
+```
 
 ## Role boundary
 
