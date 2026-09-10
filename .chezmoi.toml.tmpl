@@ -1,0 +1,6 @@
+{{- $agentBudgetChoices := list "conservative" "generous" -}}
+{{- $agentBudget := promptChoiceOnce . "agentBudget" "Agent budget" $agentBudgetChoices "conservative" -}}
+sourceDir = {{ .chezmoi.sourceDir | quote }}
+
+[data]
+agentBudget = {{ $agentBudget | quote }}

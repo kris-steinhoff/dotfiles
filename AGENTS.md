@@ -103,7 +103,18 @@ Each harness file is a thin `.tmpl` that includes the section partials that appl
 
 Coordinator behavior is opt-in. The four persona prompts live under `.chezmoitemplates/agents/personas/`, with one canonical prompt each for `coordinator`, `implementor`, `investigator`, and `reviewer`. Claude Code agent files under `dot_claude/agents/` add YAML frontmatter and include the shared prompt; the same definition works as a subagent and as a primary persona through `claude --agent <name>`.
 
-Codex uses one profile for both entry points. `dot_codex/<name>.config.toml.tmpl` deploys a launch profile selected with `codex --profile <name>`, while `dot_codex/config.toml` registers that same file under `[agents.<name>].config_file` so another Codex session can spawn it. Investigator and reviewer wrappers enforce read-only operation through each harness's supported permission controls. No persona pins a model, so each inherits the session's model choice.
+Codex uses one profile for both entry points. `dot_codex/<name>.config.toml.tmpl` deploys a launch profile selected with `codex --profile <name>`, while `dot_codex/private_config.toml.tmpl` registers that same file under `[agents.<name>].config_file` so another Codex session can spawn it. Investigator and reviewer wrappers enforce read-only operation through each harness's supported permission controls.
+
+Persona model and concurrency choices come from the machine-local `agentBudget` datum. `.chezmoi.toml.tmpl` asks for `conservative` or `generous` during `chezmoi init` and defaults to `conservative`; consuming templates also fall back to conservative when the datum is absent or unrecognized. This keeps existing machines safe until their chezmoi config is regenerated or gains `agentBudget` under `[data]`.
+
+| Persona      | Claude conservative / generous | Codex conservative / generous |
+| ------------ | ------------------------------ | ----------------------------- |
+| Coordinator  | Sonnet / Opus                  | Terra medium / Sol high       |
+| Implementor  | Sonnet / Opus                  | Terra medium / Sol high       |
+| Investigator | Sonnet / Sonnet                | Terra medium / Terra high     |
+| Reviewer     | Sonnet / Opus                  | Terra high / Sol xhigh        |
+
+Codex caps spawned-agent threads at two for conservative machines and four for generous machines. These choices apply only to persona profiles and the subagent cap; the ordinary top-level Codex model remains the independently configured default.
 
 The global harnesses do not include a persona. They keep Herdr dispatch and communication conventions available in ordinary sessions without forcing every session to coordinate. Codex's skills need no wiring because it reads `~/.agents/skills/` natively (see the Agent skills table above). A harness that needs its own global content adds it before or after the includes.
 

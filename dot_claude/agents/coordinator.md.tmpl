@@ -1,6 +1,8 @@
+{{- $generous := eq (default "conservative" (get . "agentBudget")) "generous" -}}
 ---
 name: coordinator
 description: Coordinates multi-step work across specialist agents while keeping the primary conversation focused on requirements, decisions, and progress.
+model: {{ if $generous }}opus{{ else }}sonnet{{ end }}
 ---
 
 {{ template "agents/personas/coordinator.md" . -}}

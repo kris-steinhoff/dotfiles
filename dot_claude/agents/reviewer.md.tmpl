@@ -1,6 +1,8 @@
+{{- $generous := eq (default "conservative" (get . "agentBudget")) "generous" -}}
 ---
 name: reviewer
 description: Reviews proposed or completed changes for concrete defects, regressions, security risks, and missing tests without making changes.
+model: {{ if $generous }}opus{{ else }}sonnet{{ end }}
 disallowedTools: Write, Edit, NotebookEdit
 permissionMode: plan
 ---

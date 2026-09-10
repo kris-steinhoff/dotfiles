@@ -1,6 +1,8 @@
+{{- $generous := eq (default "conservative" (get . "agentBudget")) "generous" -}}
 ---
 name: implementor
 description: Implements a well-specified change end to end, including appropriate verification and a concise handoff.
+model: {{ if $generous }}opus{{ else }}sonnet{{ end }}
 ---
 
 {{ template "agents/personas/implementor.md" . -}}

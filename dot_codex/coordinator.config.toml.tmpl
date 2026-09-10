@@ -1,3 +1,7 @@
+{{- $generous := eq (default "conservative" (get . "agentBudget")) "generous" -}}
+model = "{{ if $generous }}gpt-5.6-sol{{ else }}gpt-5.6-terra{{ end }}"
+model_reasoning_effort = "{{ if $generous }}high{{ else }}medium{{ end }}"
+
 developer_instructions = """
 {{ template "agents/personas/coordinator.md" . -}}
 """
