@@ -7,7 +7,8 @@ When Herdr is available (`HERDR_ENV=1`) and the user asks in plain language to r
 - **Placement** — worktree, sibling pane, or tab. Take it from the words; when unstated, choose by task nature: code-writing → worktree, investigation → pane, a review that reads via API → tab.
 - **Agent kind** — which agent to run (codex, claude, gemini, …), and any model hint like opus. The `launch-agent-in-pane` skill maps the hint to the kind's flag (`--model`, or `-m` for gemini and codex), so pass it as `--model`. Or none — create the placement empty, and don't start an agent unless one was asked for.
 - **Task source** — the mechanical typing and metadata fetch is the `resolve-task` skill: hand it the raw ref and it detects a Jira key (`ABC-123`) from a GitHub number by shape, settles issue-vs-PR with an API query, and returns `{kind, id, title, url, base_branch?}`. Two cases it does not cover stay judgment: a plan or todo item means reading that file and treating its tracker as part of the contract, and freeform text is itself the task. When `resolve-task` signals needs-judgment (unresolvable ref, access denied), fall back to asking rather than guessing.
-- **Report-back** — "report back here" means passing your own `$HERDR_PANE_ID` as `launch-agent-in-pane`'s `--report-to-pane`, which threads it into the seed as the worker's self-report target.
+- **Seed prompt** — give the launched agent context, not a method: state what it's working with (the branch, the task, its base) and what the outcome should be, in the user's own words where they gave them. Leave _how_ to the agent — its own skills and this repo's CLAUDE.md already know how to review, test, or explore, and a prescribed checklist or a specific diff command overrides that judgment with a worse one. "Review the PR's diff against main" is enough.
+- **Report-back** — only when the user actually asked for it ("report back here", "let me know when done"). `launch-agent-in-pane` never sends `--report-to-pane` on its own; passing your own `$HERDR_PANE_ID` there, which threads it into the seed as the worker's self-report target, is a judgment call each time, not a default.
 
 ### Name what you create
 
@@ -30,5 +31,5 @@ A worktree puts a branch on its own checkout without disturbing the current one.
 
 ### Act on clear, confirm on doubt
 
-- **Clear** — when placement, source, and name are all unambiguous, create the placement and launch the agent with `launch-agent-in-pane` (it derives a unique name, delivers the seed prompt, and threads report-back to your `$HERDR_PANE_ID`); then report exactly what you made (the branch, the worktree path, the agent name, and its tab or workspace) and stop — don't poll it to completion.
+- **Clear** — when placement, source, and name are all unambiguous, create the placement and launch the agent with `launch-agent-in-pane` (it derives a unique name and delivers the seed prompt; thread report-back only when that was actually asked for); then report exactly what you made (the branch, the worktree path, the agent name, and its tab or workspace) and stop — don't poll it to completion.
 - **Doubt** — pause and ask only on a degraded fallback (unreachable source, missing slug), an ambiguous parse, or an uncertain source.
