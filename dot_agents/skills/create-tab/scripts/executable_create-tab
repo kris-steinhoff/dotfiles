@@ -1,0 +1,151 @@
+#!/usr/bin/env python3
+"""Add a tab (with a pane) to an existing Herdr workspace.
+
+A Herdr dispatch primitive, the placement step for launching an agent in a tab
+rather than a split pane or a fresh worktree. It creates a tab in the workspace
+and returns its root pane:
+
+  herdr tab create --workspace <id> [--label ...] [--cwd ...] --no-focus
+
+`tab create` takes a workspace id directly, so — unlike create-pane — there is no
+source-pane lookup. Its response carries the new tab and its root pane; both ids
+are read defensively rather than pinned to one key, since herdr's naming isn't
+consistent across subcommands.
+
+Not a collision-prone resource: every call is meant to add a genuinely new tab,
+so there is no dedup/convergence logic here. "Idempotent" is just "safe to retry
+without corrupting state."
+
+Requires HERDR_ENV=1: it drives the `herdr` CLI.
+
+Exit codes (shared across the Herdr dispatch primitives):
+  0  success. The JSON result object is printed to stdout.
+  2  needs judgment. An expected situation the script cannot resolve
+     mechanically (not running inside Herdr). stdout is JSON,
+     {"status": "needs_judgment", "reason": ...} plus any known partial fields.
+     The caller's cue to apply judgment or ask.
+  1  real error (the tab create failed — e.g. the workspace does not exist — or
+     malformed herdr JSON). Diagnostics go to stderr; stdout may be empty.
+
+All subprocesses are invoked as argv lists, never a shell string, so labels
+cannot inject.
+"""
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+
+
+class HerdrError(Exception):
+    """A herdr subprocess failed or returned something unparsable."""
+
+
+def run(argv):
+    return subprocess.run(argv, capture_output=True, text=True)
+
+
+def emit_success(obj):
+    print(json.dumps(obj))
+    sys.exit(0)
+
+
+def emit_judgment(reason, **partial):
+    print(json.dumps({"status": "needs_judgment", "reason": reason, **partial}))
+    sys.exit(2)
+
+
+def emit_error(message):
+    print(f"create-tab: {message}", file=sys.stderr)
+    sys.exit(1)
+
+
+def herdr_json(args):
+    proc = run(["herdr", *args])
+    if proc.returncode != 0:
+        raise HerdrError(
+            f"herdr {' '.join(args)} failed ({proc.returncode}): "
+            f"{proc.stderr.strip() or proc.stdout.strip()}"
+        )
+    try:
+        return json.loads(proc.stdout).get("result", {})
+    except json.JSONDecodeError:
+        raise HerdrError(f"herdr {' '.join(args)} returned non-JSON: {proc.stdout[:200]}")
+
+
+def collect_dicts(obj, out=None):
+    """Every dict node anywhere in a parsed JSON value.
+
+    herdr's exact envelope shape is read defensively this way rather than pinned
+    to one nesting, since its own subcommands don't agree on field placement or
+    naming (see create-worktree's workspace_id/open_workspace_id lesson)."""
+    if out is None:
+        out = []
+    if isinstance(obj, dict):
+        out.append(obj)
+        for value in obj.values():
+            collect_dicts(value, out)
+    elif isinstance(obj, list):
+        for item in obj:
+            collect_dicts(item, out)
+    return out
+
+
+def first_value(nodes, *keys):
+    """First non-empty value for any of `keys`, node by node."""
+    for node in nodes:
+        for key in keys:
+            if node.get(key):
+                return node[key]
+    return None
+
+
+def id_in(container, *id_keys):
+    """The id of a named sub-container, tolerant of its exact key.
+
+    herdr's `tab create` nests the new tab under `.result.tab` and its root pane
+    under `.result.root_pane`. The id is likely `tab_id` / `pane_id`, but may be
+    a bare `id` inside that container, so look inside the container specifically
+    rather than grabbing a stray `id` from anywhere in the response."""
+    if isinstance(container, dict):
+        return first_value(collect_dicts(container), *id_keys)
+    return None
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Add a tab to an existing Herdr workspace.")
+    parser.add_argument("--workspace-id", required=True, help="workspace to add a tab to")
+    parser.add_argument("--label", help="tab label")
+    parser.add_argument("--cwd", help="working directory for the tab's pane")
+    args = parser.parse_args()
+
+    if os.environ.get("HERDR_ENV") != "1":
+        emit_judgment("not running inside a Herdr session (HERDR_ENV != 1)")
+
+    try:
+        create = ["tab", "create", "--workspace", args.workspace_id, "--no-focus"]
+        if args.label:
+            create += ["--label", args.label]
+        if args.cwd:
+            create += ["--cwd", args.cwd]
+        result = herdr_json(create)
+        nodes = collect_dicts(result)
+        # Prefer the unambiguous keys anywhere in the response; fall back to the
+        # id inside the named `tab` / `root_pane` containers herdr nests them in.
+        tab_id = first_value(nodes, "tab_id") or id_in(
+            isinstance(result, dict) and result.get("tab"), "tab_id", "id")
+        pane_id = first_value(nodes, "pane_id") or id_in(
+            isinstance(result, dict) and result.get("root_pane"), "pane_id", "id")
+        if not tab_id:
+            raise HerdrError("tab create returned no tab id")
+        if not pane_id:
+            raise HerdrError("tab create returned no pane id")
+
+        emit_success({"tab_id": tab_id, "pane_id": pane_id, "workspace_id": args.workspace_id})
+    except HerdrError as error:
+        emit_error(str(error))
+
+
+if __name__ == "__main__":
+    main()

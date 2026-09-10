@@ -1,0 +1,264 @@
+#!/usr/bin/env python3
+"""Remove one worktree and close its Herdr workspace. Destructive, fail-closed.
+
+A Herdr dispatch teardown primitive. `herdr worktree remove --workspace <id>`
+handles both the git worktree removal and closing the Herdr workspace in one
+call; branches (local and PR-head refs) are left untouched.
+
+Because teardown is destructive it is fail-closed. Unless `--force` is given, it
+refuses (needs-judgment, with a specific reason) when any of these hold:
+
+  1. The tree is dirty (uncommitted changes).
+  2. The branch's work isn't verifiably pushed: no upstream configured at all
+     (even with zero commits — a brand-new branch is still unverified, not
+     "has unpushed commits", so the two get distinct reasons), or real commits
+     ahead of its upstream. No-upstream is treated as unsafe too, erring
+     conservative.
+  3. A live agent still occupies a pane in the worktree's workspace.
+  4. It is the caller's own active workspace (open_workspace_id ==
+     $HERDR_WORKSPACE_ID).
+
+Past the gate (checks clean, or `--force`), it always passes `--force` to the
+underlying `herdr worktree remove`: our own checks are the real safety
+validation, so herdr's generic checks would only add friction.
+
+Idempotent: an already-removed worktree (unresolvable, or herdr reports it gone)
+is a success, not an error.
+
+`--worktree` is a path or a Herdr workspace_id. The safety checks duplicate
+inspect-worktree's logic on purpose — the primitives are flat atoms that don't
+call each other (see the PRD's Composition and ownership).
+
+Requires HERDR_ENV=1: the removal itself drives the `herdr` CLI.
+
+Exit codes (shared across the Herdr dispatch primitives):
+  0  success. The JSON result object is printed to stdout.
+  2  needs judgment. An expected situation the script cannot resolve
+     mechanically (not running inside Herdr, or an unsafe removal without
+     --force). stdout is JSON, {"status": "needs_judgment", "reason": ...} plus
+     any known partial fields. The caller's cue to apply judgment or ask.
+  1  real error (an unexpected git/herdr failure). Diagnostics go to stderr.
+
+All subprocesses are invoked as argv lists, never a shell string.
+"""
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+
+
+class HerdrError(Exception):
+    """A herdr subprocess failed or returned something unparsable."""
+
+
+def run(argv, cwd=None):
+    return subprocess.run(argv, capture_output=True, text=True, cwd=cwd)
+
+
+def emit_success(obj):
+    print(json.dumps(obj))
+    sys.exit(0)
+
+
+def emit_judgment(reason, **partial):
+    print(json.dumps({"status": "needs_judgment", "reason": reason, **partial}))
+    sys.exit(2)
+
+
+def emit_error(message):
+    print(f"remove-worktree: {message}", file=sys.stderr)
+    sys.exit(1)
+
+
+def herdr_json(args):
+    proc = run(["herdr", *args])
+    if proc.returncode != 0:
+        raise HerdrError(
+            f"herdr {' '.join(args)} failed ({proc.returncode}): "
+            f"{proc.stderr.strip() or proc.stdout.strip()}"
+        )
+    try:
+        return json.loads(proc.stdout).get("result", {})
+    except json.JSONDecodeError:
+        raise HerdrError(f"herdr {' '.join(args)} returned non-JSON: {proc.stdout[:200]}")
+
+
+def collect_dicts(obj, out=None):
+    """Every dict node anywhere in a parsed JSON value, read defensively (herdr's
+    subcommands don't agree on field placement or naming)."""
+    if out is None:
+        out = []
+    if isinstance(obj, dict):
+        out.append(obj)
+        for value in obj.values():
+            collect_dicts(value, out)
+    elif isinstance(obj, list):
+        for item in obj:
+            collect_dicts(item, out)
+    return out
+
+
+def first_value(nodes, *keys):
+    for node in nodes:
+        for key in keys:
+            if node.get(key):
+                return node[key]
+    return None
+
+
+def herdr_worktree_entries(repo):
+    result = herdr_json(["worktree", "list", "--cwd", repo])
+    entries = None
+    if isinstance(result, dict):
+        entries = result.get("worktrees") or result.get("workspaces")
+    if entries is None:
+        entries = result if isinstance(result, list) else [result]
+    return [entry for entry in entries if isinstance(entry, dict)]
+
+
+def resolve_entry(worktree, repo):
+    """Resolve `worktree` (a path or workspace_id) to (path, open_workspace_id),
+    or (None, None) if no such entry exists (already removed)."""
+    target_real = os.path.realpath(worktree)
+    for entry in herdr_worktree_entries(repo):
+        nodes = collect_dicts(entry)
+        path = first_value(nodes, "path")
+        workspace_id = first_value(nodes, "open_workspace_id", "workspace_id")
+        if path and os.path.realpath(path) == target_real:
+            return path, workspace_id
+        if workspace_id and workspace_id == worktree:
+            return path, workspace_id
+    return None, None
+
+
+def git_out(path, *args):
+    proc = run(["git", "-C", path, *args])
+    return proc.returncode, proc.stdout.strip(), proc.stderr.strip()
+
+
+def is_dirty(path):
+    code, out, _ = git_out(path, "status", "--porcelain")
+    return bool(out) if code == 0 else False
+
+
+def upstream_ref(path):
+    code, out, _ = git_out(path, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")
+    return out if code == 0 and out else None
+
+
+def ahead_of_upstream(path):
+    """(ahead, has_upstream). ahead is None if it can't be computed."""
+    upstream = upstream_ref(path)
+    if not upstream:
+        return None, False
+    code, out, _ = git_out(path, "rev-list", "--left-right", "--count", f"{upstream}...HEAD")
+    if code != 0 or len(out.split()) != 2:
+        return None, True
+    try:
+        return int(out.split()[1]), True
+    except ValueError:
+        return None, True
+
+
+def unpushed_reason(path):
+    """None if the branch's work is verifiably pushed; else a reason specific to
+    why it isn't, since "no upstream" and "N unpushed commits" are different
+    situations that shouldn't share one message (a brand-new branch with zero
+    commits still has no upstream, but it doesn't have "unpushed commits")."""
+    ahead, has_upstream = ahead_of_upstream(path)
+    if not has_upstream:
+        return ("branch has no upstream configured, so its commits aren't "
+                "verifiably pushed anywhere else")
+    if ahead is None:
+        return "could not determine how far the branch is ahead of its upstream"
+    if ahead > 0:
+        return f"branch is {ahead} commit(s) ahead of its upstream (unpushed)"
+    return None
+
+
+def pane_ids_in_workspace(workspace_id):
+    result = herdr_json(["pane", "list", "--workspace", workspace_id])
+    panes = result.get("panes") if isinstance(result, dict) else None
+    if not panes:
+        panes = [node for node in collect_dicts(result) if node.get("pane_id")]
+    return {pane.get("pane_id") for pane in panes if pane.get("pane_id")}
+
+
+def agent_live(workspace_id):
+    if not workspace_id:
+        return False
+    try:
+        pane_ids = pane_ids_in_workspace(workspace_id)
+        if not pane_ids:
+            return False
+        result = herdr_json(["agent", "list"])
+        agents = result.get("agents") if isinstance(result, dict) else result
+        if not isinstance(agents, list):
+            return False
+        for agent in agents:
+            if not isinstance(agent, dict):
+                continue
+            if any(node.get("pane_id") in pane_ids for node in collect_dicts(agent)):
+                return True
+        return False
+    except HerdrError:
+        return False
+
+
+def do_remove(workspace_id, path):
+    """Run herdr worktree remove --force, treating an already-gone target as
+    idempotent success rather than an error."""
+    proc = run(["herdr", "worktree", "remove", "--workspace", workspace_id, "--force"])
+    if proc.returncode == 0:
+        emit_success({"removed": True, "path": path})
+    stderr = (proc.stderr or proc.stdout).strip()
+    lowered = stderr.lower()
+    if "not found" in lowered or "no such" in lowered or "already" in lowered:
+        emit_success({"removed": True, "path": path})
+    raise HerdrError(
+        f"herdr worktree remove --workspace {workspace_id} failed "
+        f"({proc.returncode}): {stderr}"
+    )
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Remove one worktree (fail-closed).")
+    parser.add_argument("--worktree", required=True, help="a path or a Herdr workspace_id")
+    parser.add_argument("--force", action="store_true", help="override the safety refusal")
+    parser.add_argument("--repo", default=os.getcwd(),
+                        help="git repo for the worktree-list lookup (default: cwd)")
+    args = parser.parse_args()
+
+    if os.environ.get("HERDR_ENV") != "1":
+        emit_judgment("not running inside a Herdr session (HERDR_ENV != 1)")
+
+    try:
+        path, workspace_id = resolve_entry(args.worktree, args.repo)
+        if not workspace_id:
+            # Nothing to remove — already gone. Idempotent success.
+            emit_success({"removed": True, "path": path or args.worktree})
+
+        if not args.force:
+            if path and is_dirty(path):
+                emit_judgment("worktree has uncommitted changes (dirty tree)",
+                              path=path, workspace_id=workspace_id)
+            if path:
+                reason = unpushed_reason(path)
+                if reason:
+                    emit_judgment(reason, path=path, workspace_id=workspace_id)
+            if agent_live(workspace_id):
+                emit_judgment("a live agent still occupies a pane in this workspace",
+                              path=path, workspace_id=workspace_id)
+            if workspace_id == os.environ.get("HERDR_WORKSPACE_ID"):
+                emit_judgment("this is the caller's own active workspace",
+                              path=path, workspace_id=workspace_id)
+
+        do_remove(workspace_id, path or args.worktree)
+    except HerdrError as error:
+        emit_error(str(error))
+
+
+if __name__ == "__main__":
+    main()

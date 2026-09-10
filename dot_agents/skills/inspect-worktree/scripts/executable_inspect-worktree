@@ -1,0 +1,390 @@
+#!/usr/bin/env python3
+"""Return the structured state of one worktree, read-only.
+
+A Herdr dispatch teardown primitive. It reports everything a teardown decision
+(or an orientation step) needs about a worktree without changing anything:
+
+  {path, branch, ours, dirty, ahead, behind, pr_state, agent_live,
+   idle_minutes, prunable}
+
+`--worktree` is a path or a Herdr workspace_id. The entry is resolved once via
+`herdr worktree list` (to get both `path` and `open_workspace_id`, the latter
+needed for the live-agent check); when Herdr isn't available and a path was
+given, it falls back to `git worktree list`, and the agent-related fields degrade.
+
+Field notes:
+  ours          the dispatch provenance marker (.herdr-dispatch.json,
+                created_by == "herdr-dispatch") is present.
+  ahead/behind  vs the branch's upstream if configured, else vs origin/<base>
+                from the provenance marker if that ref exists, else null — never
+                a fabricated number.
+  pr_state      merged / open / closed / none / branch-gone. A flaky `gh` call
+                degrades to "none", never a hard error, so a read-only inspection
+                doesn't throw over transient GitHub trouble.
+  agent_live    a live agent occupies some pane in the worktree's workspace.
+  idle_minutes  best-effort: a live agent's activity timestamp if one can be
+                found, else the last-commit time as a "last touched" proxy, else
+                null. (herdr's exact agent-timestamp field names are unverified,
+                so several plausible names are tried.)
+  prunable      not dirty and not agent_live and pr_state in {merged, closed,
+                branch-gone} — the reap heuristic. This is NOT git/herdr's own
+                `is_prunable` (that means the admin entry outlived its directory).
+
+It drives git and `gh` and needs no Herdr socket for most fields, so it runs
+standalone; only the live-agent cross-reference needs Herdr.
+
+Exit codes (shared across the Herdr dispatch primitives):
+  0  success. The JSON result object is printed to stdout.
+  2  needs judgment. An expected situation the script cannot resolve
+     mechanically (the worktree cannot be found). stdout is JSON,
+     {"status": "needs_judgment", "reason": ...}. The caller's cue to ask or pick
+     a different target.
+  1  real error (an unexpected git/subprocess failure). Diagnostics go to stderr.
+
+All subprocesses are invoked as argv lists, never a shell string.
+"""
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+from datetime import datetime, timezone
+
+MARKER_NAME = ".herdr-dispatch.json"
+MARKER_TAG = "herdr-dispatch"
+
+
+class HerdrError(Exception):
+    """A herdr subprocess failed or returned something unparsable."""
+
+
+def run(argv, cwd=None):
+    return subprocess.run(argv, capture_output=True, text=True, cwd=cwd)
+
+
+def emit_success(obj):
+    print(json.dumps(obj))
+    sys.exit(0)
+
+
+def emit_judgment(reason, **partial):
+    print(json.dumps({"status": "needs_judgment", "reason": reason, **partial}))
+    sys.exit(2)
+
+
+def emit_error(message):
+    print(f"inspect-worktree: {message}", file=sys.stderr)
+    sys.exit(1)
+
+
+def herdr_available():
+    return os.environ.get("HERDR_ENV") == "1"
+
+
+def herdr_json(args):
+    proc = run(["herdr", *args])
+    if proc.returncode != 0:
+        raise HerdrError(
+            f"herdr {' '.join(args)} failed ({proc.returncode}): "
+            f"{proc.stderr.strip() or proc.stdout.strip()}"
+        )
+    try:
+        return json.loads(proc.stdout).get("result", {})
+    except json.JSONDecodeError:
+        raise HerdrError(f"herdr {' '.join(args)} returned non-JSON: {proc.stdout[:200]}")
+
+
+def collect_dicts(obj, out=None):
+    """Every dict node anywhere in a parsed JSON value.
+
+    herdr's exact envelope shape is read defensively this way rather than pinned
+    to one nesting, since its own subcommands don't agree on field placement or
+    naming (see create-worktree's workspace_id/open_workspace_id lesson)."""
+    if out is None:
+        out = []
+    if isinstance(obj, dict):
+        out.append(obj)
+        for value in obj.values():
+            collect_dicts(value, out)
+    elif isinstance(obj, list):
+        for item in obj:
+            collect_dicts(item, out)
+    return out
+
+
+def first_value(nodes, *keys):
+    for node in nodes:
+        for key in keys:
+            if node.get(key):
+                return node[key]
+    return None
+
+
+# --- resolution -------------------------------------------------------------
+
+def herdr_worktree_entries(repo):
+    result = herdr_json(["worktree", "list", "--cwd", repo])
+    entries = None
+    if isinstance(result, dict):
+        entries = result.get("worktrees") or result.get("workspaces")
+    if entries is None:
+        entries = result if isinstance(result, list) else [result]
+    return [entry for entry in entries if isinstance(entry, dict)]
+
+
+def match_entry(entries, worktree):
+    """The worktree entry whose path or workspace_id equals `worktree`."""
+    target_real = os.path.realpath(worktree)
+    for entry in entries:
+        nodes = collect_dicts(entry)
+        path = first_value(nodes, "path")
+        workspace_id = first_value(nodes, "open_workspace_id", "workspace_id")
+        if path and os.path.realpath(path) == target_real:
+            return path, workspace_id
+        if workspace_id and workspace_id == worktree:
+            return path, workspace_id
+    return None, None
+
+
+def git_worktree_paths(repo):
+    proc = run(["git", "-C", repo, "worktree", "list", "--porcelain"])
+    if proc.returncode != 0:
+        raise HerdrError(f"git worktree list failed: {proc.stderr.strip()}")
+    paths = []
+    for line in proc.stdout.splitlines():
+        if line.startswith("worktree "):
+            paths.append(line[len("worktree "):])
+    return paths
+
+
+def resolve_entry(worktree, repo):
+    """Resolve `worktree` (a path or workspace_id) to (path, open_workspace_id).
+
+    Herdr's `worktree list` gives both together; without Herdr, a path can still
+    be resolved via git (workspace_id then unknown, so the agent fields degrade)."""
+    if herdr_available():
+        try:
+            path, workspace_id = match_entry(herdr_worktree_entries(repo), worktree)
+            if path:
+                return path, workspace_id
+        except HerdrError:
+            pass  # fall through to the git-only path below
+    if os.path.isdir(worktree):
+        target_real = os.path.realpath(worktree)
+        for path in git_worktree_paths(repo):
+            if os.path.realpath(path) == target_real:
+                return path, None
+    return None, None
+
+
+# --- git / gh fields --------------------------------------------------------
+
+def git_out(path, *args):
+    proc = run(["git", "-C", path, *args])
+    return proc.returncode, proc.stdout.strip(), proc.stderr.strip()
+
+
+def read_marker(path):
+    try:
+        with open(os.path.join(path, MARKER_NAME), encoding="utf-8") as handle:
+            return json.load(handle)
+    except (OSError, ValueError):
+        return {}
+
+
+def branch_name(path):
+    code, out, _ = git_out(path, "rev-parse", "--abbrev-ref", "HEAD")
+    return out if code == 0 else None
+
+
+def is_dirty(path):
+    code, out, _ = git_out(path, "status", "--porcelain")
+    return bool(out) if code == 0 else False
+
+
+def upstream_ref(path):
+    code, out, _ = git_out(path, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")
+    return out if code == 0 and out else None
+
+
+def ref_exists(path, ref):
+    code, _, _ = git_out(path, "rev-parse", "--verify", "--quiet", ref)
+    return code == 0
+
+
+def count_ahead_behind(path, left_ref, right_ref):
+    """(behind, ahead): commits in left not in right, and in right not in left."""
+    code, out, _ = git_out(path, "rev-list", "--left-right", "--count",
+                           f"{left_ref}...{right_ref}")
+    if code != 0 or not out:
+        return None, None
+    parts = out.split()
+    if len(parts) != 2:
+        return None, None
+    try:
+        return int(parts[0]), int(parts[1])
+    except ValueError:
+        return None, None
+
+
+def ahead_behind(path, marker_base):
+    upstream = upstream_ref(path)
+    if upstream:
+        behind, ahead = count_ahead_behind(path, upstream, "HEAD")
+        return ahead, behind
+    if marker_base:
+        base_ref = f"origin/{marker_base}"
+        if ref_exists(path, base_ref):
+            behind, ahead = count_ahead_behind(path, base_ref, "HEAD")
+            return ahead, behind
+    return None, None
+
+
+def pr_state(path, branch):
+    proc = run(["gh", "pr", "view", branch, "--json", "state,number"], cwd=path)
+    if proc.returncode == 0:
+        try:
+            data = json.loads(proc.stdout)
+        except json.JSONDecodeError:
+            return "none"
+        state = (data.get("state") or "").upper()
+        return {"OPEN": "open", "MERGED": "merged", "CLOSED": "closed"}.get(state, "none")
+    # Nonzero: not-found may mean the upstream branch was deleted (branch-gone);
+    # any other failure (network/auth/rate-limit) degrades to "none" rather than
+    # hard-erroring a read-only inspection.
+    code, configured_upstream, _ = git_out(
+        path, "for-each-ref", "--format=%(upstream)", f"refs/heads/{branch}")
+    if code == 0 and configured_upstream and not ref_exists(path, configured_upstream):
+        return "branch-gone"
+    return "none"
+
+
+def pane_ids_in_workspace(workspace_id):
+    result = herdr_json(["pane", "list", "--workspace", workspace_id])
+    panes = result.get("panes") if isinstance(result, dict) else None
+    if not panes:
+        panes = [node for node in collect_dicts(result) if node.get("pane_id")]
+    return {pane.get("pane_id") for pane in panes if pane.get("pane_id")}
+
+
+def live_agent_in_panes(pane_ids):
+    """The dict of a live agent occupying any pane in `pane_ids`, if any.
+
+    Generalizes launch-agent-in-pane's agent_in_pane from one pane to a set."""
+    result = herdr_json(["agent", "list"])
+    agents = result.get("agents") if isinstance(result, dict) else result
+    if not isinstance(agents, list):
+        return None
+    for agent in agents:
+        if not isinstance(agent, dict):
+            continue
+        nodes = collect_dicts(agent)
+        if any(node.get("pane_id") in pane_ids for node in nodes):
+            return agent
+    return None
+
+
+def agent_live(workspace_id):
+    if not (herdr_available() and workspace_id):
+        return False, None
+    try:
+        pane_ids = pane_ids_in_workspace(workspace_id)
+        if not pane_ids:
+            return False, None
+        agent = live_agent_in_panes(pane_ids)
+        return (agent is not None), agent
+    except HerdrError:
+        return False, None
+
+
+def parse_timestamp(value):
+    """A datetime (UTC) from an ISO8601 string or a unix epoch, else None."""
+    if isinstance(value, (int, float)):
+        try:
+            return datetime.fromtimestamp(value, tz=timezone.utc)
+        except (OverflowError, OSError, ValueError):
+            return None
+    if isinstance(value, str) and value.strip():
+        text = value.strip()
+        if text.endswith("Z"):
+            text = text[:-1] + "+00:00"
+        try:
+            parsed = datetime.fromisoformat(text)
+        except ValueError:
+            try:
+                return datetime.fromtimestamp(float(value), tz=timezone.utc)
+            except (ValueError, OverflowError, OSError):
+                return None
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed
+    return None
+
+
+AGENT_TIME_KEYS = ("idle_since", "last_active_at", "updated_at", "state_changed_at")
+
+
+def minutes_since(moment):
+    return round((datetime.now(timezone.utc) - moment).total_seconds() / 60)
+
+
+def idle_minutes(path, agent):
+    # Best-effort. herdr's agent-activity field names are unverified, so try a
+    # few plausible ones; fall back to the last-commit time as "last touched".
+    if agent:
+        for node in collect_dicts(agent):
+            for key in AGENT_TIME_KEYS:
+                moment = parse_timestamp(node.get(key)) if node.get(key) is not None else None
+                if moment:
+                    return minutes_since(moment)
+    code, out, _ = git_out(path, "log", "-1", "--format=%ct", "HEAD")
+    if code == 0 and out:
+        moment = parse_timestamp(out)
+        if moment:
+            return minutes_since(moment)
+    return None
+
+
+def inspect(path, workspace_id):
+    marker = read_marker(path)
+    ours = marker.get("created_by") == MARKER_TAG
+    branch = branch_name(path)
+    dirty = is_dirty(path)
+    ahead, behind = ahead_behind(path, marker.get("base"))
+    state = pr_state(path, branch) if branch and branch != "HEAD" else "none"
+    live, agent = agent_live(workspace_id)
+    idle = idle_minutes(path, agent)
+    prunable = (not dirty) and (not live) and state in {"merged", "closed", "branch-gone"}
+    return {
+        "path": path,
+        "branch": branch,
+        "ours": ours,
+        "dirty": dirty,
+        "ahead": ahead,
+        "behind": behind,
+        "pr_state": state,
+        "agent_live": live,
+        "idle_minutes": idle,
+        "prunable": prunable,
+    }
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Report the state of one worktree (read-only).")
+    parser.add_argument("--worktree", required=True, help="a path or a Herdr workspace_id")
+    parser.add_argument("--repo", default=os.getcwd(),
+                        help="git repo for the worktree-list lookup (default: cwd)")
+    args = parser.parse_args()
+
+    try:
+        path, workspace_id = resolve_entry(args.worktree, args.repo)
+        if not path:
+            emit_judgment(f"worktree {args.worktree!r} not found", worktree=args.worktree)
+        emit_success(inspect(path, workspace_id))
+    except HerdrError as error:
+        emit_error(str(error))
+
+
+if __name__ == "__main__":
+    main()

@@ -14,7 +14,11 @@ handles name collisions itself, so no caller runs a check-then-retry loop:
      branch if one is there, so fetch-pr-head -> create-worktree chains cleanly).
 
 Every created worktree is stamped with a marker file so teardown can later
-recognize it as dispatch-created, with no external registry.
+recognize it as dispatch-created, with no external registry. The marker is
+excluded via the repo's shared .git/info/exclude (not the worktree's own
+.gitignore, and not a repo-committed one), so it never makes a clean worktree
+look dirty to `git status` or to inspect-worktree/remove-worktree's safety
+checks.
 
 Requires HERDR_ENV=1: it drives the `herdr` CLI.
 
@@ -147,9 +151,42 @@ def marker_is_ours(path):
         return False
 
 
-def write_marker(path, branch):
+def ensure_marker_excluded(path):
+    """Keep the marker out of `git status`, so a dispatch-created worktree never
+    reads as dirty just for carrying its own provenance file.
+
+    `.git/info/exclude` is per-clone and untracked (the right place for tooling
+    housekeeping, unlike a repo's own committed .gitignore) and shared across all
+    of a repo's worktrees (there is one common git dir), so this only needs to
+    run once per repo, not once per worktree. Best-effort: a failure here should
+    never block worktree creation."""
+    try:
+        proc = run(["git", "-C", path, "rev-parse", "--git-common-dir"])
+        if proc.returncode != 0:
+            return
+        common_dir = proc.stdout.strip()
+        if not os.path.isabs(common_dir):
+            common_dir = os.path.join(path, common_dir)
+        exclude_path = os.path.join(common_dir, "info", "exclude")
+        os.makedirs(os.path.dirname(exclude_path), exist_ok=True)
+        existing = ""
+        if os.path.exists(exclude_path):
+            with open(exclude_path, encoding="utf-8") as handle:
+                existing = handle.read()
+        if MARKER_NAME in existing.splitlines():
+            return
+        with open(exclude_path, "a", encoding="utf-8") as handle:
+            if existing and not existing.endswith("\n"):
+                handle.write("\n")
+            handle.write(f"{MARKER_NAME}\n")
+    except OSError:
+        pass
+
+
+def write_marker(path, branch, base):
+    ensure_marker_excluded(path)
     stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    payload = {"created_by": MARKER_TAG, "created_at": stamp, "branch": branch}
+    payload = {"created_by": MARKER_TAG, "created_at": stamp, "branch": branch, "base": base}
     with open(os.path.join(path, MARKER_NAME), "w", encoding="utf-8") as handle:
         json.dump(payload, handle)
 
@@ -206,7 +243,7 @@ def create_fresh(repo, branch, base, label):
         raise HerdrError("worktree create returned no workspace id")
     if not path:
         raise HerdrError("worktree create returned no path")
-    write_marker(path, branch)
+    write_marker(path, branch, base)
     pane_id = shell_pane_id(workspace_id)
     return {"workspace_id": workspace_id, "path": path, "pane_id": pane_id,
             "branch": branch, "created": True}

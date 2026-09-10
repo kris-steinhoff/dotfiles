@@ -1,0 +1,146 @@
+#!/usr/bin/env python3
+"""Add a pane to an existing Herdr workspace, so an agent can launch into it.
+
+A Herdr dispatch primitive, the placement step for putting an agent into an
+existing checkout rather than a fresh worktree. It splits an existing pane in the
+target workspace:
+
+  1. Find an existing pane in the workspace (`herdr pane list --workspace <id>`),
+     preferring one with no agent running, else the first pane. `herdr pane split`
+     splits a pane, not a workspace, so it needs a concrete pane to split from.
+  2. Split it (`herdr pane split --pane <id> --direction <right|down> --no-focus
+     [--cwd <cwd>]`) and return the new pane. herdr requires --direction (its
+     --help text doesn't mark it required, but it errors without one); this
+     defaults to `right` and is overridable via `--direction`.
+
+Not a collision-prone resource: every call is meant to add a genuinely new pane,
+so there is no dedup/convergence logic here. "Idempotent" is just "safe to retry
+without corrupting state," which a fresh split already satisfies.
+
+Requires HERDR_ENV=1: it drives the `herdr` CLI.
+
+Exit codes (shared across the Herdr dispatch primitives):
+  0  success. The JSON result object is printed to stdout.
+  2  needs judgment. An expected situation the script cannot resolve
+     mechanically (not running inside Herdr, or the workspace has no pane to
+     split from / does not exist). stdout is JSON,
+     {"status": "needs_judgment", "reason": ...} plus any known partial fields.
+     The caller's cue to apply judgment or ask.
+  1  real error (the split failed, or malformed herdr JSON). Diagnostics go to
+     stderr; stdout may be empty.
+
+All subprocesses are invoked as argv lists, never a shell string.
+"""
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+
+
+class HerdrError(Exception):
+    """A herdr subprocess failed or returned something unparsable."""
+
+
+def run(argv):
+    return subprocess.run(argv, capture_output=True, text=True)
+
+
+def emit_success(obj):
+    print(json.dumps(obj))
+    sys.exit(0)
+
+
+def emit_judgment(reason, **partial):
+    print(json.dumps({"status": "needs_judgment", "reason": reason, **partial}))
+    sys.exit(2)
+
+
+def emit_error(message):
+    print(f"create-pane: {message}", file=sys.stderr)
+    sys.exit(1)
+
+
+def herdr_json(args):
+    proc = run(["herdr", *args])
+    if proc.returncode != 0:
+        raise HerdrError(
+            f"herdr {' '.join(args)} failed ({proc.returncode}): "
+            f"{proc.stderr.strip() or proc.stdout.strip()}"
+        )
+    try:
+        return json.loads(proc.stdout).get("result", {})
+    except json.JSONDecodeError:
+        raise HerdrError(f"herdr {' '.join(args)} returned non-JSON: {proc.stdout[:200]}")
+
+
+def collect_dicts(obj, out=None):
+    """Every dict node anywhere in a parsed JSON value.
+
+    herdr's exact envelope shape is read defensively this way rather than pinned
+    to one nesting, since its own subcommands don't agree on field placement or
+    naming (see create-worktree's workspace_id/open_workspace_id lesson)."""
+    if out is None:
+        out = []
+    if isinstance(obj, dict):
+        out.append(obj)
+        for value in obj.values():
+            collect_dicts(value, out)
+    elif isinstance(obj, list):
+        for item in obj:
+            collect_dicts(item, out)
+    return out
+
+
+def source_pane_id(workspace_id):
+    """A pane in the workspace to split from — one with no agent if possible.
+
+    Mirrors create-worktree's shell_pane_id: prefer an unoccupied pane, else the
+    first pane, since either can host the split."""
+    result = herdr_json(["pane", "list", "--workspace", workspace_id])
+    panes = result.get("panes") if isinstance(result, dict) else None
+    if not panes:
+        panes = [node for node in collect_dicts(result) if node.get("pane_id")]
+    for pane in panes:
+        if not pane.get("agent"):
+            return pane.get("pane_id")
+    return panes[0].get("pane_id") if panes else None
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Add a pane to an existing Herdr workspace.")
+    parser.add_argument("--workspace-id", required=True, help="workspace to add a pane to")
+    parser.add_argument("--cwd", help="working directory for the new pane")
+    parser.add_argument("--direction", choices=["right", "down"], default="right",
+                        help="split direction (herdr requires one; default: right)")
+    args = parser.parse_args()
+
+    if os.environ.get("HERDR_ENV") != "1":
+        emit_judgment("not running inside a Herdr session (HERDR_ENV != 1)")
+
+    try:
+        source = source_pane_id(args.workspace_id)
+        if not source:
+            emit_judgment(
+                f"workspace {args.workspace_id} has no pane to split from "
+                "(does it exist?)",
+                workspace_id=args.workspace_id,
+            )
+
+        split = ["pane", "split", "--pane", source, "--direction", args.direction, "--no-focus"]
+        if args.cwd:
+            split += ["--cwd", args.cwd]
+        result = herdr_json(split)
+        nodes = collect_dicts(result)
+        pane_id = next((node["pane_id"] for node in nodes if node.get("pane_id")), None)
+        if not pane_id:
+            raise HerdrError("pane split returned no pane id")
+
+        emit_success({"pane_id": pane_id, "workspace_id": args.workspace_id})
+    except HerdrError as error:
+        emit_error(str(error))
+
+
+if __name__ == "__main__":
+    main()
