@@ -3,12 +3,11 @@
 # requires-python = ">=3.11"
 # dependencies = ["rich>=13"]
 # ///
-"""Show a live summary of current Claude subscription usage.
+"""Show a live summary of current AI subscription usage.
 
-Reads the OAuth token that Claude Code stores locally and queries the same
-usage endpoint the `/usage` view uses. Works for whatever account the stored
-token belongs to (Pro, Max, Team, Enterprise), rendering whichever limit
-windows that account reports.
+Reads the local Claude Code and Codex sign-ins, then queries their respective
+usage endpoints. It currently supports Claude and ChatGPT (via Codex), and
+renders whichever limit windows each account reports.
 
 On a terminal it refreshes in place until interrupted. `--once` prints a
 single snapshot and exits.
@@ -41,10 +40,14 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-USAGE_URL = "https://api.anthropic.com/api/oauth/usage"
+CLAUDE_USAGE_URL = "https://api.anthropic.com/api/oauth/usage"
 OAUTH_BETA = "oauth-2025-04-20"
 CREDENTIALS_PATH = Path.home() / ".claude" / ".credentials.json"
 KEYCHAIN_SERVICE = "Claude Code-credentials"  # macOS Keychain entry name
+# Codex uses the ChatGPT backend's public compatibility route here; the
+# `/api/codex/usage` spelling is for the newer internal deployment.
+CHATGPT_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage"
+CODEX_AUTH_PATH = Path.home() / ".codex" / "auth.json"
 
 BAR_WIDTH = 26
 BAR_WIDTH_DOLLAR = 16  # dollar amounts are wider, so shorten the bar to fit
@@ -73,12 +76,14 @@ class UsageError(Exception):
         hint: str | None = None,
         retry_after: float | None = None,
         status: int | None = None,
+        credentials_missing: bool = False,
     ):
         super().__init__(message)
         self.message = message
         self.hint = hint
         self.retry_after = retry_after
         self.status = status
+        self.credentials_missing = credentials_missing
 
 
 # --------------------------------------------------------------------------- #
@@ -108,6 +113,7 @@ def load_oauth() -> dict:
         raise UsageError(
             "Could not find Claude credentials.",
             "Log in with Claude Code first (run `claude` and complete sign-in).",
+            credentials_missing=True,
         )
 
     try:
@@ -117,8 +123,27 @@ def load_oauth() -> dict:
 
     oauth = data.get("claudeAiOauth")
     if not oauth or not oauth.get("accessToken"):
-        raise UsageError("No OAuth access token found in Claude credentials.")
+        raise UsageError("No OAuth access token found in Claude credentials.", credentials_missing=True)
     return oauth
+
+
+def load_chatgpt_oauth() -> dict:
+    """Load Codex's ChatGPT access token, re-reading it on every poll."""
+    if not CODEX_AUTH_PATH.exists():
+        raise UsageError(
+            "Could not find ChatGPT credentials.",
+            "Log in with Codex first (run `codex` and complete sign-in).",
+            credentials_missing=True,
+        )
+    try:
+        data = json.loads(CODEX_AUTH_PATH.read_text())
+    except json.JSONDecodeError:
+        raise UsageError("ChatGPT credentials are not valid JSON.")
+
+    tokens = data.get("tokens") or {}
+    if not tokens.get("access_token"):
+        raise UsageError("No OAuth access token found in ChatGPT credentials.", credentials_missing=True)
+    return tokens
 
 
 # --------------------------------------------------------------------------- #
@@ -149,7 +174,7 @@ def parse_retry_after(value: str | None) -> float | None:
 
 def fetch_usage(token: str) -> dict:
     req = urllib.request.Request(
-        USAGE_URL,
+        CLAUDE_USAGE_URL,
         headers={
             "Authorization": f"Bearer {token}",
             "anthropic-beta": OAUTH_BETA,
@@ -175,6 +200,36 @@ def fetch_usage(token: str) -> dict:
         raise UsageError(f"Could not reach the Claude usage API: {e.reason}")
     except TimeoutError:
         raise UsageError("Timed out contacting the Claude usage API.")
+
+
+def fetch_chatgpt_usage(oauth: dict) -> dict:
+    """Fetch the same Codex allowance snapshot shown by ChatGPT."""
+    headers = {
+        "Authorization": f"Bearer {oauth['access_token']}",
+        "User-Agent": "ai-usage-cli",
+        "Accept": "application/json",
+    }
+    if oauth.get("account_id"):
+        headers["ChatGPT-Account-Id"] = oauth["account_id"]
+    req = urllib.request.Request(CHATGPT_USAGE_URL, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            return json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403):
+            raise UsageError(
+                f"{e.code} {e.reason}",
+                hint="Open Codex once to refresh the stored token, then try again.",
+                status=e.code,
+            )
+        if e.code == 429:
+            retry = parse_retry_after(e.headers.get("Retry-After"))
+            raise UsageError(f"{e.code} {e.reason}", retry_after=retry, status=e.code)
+        raise UsageError(f"{e.code} {e.reason}", status=e.code)
+    except urllib.error.URLError as e:
+        raise UsageError(f"Could not reach the ChatGPT usage API: {e.reason}")
+    except TimeoutError:
+        raise UsageError("Timed out contacting the ChatGPT usage API.")
 
 
 # --------------------------------------------------------------------------- #
@@ -263,6 +318,57 @@ def build_windows(data: dict) -> list[Window]:
                 )
             )
 
+    return windows
+
+
+def chatgpt_reset_at(value: object) -> str | None:
+    """Normalize Codex's Unix reset timestamp to the ISO form used by Window."""
+    if isinstance(value, (int, float)):
+        return datetime.fromtimestamp(value, timezone.utc).isoformat()
+    return value if isinstance(value, str) else None
+
+
+def build_chatgpt_windows(data: dict) -> list[Window]:
+    """Adapt Codex's rate-limit snapshot to the shared display model.
+
+    Codex returns one or two named windows plus optional feature-specific
+    allowances. The endpoint has changed shape before, so accept both the
+    top-level and nested `rate_limits` representations.
+    """
+    limits = data.get("rate_limits") if isinstance(data.get("rate_limits"), dict) else data.get("rate_limit", data)
+    windows: list[Window] = []
+    for key, label in (
+        ("primary", "Codex · primary"),
+        ("secondary", "Codex · secondary"),
+        ("primary_window", "Codex · primary"),
+        ("secondary_window", "Codex · secondary"),
+    ):
+        limit = limits.get(key)
+        if not isinstance(limit, dict) or limit.get("used_percent") is None:
+            continue
+        minutes = limit.get("window_minutes")
+        if minutes is None and isinstance(limit.get("limit_window_seconds"), (int, float)):
+            minutes = limit["limit_window_seconds"] / 60
+        suffix = f" · {minutes // 60:g}h" if isinstance(minutes, (int, float)) and minutes < 1440 else ""
+        if isinstance(minutes, (int, float)) and minutes >= 1440:
+            suffix = f" · {minutes / 1440:g}d"
+        windows.append(
+            Window(
+                label=label + suffix,
+                percent=limit["used_percent"],
+                resets_at=chatgpt_reset_at(limit.get("resets_at")),
+            )
+        )
+    for limit in data.get("additional_rate_limits") or limits.get("additional_rate_limits") or []:
+        if not isinstance(limit, dict) or limit.get("used_percent") is None:
+            continue
+        windows.append(
+            Window(
+                label=str(limit.get("limit_name") or "Additional allowance"),
+                percent=limit["used_percent"],
+                resets_at=chatgpt_reset_at(limit.get("resets_at")),
+            )
+        )
     return windows
 
 
@@ -373,6 +479,20 @@ def account_subtitle(oauth: dict) -> Text:
     return Text(sub, style="magenta")
 
 
+def panel_title(title: str, account: Text | None) -> Text:
+    """Put the account plan at the right end of the panel's top border."""
+    text = Text(title, style="bold")
+    if account is not None:
+        # Panel reserves six cells for its borders and the spaces surrounding
+        # the title. Use the rest to keep the account type against the right edge.
+        gap = max(1, console.width - 8 - text.cell_len - account.cell_len)
+        text.append(" ")
+        text.append("─" * gap, style="grey42")
+        text.append(" ")
+        text.append_text(account)
+    return text
+
+
 FLASH_SECONDS = 1.0  # how long the timestamp stays bright right after a refresh
 
 
@@ -401,12 +521,16 @@ def error_lines(error: UsageError, retry_remaining: float | None) -> list[Text]:
 
 def build_panel(
     data: dict,
-    oauth: dict,
+    oauth: dict | None = None,
     footer: Text | Group | None = None,
     updated_at: datetime | None = None,
     fresh_age: float | None = None,
+    *,
+    title: str = "Claude Usage",
+    account: Text | None = None,
+    window_builder=build_windows,
 ) -> Panel:
-    windows = build_windows(data)
+    windows = window_builder(data)
     body: list = []
 
     if not windows:
@@ -467,20 +591,18 @@ def build_panel(
 
     return Panel(
         Group(*body),
-        title="[bold]Claude Usage[/bold]",
+        title=panel_title(title, account if account is not None else account_subtitle(oauth or {})),
         title_align="left",
-        subtitle=account_subtitle(oauth),
-        subtitle_align="right",
         border_style="grey42",
         padding=(1, 2),
     )
 
 
-def error_panel(error: UsageError, retry_remaining: float | None = None) -> Panel:
+def error_panel(error: UsageError, retry_remaining: float | None = None, title: str = "Claude Usage") -> Panel:
     body = [Align.center(line) for line in error_lines(error, retry_remaining)]
     return Panel(
         Group(*body),
-        title="[bold]Claude Usage[/bold]",
+        title=f"[bold]{title}[/bold]",
         title_align="left",
         border_style="red",
         padding=(1, 2),
@@ -511,7 +633,7 @@ def wait_for_key(fd: int | None, timeout: float) -> str:
     return ""
 
 
-def run_live(interval: int) -> None:
+def run_claude_live(interval: int) -> None:
     """Poll every `interval` seconds and redraw once a second so the retry countdown ticks and the flash clears."""
     data: dict | None = None
     oauth: dict | None = None
@@ -584,6 +706,107 @@ def run_live(interval: int) -> None:
             termios.tcsetattr(fd, termios.TCSADRAIN, saved_attrs)
 
 
+SERVICE_TITLES = {"claude": "Claude Usage", "chatgpt": "ChatGPT Usage"}
+
+
+def fetch_service(service: str) -> tuple[dict, dict]:
+    if service == "claude":
+        oauth = load_oauth()
+        return oauth, fetch_usage(oauth["accessToken"])
+    oauth = load_chatgpt_oauth()
+    return oauth, fetch_chatgpt_usage(oauth)
+
+
+def service_panel(service: str, oauth: dict, data: dict, updated_at: datetime | None, fresh_age: float | None) -> Panel:
+    if service == "claude":
+        return build_panel(data, oauth, updated_at=updated_at, fresh_age=fresh_age)
+    plan = (data.get("plan_type") or "ChatGPT").replace("_", " ")
+    return build_panel(
+        data,
+        updated_at=updated_at,
+        fresh_age=fresh_age,
+        title=SERVICE_TITLES[service],
+        account=Text(plan, style="magenta"),
+        window_builder=build_chatgpt_windows,
+    )
+
+
+def build_dashboard(
+    services: list[str],
+    snapshots: dict[str, tuple[dict, dict]],
+    errors: dict[str, UsageError],
+    updated_at: datetime | None,
+    fresh_age: float | None,
+) -> Group:
+    panels: list[Panel] = []
+    for service in services:
+        if service in snapshots:
+            oauth, data = snapshots[service]
+            footer = Group(*error_lines(errors[service], None)) if service in errors else None
+            panel = service_panel(service, oauth, data, updated_at, fresh_age)
+            if footer is not None:
+                panel = build_panel(
+                    data,
+                    oauth if service == "claude" else None,
+                    footer=footer,
+                    updated_at=updated_at,
+                    fresh_age=fresh_age,
+                    title=SERVICE_TITLES[service],
+                    account=(account_subtitle(oauth) if service == "claude" else Text((data.get("plan_type") or "ChatGPT").replace("_", " "), style="magenta")),
+                    window_builder=build_windows if service == "claude" else build_chatgpt_windows,
+                )
+            panels.append(panel)
+        else:
+            panels.append(error_panel(errors[service], title=SERVICE_TITLES[service]))
+    return Group(*panels)
+
+
+def run_live(services: list[str], interval: int) -> None:
+    """Poll every selected service, keeping last-known values on an error."""
+    snapshots: dict[str, tuple[dict, dict]] = {}
+    errors: dict[str, UsageError] = {}
+    updated_at: datetime | None = None
+    last_success: float | None = None
+    last_attempt: float | None = None
+    fd = sys.stdin.fileno() if sys.stdin.isatty() else None
+    saved_attrs = termios.tcgetattr(fd) if fd is not None else None
+    if fd is not None:
+        tty.setcbreak(fd)
+    try:
+        with Live(console=console, auto_refresh=False, screen=False) as live:
+            try:
+                while True:
+                    now = time.monotonic()
+                    if last_attempt is None or now - last_attempt >= interval:
+                        last_attempt = now
+                        for service in services:
+                            try:
+                                snapshots[service] = fetch_service(service)
+                                errors.pop(service, None)
+                            except UsageError as e:
+                                errors[service] = e
+                        if snapshots:
+                            updated_at = datetime.now()
+                            last_success = time.monotonic()
+                    fresh_age = time.monotonic() - last_success if last_success is not None else None
+                    visible_services = [
+                        service for service in services
+                        if not (service in errors and errors[service].credentials_missing)
+                    ]
+                    live.update(build_dashboard(visible_services, snapshots, errors, updated_at, fresh_age), refresh=True)
+                    action = wait_for_key(fd, 1.0)
+                    if action == "quit":
+                        break
+                    if action == "refresh":
+                        last_attempt = None
+            except KeyboardInterrupt:
+                pass
+    finally:
+        if fd is not None and saved_attrs is not None:
+            termios.tcflush(fd, termios.TCIFLUSH)
+            termios.tcsetattr(fd, termios.TCSADRAIN, saved_attrs)
+
+
 # --------------------------------------------------------------------------- #
 # Helpers
 # --------------------------------------------------------------------------- #
@@ -594,38 +817,61 @@ def die(*lines: str) -> None:
     sys.exit(1)
 
 
-def snapshot() -> tuple[dict, dict]:
-    """Fetch once, converting a UsageError into a fatal, friendly exit."""
-    try:
-        oauth = load_oauth()
-        return oauth, fetch_usage(oauth["accessToken"])
-    except UsageError as e:
-        die(e.message, *([e.hint] if e.hint else []))
+def snapshots(services: list[str]) -> tuple[dict[str, tuple[dict, dict]], dict[str, UsageError]]:
+    """Fetch every selected service, allowing a healthy one to still render."""
+    values: dict[str, tuple[dict, dict]] = {}
+    errors: dict[str, UsageError] = {}
+    for service in services:
+        try:
+            values[service] = fetch_service(service)
+        except UsageError as e:
+            errors[service] = e
+    return values, errors
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Show current Claude subscription usage.")
-    parser.add_argument("--json", action="store_true", help="print the raw usage payload and exit")
+    parser = argparse.ArgumentParser(description="Show current AI subscription usage.")
+    parser.add_argument(
+        "--service", choices=("claude", "chatgpt"), action="append",
+        help="show only this service (repeatable; default: both)",
+    )
+    parser.add_argument("--json", action="store_true", help="print raw payloads keyed by service and exit")
     parser.add_argument("--once", action="store_true", help="print a single snapshot instead of the live view")
     parser.add_argument(
         "-n", "--interval", type=int, default=300, metavar="SECONDS",
         help="live refresh interval in seconds (default: 300 / 5 minutes, minimum: 5)",
     )
     args = parser.parse_args()
+    services = args.service or ["claude", "chatgpt"]
 
     if args.json:
-        _, data = snapshot()
-        json.dump(data, sys.stdout, indent=2)
+        values, errors = snapshots(services)
+        fatal_errors = {service: error for service, error in errors.items() if not error.credentials_missing}
+        if fatal_errors:
+            for service, error in fatal_errors.items():
+                die(f"{SERVICE_TITLES[service]}: {error.message}", *([error.hint] if error.hint else []))
+        json.dump({service: data for service, (_, data) in values.items()}, sys.stdout, indent=2)
         sys.stdout.write("\n")
         return
 
     # The live view needs a terminal; anything else prints once and exits.
     if args.once or not sys.stdout.isatty():
-        oauth, data = snapshot()
-        console.print(build_panel(data, oauth, updated_at=datetime.now(), fresh_age=0.0))
+        values, errors = snapshots(services)
+        if not values:
+            fatal_errors = {service: error for service, error in errors.items() if not error.credentials_missing}
+            if fatal_errors:
+                service, error = next(iter(fatal_errors.items()))
+                die(f"{SERVICE_TITLES[service]}: {error.message}", *([error.hint] if error.hint else []))
+            return
+        visible_services = [
+            service for service in services
+            if not (service in errors and errors[service].credentials_missing)
+        ]
+        console.print(build_dashboard(visible_services, values, errors, datetime.now(), 0.0))
         return
 
-    run_live(max(5, args.interval))
+    interval = max(5, args.interval)
+    run_live(services, interval)
 
 
 if __name__ == "__main__":
