@@ -49,6 +49,9 @@
   },
   "model": "claude-opus-4-8",
   "permissions": {
+    "additionalDirectories": [
+      "~/scratch"
+    ],
     "defaultMode": "auto"
   },
   "sandbox": {
