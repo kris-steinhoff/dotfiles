@@ -28,7 +28,7 @@ import tty
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 
@@ -328,6 +328,18 @@ def chatgpt_reset_at(value: object) -> str | None:
     return value if isinstance(value, str) else None
 
 
+def chatgpt_window_reset(limit: dict) -> str | None:
+    """Return a reset time across the usage endpoint's known field spellings."""
+    absolute = limit.get("resets_at", limit.get("reset_at"))
+    normalized = chatgpt_reset_at(absolute)
+    if normalized is not None:
+        return normalized
+    remaining = limit.get("reset_after_seconds")
+    if isinstance(remaining, (int, float)):
+        return (datetime.now(timezone.utc) + timedelta(seconds=remaining)).isoformat()
+    return None
+
+
 def build_chatgpt_windows(data: dict) -> list[Window]:
     """Adapt Codex's rate-limit snapshot to the shared display model.
 
@@ -356,7 +368,7 @@ def build_chatgpt_windows(data: dict) -> list[Window]:
             Window(
                 label=label + suffix,
                 percent=limit["used_percent"],
-                resets_at=chatgpt_reset_at(limit.get("resets_at")),
+                resets_at=chatgpt_window_reset(limit),
             )
         )
     for limit in data.get("additional_rate_limits") or limits.get("additional_rate_limits") or []:
@@ -366,7 +378,7 @@ def build_chatgpt_windows(data: dict) -> list[Window]:
             Window(
                 label=str(limit.get("limit_name") or "Additional allowance"),
                 percent=limit["used_percent"],
-                resets_at=chatgpt_reset_at(limit.get("resets_at")),
+                resets_at=chatgpt_window_reset(limit),
             )
         )
     return windows
@@ -525,6 +537,7 @@ def build_panel(
     footer: Text | Group | None = None,
     updated_at: datetime | None = None,
     fresh_age: float | None = None,
+    label_width: int | None = None,
     *,
     title: str = "Claude Usage",
     account: Text | None = None,
@@ -544,7 +557,7 @@ def build_panel(
             # can push it to the panel's right edge; otherwise the row stays its
             # natural width.
             t = Table.grid(padding=(0, 2), expand=include_updated)
-            t.add_column(justify="left", no_wrap=True)   # label
+            t.add_column(justify="left", no_wrap=True, width=label_width)  # label
             t.add_column(justify="left", no_wrap=True)   # bar
             t.add_column(justify="right", no_wrap=True)  # amount
             t.add_column(justify="left", no_wrap=True)   # reset
@@ -717,14 +730,22 @@ def fetch_service(service: str) -> tuple[dict, dict]:
     return oauth, fetch_chatgpt_usage(oauth)
 
 
-def service_panel(service: str, oauth: dict, data: dict, updated_at: datetime | None, fresh_age: float | None) -> Panel:
+def service_panel(
+    service: str,
+    oauth: dict,
+    data: dict,
+    updated_at: datetime | None,
+    fresh_age: float | None,
+    label_width: int | None = None,
+) -> Panel:
     if service == "claude":
-        return build_panel(data, oauth, updated_at=updated_at, fresh_age=fresh_age)
+        return build_panel(data, oauth, updated_at=updated_at, fresh_age=fresh_age, label_width=label_width)
     plan = (data.get("plan_type") or "ChatGPT").replace("_", " ")
     return build_panel(
         data,
         updated_at=updated_at,
         fresh_age=fresh_age,
+        label_width=label_width,
         title=SERVICE_TITLES[service],
         account=Text(plan, style="magenta"),
         window_builder=build_chatgpt_windows,
@@ -739,11 +760,22 @@ def build_dashboard(
     fresh_age: float | None,
 ) -> Group:
     panels: list[Panel] = []
+    labels = [
+        window.label
+        for service in services
+        if service in snapshots
+        for window in (
+            build_windows(snapshots[service][1])
+            if service == "claude"
+            else build_chatgpt_windows(snapshots[service][1])
+        )
+    ]
+    label_width = max((Text(label).cell_len for label in labels), default=None)
     for service in services:
         if service in snapshots:
             oauth, data = snapshots[service]
             footer = Group(*error_lines(errors[service], None)) if service in errors else None
-            panel = service_panel(service, oauth, data, updated_at, fresh_age)
+            panel = service_panel(service, oauth, data, updated_at, fresh_age, label_width)
             if footer is not None:
                 panel = build_panel(
                     data,
@@ -751,6 +783,7 @@ def build_dashboard(
                     footer=footer,
                     updated_at=updated_at,
                     fresh_age=fresh_age,
+                    label_width=label_width,
                     title=SERVICE_TITLES[service],
                     account=(account_subtitle(oauth) if service == "claude" else Text((data.get("plan_type") or "ChatGPT").replace("_", " "), style="magenta")),
                     window_builder=build_windows if service == "claude" else build_chatgpt_windows,
