@@ -43,3 +43,7 @@
 # fetch-pr-head, launch-agent-in-pane, and resolve-task dispatch primitive
 # skills. Without this it lingers on machines that already applied it.
 .pi/agent/extensions/herdr-coordinator
+# aws-profile-login was a standalone script that couldn't do its job (a
+# subprocess can't set AWS_PROFILE in the interactive shell); it's now only the
+# zsh function. Without this the dead script lingers on machines that applied it.
+.local/bin/aws-profile-login

@@ -133,6 +133,6 @@ The harness files are `.tmpl`, not `.md`, so the `prettier` pre-commit hook (whi
 - **Terminal**: Ghostty (ligatures disabled)
 - **Prompt**: Starship — configured without Nerd Font glyphs, kubernetes module enabled
 - **Git**: pull.rebase=true, rebase.updateRefs=true, rebase.autoSquash=true
+- **AWS profile switching**: `aws-profile-login` / `aws-profile-logout` are zsh functions in `dot_config/kris-steinhoff/zshrc`, not scripts. They must be functions because they set `AWS_PROFILE` in the interactive shell — a standalone script would only mutate its own subprocess. `aws-profile-login` triggers SSO or static login if the current credentials are invalid, adding `--use-device-code` when `$SSH_CONNECTION` is set (a remote session with no local browser).
 - **Scripts**:
-  - `dot_local/bin/executable_aws-profile-login` — sets `AWS_PROFILE` and triggers SSO login if needed
   - `dot_local/bin/executable_ai-usage` — shows subscription usage for Claude and ChatGPT. A `uv run --script` Python tool that reads Claude Code's OAuth credential (`~/.claude/.credentials.json`, or the macOS Keychain) and Codex's ChatGPT credential (`~/.codex/auth.json`) and queries their respective usage endpoints. It adapts to the windows each account reports; `--service claude` or `--service chatgpt` limits the view to one provider. On a terminal it refreshes live in place (re-polling every `--interval` seconds, default 300, and reloading credentials each poll) until Ctrl-C. `--once` prints a single snapshot and exits, and `--json` emits raw payloads keyed by provider.

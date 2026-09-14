@@ -132,7 +132,9 @@ aws-profile-login() {
 	export AWS_PROFILE="$1"
 	if ! aws sts get-caller-identity &>/dev/null; then
 		if _aws_profile_is_sso "$AWS_PROFILE"; then
-			aws sso login
+			local sso_args=()
+			[[ -n "${SSH_CONNECTION:-}" ]] && sso_args+=(--use-device-code)
+			aws sso login "${sso_args[@]}"
 		else
 			aws login
 		fi
