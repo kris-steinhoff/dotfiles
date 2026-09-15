@@ -13,9 +13,17 @@ not restart it or re-deliver the seed prompt, which may already be mid-turn.
 A pane occupied by a *different* kind than requested is a needs-judgment case,
 not a silent override.
 
-Otherwise, the agent name starts from the kind (e.g. `claude`) and auto-suffixes
-(-2, -3, ...) past any live agent already holding that name, keeping it inside
-Herdr's [a-z][a-z0-9_-]{0,31} rule.
+Otherwise, the agent name starts from a base — the persona when `--persona` is
+given (so the pane label reads as its job, e.g. `reviewer`), else the kind (e.g.
+`claude`) — and auto-suffixes (-2, -3, ...) past any live agent already holding
+that name, keeping it inside Herdr's [a-z][a-z0-9_-]{0,31} rule.
+
+A `--persona` launches a persona rather than a bare harness: `claude --agent
+<name>` / `codex --profile <name>`. Only those two kinds support personas (the
+PERSONA_FLAGS table); `--persona` with any other kind is a needs-judgment case,
+not a silent drop. Model and persona may both be given — a persona sets its own
+model via frontmatter/profile, and an explicit `--model` overrides it; both pass
+through.
 
 Adding an agent kind is a MODEL_FLAGS table entry, nothing else. Most kinds take
 `--model <hint>`; gemini and codex take `-m <hint>`.
@@ -48,6 +56,14 @@ KINDS = ["claude", "codex", "gemini", "copilot", "opencode"]
 MODEL_FLAGS = {
     "gemini": "-m",
     "codex": "-m",
+}
+
+# Turn a persona name into the agent CLI's persona-select flag. Only these two
+# kinds support personas in this repo; any other kind with --persona is a
+# needs-judgment case (see main), not a silent drop.
+PERSONA_FLAGS = {
+    "claude": "--agent",
+    "codex": "--profile",
 }
 
 
@@ -133,20 +149,26 @@ def agent_in_pane(pane_id):
     return None, None
 
 
-def unique_agent_name(kind):
+def unique_agent_name(base):
     taken = live_agent_names()
-    if kind not in taken:
-        return kind
+    if base not in taken:
+        return base
     suffix = 2
-    while f"{kind}-{suffix}" in taken:
+    while f"{base}-{suffix}" in taken:
         suffix += 1
-    return f"{kind}-{suffix}"
+    return f"{base}-{suffix}"
 
 
 def model_args(kind, hint):
     if not hint:
         return []
     return [MODEL_FLAGS.get(kind, "--model"), hint]
+
+
+def persona_args(kind, name):
+    if not name:
+        return []
+    return [PERSONA_FLAGS[kind], name]
 
 
 def compose_prompt(seed_prompt, report_to_pane):
@@ -166,12 +188,20 @@ def main():
     parser.add_argument("--pane-id", required=True, help="pane at an interactive shell prompt")
     parser.add_argument("--kind", required=True, choices=KINDS, help="agent kind")
     parser.add_argument("--model", help="model hint, e.g. opus")
+    parser.add_argument("--persona", help="persona to launch, e.g. reviewer (claude/codex only)")
     parser.add_argument("--seed-prompt", help="prompt to deliver after launch")
     parser.add_argument("--report-to-pane", help="pane the launched agent should report back to")
     args = parser.parse_args()
 
     if os.environ.get("HERDR_ENV") != "1":
         emit_judgment("not running inside a Herdr session (HERDR_ENV != 1)")
+
+    if args.persona and args.kind not in PERSONA_FLAGS:
+        emit_judgment(
+            f"kind {args.kind} does not support personas; only "
+            f"{', '.join(sorted(PERSONA_FLAGS))} do",
+            kind=args.kind, persona=args.persona, pane_id=args.pane_id,
+        )
 
     try:
         existing_name, existing_kind = agent_in_pane(args.pane_id)
@@ -190,9 +220,9 @@ def main():
                 "pane_id": args.pane_id,
             })
 
-        name = unique_agent_name(args.kind)
+        name = unique_agent_name(args.persona or args.kind)
         start = ["agent", "start", name, "--kind", args.kind, "--pane", args.pane_id]
-        extra = model_args(args.kind, args.model)
+        extra = model_args(args.kind, args.model) + persona_args(args.kind, args.persona)
         if extra:
             start += ["--", *extra]
         herdr_json(start)
