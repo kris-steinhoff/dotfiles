@@ -32,3 +32,13 @@ next_agent = "prefix+n"
 # Free up the keys above by unsetting the default tab navigation bindings.
 previous_tab = ""
 next_tab = ""
+
+# prefix+u toggles a "⚑ " attention flag on the focused agent's name. herdr has
+# no way to re-raise the sidebar attention dot once you've viewed a done agent,
+# so this gives a persistent, manual "come back to this" marker instead.
+# Absolute path (templated) so it resolves whether herdr runs the command
+# through a shell or execs it directly.
+[[keys.command]]
+key = "prefix+u"
+type = "shell"
+command = "{{ .chezmoi.homeDir }}/.config/herdr/toggle-agent-flag.sh"
