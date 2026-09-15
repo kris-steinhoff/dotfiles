@@ -11,6 +11,8 @@ A Herdr dispatch primitive. Run the script; read its one-line JSON result.
 scripts/resolve-task --ref <ref> [--repo <path>]
 ```
 
+Load once per session; takes no `args`. Run the script above directly via Bash for each ref you process — don't re-invoke this skill per item.
+
 `--ref` is a reference like `123`, `#123`, or `ABC-123`. `--repo` (default: cwd) is the git repo path `gh` detects the GitHub repo from. It drives only `gh` and the Jira REST API and needs no Herdr socket, so it also runs standalone.
 
 ## What it does

@@ -11,6 +11,8 @@ A Herdr dispatch teardown primitive. Read-only and advisory, it removes nothing.
 scripts/list-stale-worktrees [--repo <path>] [--stale-after <minutes>]
 ```
 
+Load once per session; takes no `args`. Run the script above directly via Bash — don't re-invoke this skill per repo.
+
 `--repo` (default: cwd) is the git repo to enumerate. `--stale-after` (default `1440`, 24h) is the idle-minutes threshold for the stale flag. It enumerates via `herdr worktree list` when Herdr is available (needed for the live-agent field) and falls back to `git worktree list` otherwise, so it also runs standalone. The primary checkout (the entry at the repo root) is skipped — it is never a teardown candidate.
 
 ## Output (stdout, JSON)

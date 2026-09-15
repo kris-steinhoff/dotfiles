@@ -11,6 +11,8 @@ A Herdr dispatch teardown primitive. Destructive, so fail-closed. Run the script
 scripts/remove-worktree --worktree <path-or-workspace-id> [--force] [--repo <path>]
 ```
 
+Load once per session; takes no `args`. Run the script above directly via Bash for each worktree you process — don't re-invoke this skill per item.
+
 `--worktree` is a path or a Herdr workspace_id. `--repo` (default: cwd) is the git repo used for the worktree-list lookup. Requires `HERDR_ENV=1`; the removal drives the `herdr` CLI. `herdr worktree remove` handles both the git worktree removal and closing the Herdr workspace in one call; branches (local and PR-head refs) are left untouched.
 
 ## Safety gate

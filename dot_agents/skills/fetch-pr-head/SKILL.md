@@ -11,6 +11,8 @@ A Herdr dispatch primitive, the source step that (chained with `create-worktree`
 scripts/fetch-pr-head --pr-number <n> [--branch <name>] [--repo <path>]
 ```
 
+Load once per session; takes no `args`. Run the script above directly via Bash for each PR you process — don't re-invoke this skill per item.
+
 It always fetches through the pull-request head ref, which works uniformly for same-repo and fork PRs:
 
 ```

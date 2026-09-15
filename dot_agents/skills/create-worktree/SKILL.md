@@ -11,6 +11,8 @@ A Herdr dispatch primitive. Run the script; read its one-line JSON result. It is
 scripts/create-worktree --branch <name> [--base <ref>] [--label <text>] [--repo <path>]
 ```
 
+Load once per session; takes no `args`. Run the script above directly via Bash for each branch you process — don't re-invoke this skill per item.
+
 Requires `HERDR_ENV=1`; it drives the `herdr` CLI. `--repo` defaults to the current directory.
 
 ## What it does

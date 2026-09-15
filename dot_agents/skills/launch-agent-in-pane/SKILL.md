@@ -12,6 +12,8 @@ scripts/launch-agent-in-pane --pane-id <id> --kind <kind> \
   [--model <hint>] [--seed-prompt <text>] [--report-to-pane <pane>]
 ```
 
+Load once per session; takes no `args`. Run the script above directly via Bash for each pane you process — don't re-invoke this skill per item.
+
 Requires `HERDR_ENV=1`; it drives the `herdr` CLI.
 
 ## What it does
