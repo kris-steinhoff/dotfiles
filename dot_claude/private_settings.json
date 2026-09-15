@@ -48,6 +48,11 @@
     ]
   },
   "model": "claude-opus-4-8",
+  "modelSettings": {
+    "claude-opus-4-8": {
+      "effortLevel": "high"
+    }
+  },
   "permissions": {
     "additionalDirectories": [
       "~/scratch"
