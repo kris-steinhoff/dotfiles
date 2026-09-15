@@ -1,0 +1,52 @@
+{{- $generous := eq (default "conservative" (get . "agentBudget")) "generous" -}}
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = ["tomlkit>=0.13"]
+# ///
+"""chezmoi modify_ script for ~/.codex/config.toml.
+
+Codex rewrites this file at runtime, injecting machine-local state that does not
+belong in version control: [projects.*] trust levels (per-machine checkout
+paths), [tui.*] UI counters, and [hooks.*] trusted hook hashes. A plain template
+would clobber that state on every apply and force re-trusting projects and hooks.
+
+A modify_ script instead receives the current file on stdin and its stdout
+becomes the new file. We parse with tomlkit (which preserves the layout of
+everything it does not touch), set only the settings we manage (model,
+[features], [agents] -- the last templated on agentBudget), and write the whole
+document back. Everything Codex wrote round-trips verbatim, so applies stay
+idempotent and nothing is silently dropped, whatever new keys Codex may add.
+"""
+
+import sys
+
+import tomlkit
+
+PERSONAS = [
+    ("coordinator", "Coordinates multi-step work across specialist agents while keeping the primary conversation focused on requirements, decisions, and progress."),
+    ("implementor", "Implements a well-specified change end to end, including appropriate verification and a concise handoff."),
+    ("investigator", "Investigates code, behavior, failures, or documentation and returns an evidence-backed explanation without making changes."),
+    ("reviewer", "Reviews proposed or completed changes for concrete defects, regressions, security risks, and missing tests without making changes."),
+    ("pull-request-commenter", "Posts a completed review's findings to a pull request as a single inline review with a recommendation. Mechanical; does not judge the code or edit source."),
+]
+
+doc = tomlkit.parse(sys.stdin.read() or "")
+
+doc["model"] = "gpt-5.6-sol"
+doc["model_reasoning_effort"] = "medium"
+
+features = tomlkit.table()
+features["hooks"] = True
+doc["features"] = features
+
+agents = tomlkit.table()
+agents["max_concurrent_threads_per_session"] = {{ if $generous }}4{{ else }}2{{ end }}
+for name, description in PERSONAS:
+    sub = tomlkit.table()
+    sub["description"] = description
+    sub["config_file"] = f"{name}.config.toml"
+    agents[name] = sub
+doc["agents"] = agents
+
+sys.stdout.write(tomlkit.dumps(doc))

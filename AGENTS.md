@@ -44,6 +44,14 @@ Both sides are kept sorted the same way so ordering never causes a spurious diff
 
 A `chezmoi apply` warning on this file should now only mean a real value changed, not just key order.
 
+## Codex config.toml machine-local state
+
+Codex rewrites `~/.codex/config.toml` at runtime and injects machine-local state that must not be version-controlled: `[projects.*]` trust levels (per-machine checkout paths), `[tui.*]` UI counters, and `[hooks.*]` trusted hook hashes. A plain template would clobber that state on every apply and force re-trusting projects and hooks.
+
+So the source is a chezmoi `modify_` script, `dot_codex/modify_private_config.toml.tmpl`, rather than a static template. A `modify_` script receives the current target on stdin and its stdout becomes the new file. The script is a `uv run --script` Python program (PEP 723 inline deps, same pattern as `ai-usage`) that parses the live file with `tomlkit`, sets only the settings we manage (`model`, `[features]`, `[agents]` — the last templated on `agentBudget`), and dumps the document back. Because `tomlkit` preserves the layout of everything it does not touch, Codex's machine-local tables round-trip verbatim, applies are idempotent (a clean machine shows no diff), and nothing is silently dropped whatever new keys Codex may add. This needs `uv` present at apply time (it is in the Brewfile); the earlier `awk`-based version avoided that dependency but classified sections by regex and could drop unknown top-level bare keys.
+
+The filename attribute order is `modify_private_` (type prefix before the `private_` permission attribute); `private_modify_` is not recognized and chezmoi treats the leftover `modify_` as a literal filename.
+
 ## Config architecture
 
 Shared configs live under `dot_config/kris-steinhoff/` (deployed to `~/.config/kris-steinhoff/`) and are _included_ by the machine-local config files (not replaced). This lets local overrides coexist with the shared baseline:
