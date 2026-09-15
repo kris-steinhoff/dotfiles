@@ -15,14 +15,15 @@ Post through the `/review` skill's poster, which lands the summary body and its 
 {{ .chezmoi.homeDir }}/.agents/skills/review/scripts/post_review.py review.json
 ```
 
-Build one review JSON: `{pr, event, body, comments: [{path, line, body}], footer}`.
+Build one review JSON: `{pr, event, body, comments: [{path, line, body}], thread_replies: [{in_reply_to, body}], footer}`.
 
 - **event** — from the recommendation: Approve → `APPROVE`, Request Changes → `REQUEST_CHANGES`, otherwise → `COMMENT`.
 - **body** — the recommendation block verbatim. Append any non-`anchorable` finding here, under the recommendation, ordered by severity — a finding with no clean line in the diff cannot anchor inline.
-- **comments** — one per `anchorable` finding, anchored to its RIGHT-side line, body prefixed with the severity marker.
-- **footer** — the attribution line below, passed verbatim; the poster appends it to the body and every comment.
+- **comments** — one per new `anchorable` finding, anchored to its RIGHT-side line, body prefixed with the severity marker.
+- **thread_replies** — re-review only: one entry per still-open prior finding, `in_reply_to` set to the id of that finding's earlier review comment, so the reply lands in the existing thread instead of a duplicate. Resolved prior findings need no entry; note their status in the body if useful. Omit on a first review.
+- **footer** — the attribution line below, passed verbatim; the poster appends it to the body, every comment, and every reply.
 
-Always `--dry-run` first and read the result: it validates every anchor against the PR's own diff. If an anchor comes back bad, move that finding to the summary body rather than dropping it, then post. Never let one bad anchor sink the batch.
+Always `--dry-run` first and read the result: it validates every anchor against the PR's own diff and every reply target against the PR's existing review comments. If an anchor comes back bad, move that finding to the summary body rather than dropping it, then post. Never let one bad anchor sink the batch.
 
 Dedup against what is already on the PR: on a second pass, read the existing review comments and post only findings that are not already there. Never repost a comment that still stands.
 

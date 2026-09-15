@@ -15,6 +15,7 @@ Reference for `scripts/post_review.py` and the anchoring rules a finding must sa
     { "path": "src/auth.py", "line": 42, "body": "[high] Token never expires. ..." },
     { "path": "src/auth.py", "line": 88, "body": "[med] ..." }
   ],
+  "thread_replies": [{ "in_reply_to": 987654, "body": "[med] Still open — the guard added at L88 doesn't cover ..." }],
   "footer": "_Posted by Claude on behalf of Kris Steinhoff._"
 }
 ```
@@ -23,7 +24,8 @@ Reference for `scripts/post_review.py` and the anchoring rules a finding must sa
 - `event` — one of `APPROVE`, `REQUEST_CHANGES`, `COMMENT`. Map it from the recommendation: Approve → `APPROVE`, Request Changes → `REQUEST_CHANGES`, otherwise → `COMMENT`.
 - `body` — the recommendation block, verbatim. Becomes the review's summary comment.
 - `comments` — inline comments, each anchored to a RIGHT-side `line`. A `{path, line, side}` range uses `side: "RIGHT"` implicitly.
-- `footer` — optional. Appended to the body and to every inline comment, so the on-behalf attribution shows wherever the review appears. `post_review.py` does not synthesize it; the caller passes the exact footer.
+- `thread_replies` — replies on the threads of still-open prior findings (re-review only). Each `in_reply_to` is the id of one of my earlier review comments; the reply lands in that thread instead of a duplicate inline comment. Omit or `[]` on a first review.
+- `footer` — optional. Appended to the body, every inline comment, and every reply, so the on-behalf attribution shows wherever the review appears. `post_review.py` does not synthesize it; the caller passes the exact footer.
 
 Run it two ways:
 
@@ -32,11 +34,11 @@ scripts/post_review.py --dry-run review.json   # validate every anchor against t
 scripts/post_review.py review.json             # post the review
 ```
 
-`--dry-run` validates each inline comment's `(path, line)` against the PR's own diff and reports which anchors are valid, without posting. Always dry-run before posting a review built from findings — an anchor that isn't a real RIGHT-side position in the diff makes the whole reviews-API call fail, and one bad anchor should not sink the batch.
+`--dry-run` validates each inline comment's `(path, line)` against the PR's own diff, and each `thread_replies` target against the PR's existing review comment ids, reporting which are valid without posting. Always dry-run before posting a review built from findings — an anchor that isn't a real RIGHT-side position in the diff makes the whole reviews-API call fail, so one bad anchor should not sink the batch, and a reply to a stale comment id just errors.
 
-### Re-review posting (pending)
+### Re-review posting
 
-The unified flow (SKILL.md §Flow) replies to still-open prior findings on their existing threads instead of re-posting them. `post_review.py` does not do that yet — today it posts one review with fresh inline comments. The re-review path will add `thread_replies: [{in_reply_to, body}]` alongside `comments` (one reply per still-open prior thread), and `--dry-run` will grow to validate those reply targets against my own prior comment ids. Until it lands, a re-review posts new findings fresh and carries its prior-findings status in the summary body rather than as thread replies.
+On a re-review, still-open prior findings are answered on their existing threads rather than re-posted as duplicate inline comments — that is what `thread_replies` is for. The mechanics differ from the batch: the fresh review (event, body, new inline `comments`) is one reviews-API call, and each reply is a separate `POST .../pulls/{pr}/comments/{in_reply_to}/replies`. The review lands first, so a reply that fails afterward is reported but does not undo it (dry-run validation makes that rare). Resolved prior findings need no reply; a resolved status lives in the summary body. Marking threads resolved (as opposed to replying) is a stronger, GraphQL-only action and is deliberately not done here — reply-only keeps the poster all-REST and leaves resolution to the author or to explicit triage.
 
 ## Anchor rules
 
