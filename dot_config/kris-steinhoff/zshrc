@@ -116,9 +116,9 @@ s() {
 		fi
 	elif [[ -e $target ]]; then
 		if command -v bat &>/dev/null; then
-			bat "$target"
+			bat --style=changes,snip --wrap=never --pager='less -RF' "$target"
 		elif command -v batcat &>/dev/null; then
-			batcat "$target"
+			batcat --style=changes,snip --wrap=never --pager='less -RF' "$target"
 		else
 			cat "$target"
 		fi
