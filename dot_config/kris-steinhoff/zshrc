@@ -60,11 +60,27 @@ autoload -U edit-command-line
 zle -N edit-command-line
 bindkey '^X^E' edit-command-line
 
-# === Zsh Plugins (via Homebrew) ===
+# === Zsh Plugins ===
+# Load zsh-autosuggestions and zsh-syntax-highlighting from wherever they were
+# installed — Homebrew, Debian/Ubuntu apt (/usr/share), Arch (/usr/share/zsh/
+# plugins), or a manual /usr/local prefix. Every layout uses the same
+# <dir>/<name>/<name>.zsh shape, so we just try each base dir in turn.
+# autosuggestions is sourced before syntax-highlighting, as the latter requires,
+# and this block sits after the key bindings above (syntax-highlighting must
+# load last among things that hook zle).
+_zsh_plugin_dirs=(/usr/share /usr/local/share /usr/share/zsh/plugins)
 if type brew &>/dev/null; then
-	source "$(brew --prefix)/share/zsh-autosuggestions/zsh-autosuggestions.zsh" 2>/dev/null
-	source "$(brew --prefix)/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh" 2>/dev/null
+	_zsh_plugin_dirs=("$(brew --prefix)/share" $_zsh_plugin_dirs)
 fi
+for _plugin in zsh-autosuggestions zsh-syntax-highlighting; do
+	for _dir in $_zsh_plugin_dirs; do
+		if [[ -r "$_dir/$_plugin/$_plugin.zsh" ]]; then
+			source "$_dir/$_plugin/$_plugin.zsh"
+			break
+		fi
+	done
+done
+unset _plugin _dir _zsh_plugin_dirs
 
 # === Starship Prompt ===
 if type starship &>/dev/null; then
