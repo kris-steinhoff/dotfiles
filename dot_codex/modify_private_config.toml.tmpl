@@ -1,9 +1,11 @@
 {{- $generous := eq (default "conservative" (get . "agentBudget")) "generous" -}}
-#!/usr/bin/env -S uv run --script
-# /// script
-# requires-python = ">=3.11"
-# dependencies = ["tomlkit>=0.13"]
-# ///
+#!/usr/bin/env -S uv run --no-project --with tomlkit>=0.13 --python >=3.11 python3
+# Deps come from the shebang's `--with`, not PEP 723 inline metadata. `uv run
+# --script` keys its ephemeral venv on the script's file path, and chezmoi runs a
+# modify_ script from a fresh temp path every apply -- so that env never hit the
+# cache and uv reinstalled (and printed "Installed 1 package") on every apply. A
+# `--with` env is keyed on its requirements instead, so it is reused across those
+# changing paths; uv only rebuilds (and reports) it on a cold cache or a dep bump.
 """chezmoi modify_ script for ~/.codex/config.toml.
 
 Codex rewrites this file at runtime, injecting machine-local state that does not
