@@ -25,3 +25,10 @@ auto_switch = false
 
 [keys]
 prefix = "ctrl+space"
+
+# Repurpose prefix+p / prefix+n for agent navigation (they default to tab nav).
+previous_agent = "prefix+p"
+next_agent = "prefix+n"
+# Free up the keys above by unsetting the default tab navigation bindings.
+previous_tab = ""
+next_tab = ""
