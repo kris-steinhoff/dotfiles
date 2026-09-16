@@ -9,12 +9,12 @@ The reusable engine behind a PR review. It does the parts that never change betw
 
 ## Flow
 
-1. **Resolve the target.** Default to the current branch's PR against its base. When given a PR number, branch, or path, review that instead. Establish the base to diff against so the review sees only the proposed change, not the whole file.
+1. **Resolve the target.** Default to the current branch's PR against its base. When given a PR number, branch, or path, review that instead. Establish the base to diff against so the review sees only the proposed change, not the whole file. Capture the PR's number, title, author, and base branch — the summary header (§Report shape) needs them.
 2. **Load my prior review.** Pull my own earlier findings on this PR and the commit I last reviewed at (`gh` for my prior reviews and review comments). Usually there are none — that is a first review, and the rest of the flow simply has nothing prior to account for. This step is why first review is not a separate mode: you always look, you just usually find nothing.
 3. **Scope.** What to examine: the change under review — plus, only when I have prior findings, the incremental diff since my last-reviewed commit and the locations of those findings (a finding can be addressed by a change elsewhere, so it is not diff-bounded). No prior findings → just the change.
 4. **Find and verify.** Find new problems in scope, reading enough surrounding code and tests to judge each in context. Fan out to read-only helpers (`Explore` for locating, `investigator` for tracing a call path) when breadth needs it; compose a review checklist skill (e.g. `agent-skills:review`) when one fits. One finding pass by default — don't spin up parallel security/correctness/perf specialists unless the diff's risk clearly warrants it. Then, for each prior finding, judge against the current code whether it is resolved, still open, or partially addressed — a judgment from re-reading, not a lookup. No prior findings → nothing to verify, so this is just "find."
 5. **Shape.** Turn what you found into the report format in §Report shape. When prior findings exist, lead with their status; otherwise the report is exactly the first-review shape. Every new finding gets a severity, a file, a line range on the RIGHT side of the diff, and an `anchorable` flag. This is the contract the poster consumes.
-6. **Hand off.** The finalized review — after any triage the caller runs — goes to the poster, `scripts/post_review.py`. Still-open prior findings become replies on their existing threads; new findings post fresh. On a first review there are no replies, so it lands as one plain inline review. See `reference.md` for the poster's schema and the stacked-PR anchor rules.
+6. **Hand off.** The finalized review — after any triage the caller runs — goes to the poster, `scripts/post_review.py`. Still-open prior findings become replies on their existing threads; new findings post fresh. On a first review there are no replies, so it lands as a single review whose findings each post as their own inline comment, with the recommendation as the summary — one review, one comment per finding, never everything lumped into a single comment. See `reference.md` for the poster's schema and the stacked-PR anchor rules.
 
 **First review is just the case where the prior-findings set is empty — not a separate mode.** Every step above collapses to a plain first review when there is nothing prior: you look and find no earlier review (2), so there is no incremental scope (3), nothing to verify (4), no status section (5), and no replies (6).
 
@@ -26,17 +26,23 @@ Run only read-only checks. Never edit source, generated files, caches, services,
 
 ## Report shape
 
-Open with the recommendation block — it becomes the review comment body verbatim:
+Open with a **summary header** so a reader deciding on findings can re-orient without scrolling back — then the recommendation block. The header is presentation context for the person triaging; it is _not_ posted to the PR. The recommendation block below it is what becomes the review comment body verbatim.
 
 ```markdown
+## PR #<n> — <title>
+
+**Author:** <login> · **Base:** <baseRefName> · **<N> findings, <M> blocking**
+
+<one or two plain sentences on what the PR changes — the context needed to judge the findings, not a file-by-file recap>
+
 **Recommendation: Approve** _(or **Request Changes**)_
 
 <one or two sentences: the verdict and why>
 ```
 
-On a re-review the recommendation reasons over the delta: prior blockers all cleared plus no new blockers moves Request Changes toward Approve.
+Everything above **Recommendation:** is the header and stays in the presentation; everything from **Recommendation:** down is the posted content. Keep them as distinct blocks so "the recommendation block, verbatim" never sweeps the header into the posted body. On a re-review the recommendation reasons over the delta: prior blockers all cleared plus no new blockers moves Request Changes toward Approve.
 
-Then, when this is a re-review, a **Prior findings** section that accounts for each finding from my last review — grouped Resolved / Still open / Partial, each carrying the thread it came from — so the author sees what my earlier review asked for and what is left. Omit the whole section on a first review (the prior set is empty).
+Then, when this is a re-review, a **Prior findings** section that accounts for each finding from my last review — grouped Resolved / Still open / Partial, each carrying the thread it came from (or, for a finding that lived in the body, its name) — so the author sees what my earlier review asked for and what is left. Omit the whole section on a first review (the prior set is empty).
 
 Then, only when requesting changes, a **Blocking** list. Then an **Actionable (non-blocking)** list. Omit an empty list rather than printing a header with nothing under it.
 
@@ -45,7 +51,7 @@ Each finding carries:
 - **severity** — `[high]`, `[med]`, or `[low]`
 - **path** — repo-relative file
 - **lines** — a line range on the RIGHT side of the diff (the post-change file)
-- **anchorable** — whether that range is a real position in this PR's diff (see `reference.md`); a non-anchorable finding goes in the summary body instead of inline
+- **anchorable** — whether the finding anchors to a reasonable RIGHT-side line in the diff (see `reference.md`). Prefer inline: almost every finding anchors, qualifying the comment when the line isn't its exact subject ("not directly related to this code, but …"). Only a finding with no reasonable inline home is non-anchorable, and it goes in the summary body under a short clear **name** so a later review can refer to it — that name is how its resolution is tracked, since a body comment cannot be threaded.
 - **title** — a short claim
 - **body** — impact, reasoning, and the smallest useful direction for a fix (never the fix itself)
 

@@ -116,7 +116,8 @@ def main():
             print(f"  [{'ok ' if ok else 'BAD'}] reply to comment {r['in_reply_to']}")
         if bad_anchors:
             print(f"\n{len(bad_anchors)} anchor(s) are not RIGHT-side positions in the diff; "
-                  "move them to the summary body or fix the line.")
+                  "re-anchor each to a nearby changed line (qualify the body) or, if truly "
+                  "homeless, move it to the summary body under a name.")
         if bad_replies:
             print(f"\n{len(bad_replies)} reply target(s) are not existing review comments on this PR.")
         if bad_anchors or bad_replies:
