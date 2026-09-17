@@ -131,12 +131,12 @@ Persona model and concurrency choices come from the machine-local `agentBudget` 
 
 | Persona                | Claude conservative / generous | Codex conservative / generous |
 | ---------------------- | ------------------------------ | ----------------------------- |
-| Coordinator            | Sonnet / Opus                  | Terra medium / Sol high       |
-| Implementor            | Sonnet / Opus                  | Terra medium / Sol high       |
+| Coordinator            | Sonnet / Opus 4.8              | Terra medium / Sol high       |
+| Implementor            | Sonnet / Opus 4.8              | Terra medium / Sol high       |
 | Investigator           | Sonnet / Sonnet                | Terra medium / Terra high     |
-| Reviewer               | Sonnet / Opus                  | Terra high / Sol xhigh        |
+| Reviewer               | Sonnet / Opus 4.8              | Terra high / Sol xhigh        |
 | Pull-request-commenter | Haiku / Haiku                  | Luna medium / Luna medium     |
-| Chief of staff         | Sonnet / Opus                  | Terra medium / Sol high       |
+| Chief of staff         | Sonnet / Opus 4.8              | Terra medium / Sol high       |
 
 The `pull-request-commenter` ignores `agentBudget` entirely: its work is mechanical, so it stays on a small model (Claude Haiku, Codex Luna at medium effort) on every machine regardless of budget.
 
