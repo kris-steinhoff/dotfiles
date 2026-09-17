@@ -74,6 +74,9 @@
         "~/Library/Application Support/glab-cli",
         "~/Library/Group Containers/2BUA8C4S2C.com.1password"
       ]
+    },
+    "network": {
+      "allowLocalBinding": true
     }
   },
   "statusLine": {
