@@ -76,7 +76,6 @@
       ]
     },
     "network": {
-      "allowLocalBinding": true,
       "allowUnixSockets": [
         "~/.config/herdr/herdr.sock",
         "~/.config/herdr/herdr-client.sock"
