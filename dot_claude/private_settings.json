@@ -80,6 +80,9 @@
       "allowUnixSockets": [
         "~/.config/herdr/herdr.sock",
         "~/.config/herdr/herdr-client.sock"
+      ],
+      "allowedDomains": [
+        "127.0.0.1:8998"
       ]
     }
   },
