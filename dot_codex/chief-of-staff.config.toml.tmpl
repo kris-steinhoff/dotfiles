@@ -6,6 +6,3 @@ sandbox_mode = "workspace-write"
 developer_instructions = """
 {{ template "agents/personas/chief-of-staff.md" . -}}
 """
-
-[sandbox_workspace_write]
-writable_roots = ["{{ .chezmoi.homeDir }}/.local/state/chief-of-staff"]
