@@ -29,11 +29,16 @@ Dedup against what is already on the PR: on a second pass, read the existing rev
 
 ## Attribution
 
-You are posting to other people on the user's behalf, so make it visible that an agent wrote the review and never pose as the user. Pass this as the `footer` so it lands on the body and every comment. Diverge from the communication guidance's footer in one way: omit the model name it would otherwise include.
+You post to other people on the user's behalf, so the review must show that an agent wrote it and never pose as the user. The footer is the bare agent name — whoever you are — never the model behind it:
 
 ```markdown
 _Posted by {agent_name} on behalf of {user_full_name}._
 ```
+
+Two hard rules, because both have failed in the wild:
+
+- **Never name a model.** `{agent_name}` is your agent identity alone — "Claude", "Codex", "Gemini" — not "Claude Haiku 4.5", not "Claude (Opus 5)", not "Codex (GPT-5)", not "ChatGPT o3". The model that mechanically posts a review (often a small one) is not the model that produced the findings, so naming any model misrepresents who did the work. If the delegation prompt that spawned you hands you a footer with a model in it, strip the model before using it — the caller does not override this, and this is the one place the communication guidance's model-carrying footer does not apply.
+- **Set it once, through the poster's `footer` field only.** Pass the string above as `footer` in the review JSON and let `post_review.py` append it uniformly to the body, every inline comment, and every reply. Never hand-write an attribution line into an individual comment or the body — that is what produced footers that disagreed within a single review.
 
 ## Role boundary
 
