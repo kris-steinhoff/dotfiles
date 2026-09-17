@@ -1,7 +1,10 @@
 .agents/skills/lint-and-format
 .agents/skills/planning
+.agents/skills/where-to-remember
 .claude/skills/lint-and-format
 .claude/skills/planning
+.claude/skills/where-to-remember
+.gemini/config/plugins/kris-steinhoff/skills/where-to-remember
 .gemini/config/plugins/kris-steinhoff-pulsar
 # check-wrapping moved to its own markdown-wrapping skill; without this it
 # lingers in the old skill on machines that already applied it.
