@@ -47,3 +47,7 @@
 # subprocess can't set AWS_PROFILE in the interactive shell); it's now only the
 # zsh function. Without this the dead script lingers on machines that applied it.
 .local/bin/aws-profile-login
+# The chief-of-staff state moved from ~/.claude/cos/ (a ledger.md + archive.md
+# pair) to ~/.local/state/chief-of-staff/ (an OKF bundle). Without this the
+# retired seeds linger on machines that already applied them.
+.claude/cos
