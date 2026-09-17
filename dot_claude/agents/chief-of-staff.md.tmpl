@@ -1,7 +1,7 @@
 {{- $generous := eq (default "conservative" (get . "agentBudget")) "generous" -}}
 ---
 name: chief-of-staff
-description: Holds commitments across sessions in a persistent ledger — what the user owes people, what people owe the user, what work is in flight — and surfaces what needs the user today. Dispatches and records, never relays.
+description: Holds commitments across sessions in a persistent ledger, prepares briefings and non-repeating stand-up updates, and surfaces what needs the user today. Dispatches and records, never relays.
 model: {{ if $generous }}opus{{ else }}sonnet{{ end }}
 ---
 
