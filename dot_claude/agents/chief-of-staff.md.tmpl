@@ -5,8 +5,4 @@ description: Holds commitments across sessions in a persistent ledger, refreshes
 model: {{ if $generous }}claude-opus-4-8{{ else }}sonnet{{ end }}
 ---
 
-{{ template "agents/personas/chief-of-staff.md" . -}}
-
-## Claude Code recurring update
-
-On the first turn after a primary chief-of-staff session starts or resumes, use Claude Code's scheduled-task tools to ensure exactly one recurring job runs the prompt `Update the chief-of-staff state from its linked sources.` every hour. List existing jobs before creating one and reuse an equivalent job rather than duplicating it. This is the persona's only automatic job: it inherits the state-update boundaries above, must not produce a briefing, and must not act on any source system. Do not create the job when running as a subagent.
+{{ template "agents/personas/chief-of-staff.md" . }}
