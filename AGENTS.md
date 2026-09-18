@@ -96,6 +96,14 @@ To add a skill:
 
 To remove a skill, delete it from all three source locations _and_ add the deployed paths to `.chezmoiremove`. chezmoi does not delete a target just because its source entry disappeared, so without the `.chezmoiremove` entries the skill lingers in `$HOME` on every machine that already applied it.
 
+One skill is not authored here. Herdr ships its own skill text and prints it with `herdr --skill`, so `dot_agents/skills/herdr/herdr.md` is that output vendored verbatim and `SKILL.md.tmpl` is a chezmoi template that inlines it and carries our own additions below the include. Refreshing upstream is `herdr --skill > dot_agents/skills/herdr/herdr.md`, a whole-file overwrite that cannot clobber anything we wrote, and whose `git diff` is exactly what upstream changed. Keep `herdr.md` unedited for that reason: a correction that belongs upstream goes upstream, not into the vendored copy.
+
+Templating is what makes the split free. Because chezmoi renders before deploying, every surface gets one self-contained `SKILL.md` and no agent has to be told to go read a second file — which rules out the quiet failure where it skips the read and drives Herdr without the `HERDR_ENV` gate or the safety rules. A prose pointer would have been needed instead: skills have no `@file` include (that inlining is a CLAUDE.md memory feature), and three of the four surfaces here are not Claude anyway.
+
+Two mechanics to know. `include` resolves relative to the source directory root, not to the template's own directory, so the path inside `SKILL.md.tmpl` is the full `dot_agents/skills/herdr/herdr.md` even though the two files sit side by side; `./herdr.md` silently looks in the wrong place. And `herdr.md` is a template input rather than a file of its own, so `.chezmoiignore` excludes its target path — without that, each machine also gets a redundant second copy of the text in `~/.agents/skills/herdr/`.
+
+The rendered `SKILL.md` therefore begins with upstream's frontmatter, which is deliberate: nothing about the skill's registration is hand-maintained, and a refresh keeps the `name` and `description` current for free. The cost is that local additions cannot change when the skill fires. If one ever needs to, strip the leading frontmatter out of the include and write our own above it — at which point that description becomes ours to maintain by hand.
+
 ## Global instructions and personas
 
 Claude, Gemini, and Codex each read a single always-loaded instruction file (`~/.claude/CLAUDE.md`, `~/.gemini/GEMINI.md`, and `~/.codex/AGENTS.md`). Shared global content lives in chezmoi template partials under `.chezmoitemplates/`, so one edit updates every surface that includes it:
