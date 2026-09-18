@@ -64,8 +64,11 @@
     "autoAllowBashIfSandboxed": true,
     "enabled": true,
     "filesystem": {
+      "allowRead": [
+        "~/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock"
+      ],
       "denyRead": [
-        "~/.ssh",
+        "~/.ssh/agent",
         "~/.aws/credentials",
         "~/.aws/sso",
         "~/.aws/cli",
@@ -76,12 +79,15 @@
       ]
     },
     "network": {
+      "allowLocalBinding": true,
       "allowUnixSockets": [
         "~/.config/herdr/herdr.sock",
-        "~/.config/herdr/herdr-client.sock"
+        "~/.config/herdr/herdr-client.sock",
+        "~/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock"
       ],
       "allowedDomains": [
-        "127.0.0.1:8998"
+        "127.0.0.1",
+        "localhost"
       ]
     }
   },
