@@ -1,0 +1,295 @@
+#!/usr/bin/env python3
+"""Run a Herdr command on another machine over plain SSH.
+
+A fallback for `herdr --machine <label> <cmd>`, which is the default path and
+should be tried first. That path forwards over SSH and binds a local unix socket
+in $TMPDIR; a sandboxed session cannot bind it, so the command fails with
+PermissionDenied (os error 1), and `localhost` resolution there is separately
+unreliable (error -65563). This script sidesteps both by running Herdr natively
+on the remote instead of forwarding to it:
+
+  ssh -p <port> <user>@<ip> '.local/bin/herdr <args...>'
+
+It handles the mechanical parts that are easy to get wrong:
+
+  * resolving a saved machine (`herdr machine list --json`) to an ssh target,
+    then through `ssh -G` so ssh_config Hosts, Includes, and aliases all apply;
+  * preferring the literal loopback IP over the name `localhost`;
+  * shell-quoting every remote argument, because ssh concatenates the remote
+    command and the REMOTE shell re-splits it -- an unquoted `--label 'two
+    words'` or seed prompt silently arrives as separate arguments;
+  * relaxing host-key checks only for loopback targets, where the key changes on
+    every container rebuild and there is no machine-in-the-middle to defend
+    against. A routable host keeps normal known_hosts verification unless
+    --host-key-checks off says otherwise.
+
+Usage:
+
+  scripts/herdr-ssh --machine <label-or-id> -- <herdr args...>
+  scripts/herdr-ssh --target <ssh-host>     -- <herdr args...>
+
+Everything after `--` is passed to the remote herdr verbatim. Quote there as you
+would locally; this script re-quotes for the remote shell.
+
+Exit codes (shared across the Herdr dispatch primitives):
+  0  success. The remote's JSON result is printed to stdout on one line.
+  2  needs judgment. An expected situation this script cannot resolve
+     mechanically: the machine label is unknown or disabled, ssh authentication
+     or host-key verification failed, or the remote herdr itself refused the
+     command (a bad pane ID, a blocked agent). stdout is {"status":
+     "needs_judgment", "reason": ...} plus whatever detail is known. The caller's
+     cue to stop and ask rather than retry.
+  1  real error (the machine could not be reached at all, a timeout, or output
+     that is not JSON). Diagnostics go to stderr.
+
+Authentication failures are a stop-and-ask case, never something to troubleshoot
+autonomously or route around. The key normally lives in a 1Password SSH agent, so
+a failure usually means a macOS unlock prompt was dismissed or went unnoticed --
+which only the user can resolve, and only if they are told that is what happened.
+The same goes for host-key verification: --host-key-checks off exists for the
+user to choose, not for a caller to reach for when verification fails.
+
+A timeout or a connection failure does not prove the remote command did not run.
+Inspect remote state before repeating a mutation.
+"""
+
+import argparse
+import json
+import shlex
+import subprocess
+import sys
+
+DEFAULT_REMOTE_HERDR = ".local/bin/herdr"
+LOOPBACK_NAMES = {"localhost", "127.0.0.1", "::1", "ip6-localhost"}
+SSH_UNREACHABLE = 255
+AUTH_FAILURE_HINTS = (
+    "permission denied",
+    "no supported authentication methods",
+    "too many authentication failures",
+    "unable to negotiate",
+    "sign_and_send_pubkey",
+    "agent refused operation",
+)
+HOST_KEY_FAILURE_HINT = "host key verification failed"
+
+
+def emit_success(text):
+    print(text)
+    sys.exit(0)
+
+
+def emit_judgment(reason, **extra):
+    print(json.dumps({"status": "needs_judgment", "reason": reason, **extra}))
+    sys.exit(2)
+
+
+def emit_error(message):
+    print(f"herdr-ssh: {message}", file=sys.stderr)
+    sys.exit(1)
+
+
+def run(argv, timeout=None):
+    """Run argv as a list (never a shell string) and return the CompletedProcess."""
+    try:
+        return subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+    except FileNotFoundError:
+        emit_error(f"{argv[0]} not found in PATH")
+    except subprocess.TimeoutExpired:
+        emit_error(
+            f"timed out after {timeout}s running {argv[0]}. "
+            "The remote command may still have run; inspect remote state before retrying."
+        )
+
+
+def resolve_machine(label):
+    """Look a saved Herdr machine up by exact id or exact label.
+
+    Labels are case-sensitive and unique, per the CLI, so matching is exact: a
+    near miss is a needs-judgment case, not something to guess at.
+    """
+    result = run(["herdr", "machine", "list", "--json"], timeout=15)
+    if result.returncode != 0:
+        emit_judgment(
+            "could not read the saved machine list from the local herdr "
+            "(is the local server running?); pass --target <ssh-host> to skip it",
+            stderr=result.stderr.strip()[:400],
+        )
+    try:
+        machines = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        emit_error("`herdr machine list --json` did not return JSON")
+
+    for machine in machines:
+        if label in (machine.get("id"), machine.get("label")):
+            if not machine.get("enabled", True):
+                emit_judgment(
+                    f"machine {label!r} is saved but disabled; enable it or pass --target",
+                    machine=machine.get("label"),
+                )
+            return machine
+
+    known = sorted(m.get("label", m.get("id", "?")) for m in machines)
+    emit_judgment(
+        f"no saved machine with the id or label {label!r} "
+        "(labels are case-sensitive); pass --target <ssh-host> for a host that is not saved",
+        known_machines=known,
+    )
+
+
+def resolve_ssh_target(target):
+    """Ask ssh itself how it would connect, so ssh_config Includes and aliases apply."""
+    result = run(["ssh", "-G", target], timeout=15)
+    if result.returncode != 0:
+        emit_error(f"ssh -G {target} failed: {result.stderr.strip()[:400]}")
+
+    fields = {}
+    for line in result.stdout.splitlines():
+        key, _, value = line.partition(" ")
+        fields.setdefault(key.lower(), value.strip())
+
+    host = fields.get("hostname", target)
+    loopback = host.lower() in LOOPBACK_NAMES or host.startswith("127.")
+    return {
+        "host": "127.0.0.1" if loopback else host,
+        "port": fields.get("port", "22"),
+        "user": fields.get("user"),
+        "loopback": loopback,
+    }
+
+
+def build_ssh_argv(resolved, remote_command, connect_timeout, host_key_checks):
+    argv = ["ssh", "-p", str(resolved["port"]),
+            "-o", "BatchMode=yes",
+            "-o", f"ConnectTimeout={connect_timeout}"]
+
+    # Loopback keys churn with every container rebuild and nothing can sit in the
+    # middle of 127.0.0.1, so skipping verification there costs nothing. For a
+    # routable host it would cost real MITM protection, so it stays opt-in.
+    relax = host_key_checks == "off" or (host_key_checks == "auto" and resolved["loopback"])
+    if relax:
+        argv += ["-o", "StrictHostKeyChecking=no",
+                 "-o", "UserKnownHostsFile=/dev/null",
+                 "-o", "LogLevel=ERROR"]
+
+    destination = resolved["host"]
+    if resolved["user"]:
+        destination = f"{resolved['user']}@{destination}"
+    return argv + [destination, remote_command]
+
+
+def main():
+    argv = sys.argv[1:]
+    if "--" in argv:
+        split = argv.index("--")
+        local_args, remote_args = argv[:split], argv[split + 1:]
+    else:
+        local_args, remote_args = argv, []
+
+    parser = argparse.ArgumentParser(
+        prog="herdr-ssh",
+        description="Run a Herdr command on another machine over plain SSH.",
+        epilog="Pass the remote herdr command after `--`.",
+    )
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--machine", help="saved Herdr machine id or label (case-sensitive)")
+    source.add_argument("--target", help="ssh host or user@host, for a host Herdr has not saved")
+    parser.add_argument("--session", help="remote Herdr session (default: the saved machine's)")
+    parser.add_argument("--remote-herdr", default=DEFAULT_REMOTE_HERDR,
+                        help=f"herdr path on the remote (default: {DEFAULT_REMOTE_HERDR})")
+    parser.add_argument("--host-key-checks", choices=("auto", "on", "off"), default="auto",
+                        help="auto (default) relaxes checks for loopback targets only")
+    parser.add_argument("--timeout", type=int, default=120,
+                        help="seconds to wait for the whole command (default: 120)")
+    parser.add_argument("--connect-timeout", type=int, default=10,
+                        help="seconds to wait for the ssh connection (default: 10)")
+    parser.add_argument("--raw", action="store_true",
+                        help="print remote stdout unparsed, for commands that emit no JSON")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="print the resolved target and ssh argv; run nothing")
+    args = parser.parse_args(local_args)
+
+    if not remote_args and not args.dry_run:
+        parser.error("no remote command; pass the herdr command after `--`")
+
+    session = args.session
+    if args.machine:
+        machine = resolve_machine(args.machine)
+        target = machine["target"]
+        # The remote default session needs no flag; anything else must be named,
+        # or the command lands in whichever session the remote considers default.
+        if session is None and machine.get("session") not in (None, "", "default"):
+            session = machine["session"]
+    else:
+        target = args.target
+
+    resolved = resolve_ssh_target(target)
+
+    remote_parts = [args.remote_herdr]
+    if session:
+        remote_parts += ["--session", session]
+    remote_parts += remote_args
+    # ssh sends one string and the REMOTE shell re-splits it, so quote every part.
+    remote_command = " ".join(shlex.quote(part) for part in remote_parts)
+
+    ssh_argv = build_ssh_argv(resolved, remote_command, args.connect_timeout, args.host_key_checks)
+
+    if args.dry_run:
+        emit_success(json.dumps({
+            "machine": args.machine, "target": target, **resolved,
+            "remote_command": remote_command, "ssh_argv": ssh_argv,
+        }))
+
+    result = run(ssh_argv, timeout=args.timeout)
+
+    if result.returncode == SSH_UNREACHABLE:
+        # ssh itself failed, before the remote herdr ran. Auth and host-key
+        # failures need the user, so they are needs-judgment rather than errors
+        # to retry: the key normally sits behind a 1Password agent, and a
+        # dismissed or unnoticed unlock prompt is the usual cause.
+        stderr = result.stderr.strip()
+        lowered = stderr.lower()
+        if any(hint in lowered for hint in AUTH_FAILURE_HINTS):
+            emit_judgment(
+                f"ssh authentication to {target} failed. Stop and tell the user: the key is "
+                "normally held by a 1Password SSH agent, so this usually means its unlock "
+                "prompt was dismissed or went unnoticed. Only they can resolve it. Do not "
+                "troubleshoot this or look for a way around it.",
+                ssh_stderr=stderr[:400],
+            )
+        if HOST_KEY_FAILURE_HINT in lowered:
+            emit_judgment(
+                f"host key verification failed for {target}. Stop and tell the user. Passing "
+                "--host-key-checks off would silence this, but that is their call to make, "
+                "not a workaround to apply.",
+                ssh_stderr=stderr[:400],
+            )
+        emit_error(f"could not reach {target} over ssh: {stderr[:400]}")
+
+    if result.returncode != 0:
+        # The remote herdr ran and refused. Its own error is JSON on stderr.
+        try:
+            remote_error = json.loads(result.stderr)
+        except json.JSONDecodeError:
+            remote_error = result.stderr.strip()[:400]
+        emit_judgment(
+            f"the remote herdr refused the command on {target}",
+            remote_exit=result.returncode,
+            remote_stderr=remote_error,
+        )
+
+    if args.raw:
+        sys.stdout.write(result.stdout)
+        sys.exit(0)
+
+    try:
+        parsed = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        emit_error(
+            "the remote command succeeded but its output is not JSON; "
+            f"re-run with --raw to see it verbatim. First bytes: {result.stdout.strip()[:200]!r}"
+        )
+    emit_success(json.dumps(parsed))
+
+
+if __name__ == "__main__":
+    main()

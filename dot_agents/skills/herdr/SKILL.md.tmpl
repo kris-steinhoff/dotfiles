@@ -1,2 +1,21 @@
-{{- /* The rendered SKILL.md is herdr.md verbatim followed by whatever local additions appear below the include. Refresh upstream with: herdr --skill > dot_agents/skills/herdr/herdr.md */ -}}
-{{ include "dot_agents/skills/herdr/herdr.md" -}}
+{{- /* The rendered SKILL.md is herdr.md verbatim followed by the local additions below the include. Refresh upstream with: herdr --skill > dot_agents/skills/herdr/herdr.md */ -}}
+{{ include "dot_agents/skills/herdr/herdr.md" }}
+## Reaching another machine when forwarding is unavailable
+
+`herdr --machine <label-or-id> <command>` is the default; try it first. It forwards over SSH and binds a local unix socket in `$TMPDIR`, which a sandboxed session cannot do — the command fails with `PermissionDenied ... (os error 1)`, and `localhost` resolution there separately fails with error -65563.
+
+When forwarding is unavailable, run Herdr natively on the remote over plain SSH instead. `scripts/herdr-ssh` does the mechanical parts:
+
+```bash
+scripts/herdr-ssh --machine Docker -- workspace list
+scripts/herdr-ssh --machine Docker -- agent prompt reviewer 'Report your current status.' --wait --timeout 120000
+scripts/herdr-ssh --target <ssh-host> -- pane list
+```
+
+Everything after `--` reaches the remote herdr verbatim, and you quote it there as you would locally. ssh sends the remote command as one string and the remote shell re-splits it, so the script re-quotes each argument; without that, a `--label` containing a space or a multi-word seed prompt arrives as separate arguments.
+
+It resolves a saved machine through `herdr machine list --json` and then `ssh -G`, so ssh_config Hosts, Includes, and aliases all apply; prefers the literal loopback IP over the name `localhost`; runs `.local/bin/herdr` on the remote; and prints the parsed JSON result on one line. Exit codes match the other dispatch primitives: `0` success, `2` needs judgment (unknown or disabled machine, or the remote herdr refused the command, whose own error is included in the result), `1` the machine could not be reached at all. `--raw` passes output through for commands that emit no JSON, `--dry-run` shows the ssh invocation without running it, and `--target` reaches a host Herdr has not saved. Host-key checks are relaxed only for loopback targets, where the key changes with every container rebuild; a routable host keeps normal `known_hosts` verification.
+
+Because this path authenticates over SSH, it can fail on authentication — and that is a stop-and-ask, never something to troubleshoot or route around. The key is normally held by a 1Password SSH agent, so a failure usually means its macOS unlock prompt was dismissed or went unnoticed; the user is the only one who can clear it, and only if you tell them plainly that is what happened. Say so and wait. The script reports this as needs-judgment rather than an error to retry, and treats a host-key verification failure the same way: `--host-key-checks off` would silence it, but that is the user's call, not a workaround to reach for.
+
+This changes how the command is carried, nothing else. Everything above about remote targets still holds: IDs and live agent names are scoped to one server, and `--current` and inherited local IDs do not identify remote panes, so discover IDs on that machine first.
