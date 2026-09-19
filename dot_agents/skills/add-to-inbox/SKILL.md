@@ -17,4 +17,4 @@ EOF
 
 The body comes from stdin, so a heredoc keeps markdown, quotes, and multiple lines intact without shell-escaping. Set `--from` (or `$CHIEF_OF_STAFF_INBOX_FROM`) so the chief of staff knows who dropped it. Run with `--help` for the rest.
 
-If the script exits non-zero it prints why. A missing `CHIEF_OF_STAFF_INBOX` means no inbox is wired up for this session — report that the note could not be dropped rather than inventing a path.
+If the script exits non-zero it prints why.

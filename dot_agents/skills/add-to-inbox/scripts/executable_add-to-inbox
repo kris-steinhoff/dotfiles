@@ -68,8 +68,11 @@ def main() -> int:
     args = parser.parse_args()
 
     if not args.dir:
-        err("CHIEF_OF_STAFF_INBOX is not set, so there is no inbox to drop into.")
-        err("point it at the chief of staff's inbox/ directory, or pass --dir.")
+        err("the inbox path is not configured, so there is nowhere to drop this note.")
+        err("To the user: setting CHIEF_OF_STAFF_INBOX in your environment is yours to")
+        err("own. Point it at your chief-of-staff bundle's inbox/ directory.")
+        err("To the agent: report this to the user and stop. Do not set, export, guess")
+        err("at, or otherwise work around this variable.")
         return 1
 
     if args.file and args.file != "-":
