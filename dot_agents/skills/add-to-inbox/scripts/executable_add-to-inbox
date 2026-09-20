@@ -49,7 +49,13 @@ def main() -> int:
         default=os.environ.get("CHIEF_OF_STAFF_INBOX_FROM", "an agent"),
         help='Who is dropping this (e.g. "codex on nexus"). Defaults to $CHIEF_OF_STAFF_INBOX_FROM, else "an agent".',
     )
-    parser.add_argument("--resource", default="", help="A source link to preserve with the note.")
+    parser.add_argument(
+        "--resource",
+        action="append",
+        default=[],
+        dest="resources",
+        help="A source link to preserve with the note; repeatable.",
+    )
     parser.add_argument("--tag", action="append", default=[], dest="tags", help="A tag; repeatable.")
     parser.add_argument(
         "--dir",
@@ -114,8 +120,9 @@ def main() -> int:
         f"from: {json.dumps(args.source, ensure_ascii=False)}",
         f"timestamp: {iso}",
     ]
-    if args.resource:
-        lines.append(f"resource: {args.resource}")
+    if args.resources:
+        joined = ", ".join(json.dumps(r, ensure_ascii=False) for r in args.resources)
+        lines.append(f"resource: [{joined}]")
     if args.tags:
         lines.append(f"tags: [{','.join(args.tags)}]")
     lines.append("---")
