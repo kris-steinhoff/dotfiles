@@ -10,7 +10,7 @@ Drop a note into the chief of staff's inbox. Run the script; it writes one markd
 Do not use it as a general log or to mirror your own progress. One drop per distinct thing worth tracking.
 
 ```bash
-scripts/add-to-inbox --title "<summary>" [--from "<who>"] [--resource <url>] [--tag <tag>] <<'EOF'
+scripts/add-to-inbox --title "<summary>" [--from "<who>"] [--resource <url> ...] [--tag <tag> ...] <<'EOF'
 <body — free-form markdown, as many lines as you need>
 EOF
 ```
