@@ -267,8 +267,8 @@ require("lazy").setup({
       "neovim/nvim-lspconfig",
     },
     opts = {
-      ensure_installed = { "ruff", "ty" },
-      automatic_enable = { "ruff", "ty" },
+      ensure_installed = { "marksman", "ruff", "ty" },
+      automatic_enable = { "marksman", "ruff", "ty" },
     },
   },
   {
