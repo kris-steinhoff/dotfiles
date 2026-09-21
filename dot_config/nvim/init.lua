@@ -74,11 +74,152 @@ vim.opt.timeoutlen = 300
 vim.opt.pumheight = 10
 vim.opt.winborder = "rounded"
 
--- Markdown: disable concealment so syntax is visible as typed
+-- Markdown link following. marksman answers a reference label's definition
+-- with the [label]: line, which is correct LSP -- the label is what the usage
+-- refers to -- but a hop short of useful: from the body you want the
+-- document, not the place the link was declared. It implements no
+-- documentLink either, so nothing in the protocol closes that gap, and on the
+-- [label]: line itself the jump falls through to Vim's tags-file search and
+-- dies with E433.
+--
+-- Filling that in through 'tagfunc' rather than a keymap is what makes it
+-- cover the mouse: <C-]>, <C-LeftMouse> and the tag stack (<C-t> to come
+-- back) all route through tagfunc, so one function serves keyboard and mouse
+-- alike with nothing rebound.
+--
+-- [[wiki]] links delegate to marksman, which resolves those by title across
+-- the project -- knowledge this has no way to reproduce. Everything else
+-- resolves here, because marksman answers only with the cursor on a link's
+-- text, and a click lands wherever it lands.
+--
+-- MarkdownTagfunc has to be a global: 'tagfunc' takes a name to look up, not
+-- a closure.
+
+-- The reference label under the cursor, in any of markdown's forms: [label],
+-- [text][label], [label][], and the [label]: definition line itself -- where
+-- there is no label to chase because the target is already in hand, so it
+-- comes back as the second value. Returns nothing for the link styles
+-- marksman gets right on its own.
+local function md_label_at_cursor(line, col)
+  for s, group in line:gmatch("()(%b[])") do
+    local e = s + #group - 1
+    local rest = line:sub(e + 1)
+    -- An inline link's span runs to the closing paren, so the target, a
+    -- "Title" and the punctuation between them are all live, not just the
+    -- bracketed text. %b() nests, so a URL ending in (parens) survives.
+    local parens = rest:match("^(%b())")
+    if col >= s and col <= (parens and e + #parens or e) then
+      local inner = group:sub(2, -2)
+      if inner:match("^%[.*%]$") then return nil end -- [[wiki]]
+      if parens then -- [text](target)
+        -- Read the target out of the balanced parens rather than stopping at
+        -- the first ")", or a URL that ends in one loses it. A trailing
+        -- "Title" is not part of the target; a space inside one requires <>.
+        local body = parens:sub(2, -2):gsub('%s+["\'(].*$', "")
+        return nil, body:match("^%s*<([^>]*)>") or body:match("^%s*(%S+)")
+      end
+      if rest:match("^:") then return nil, rest:match("^:%s*(%S+)") end
+      local second = rest:match("^%[([^%[%]]*)%]")
+      if second and second ~= "" then return second end -- [text][label]
+      return inner -- [label] and [label][]
+    end
+  end
+  -- Cursor on a [label]: line's target rather than on its label.
+  return nil, line:match("^%s*%[[^%]]+%]:%s*(%S+)")
+end
+
+-- A URL under the cursor belonging to no link markup: an <autolink>, or one
+-- written bare in prose. Trailing sentence punctuation is not part of it.
+local function md_url_at_cursor(line, col)
+  for _, pattern in ipairs({ "()(%a[%w+.-]*://[^%s<>()%[%]\"']+)", "()(mailto:[^%s<>()%[%]\"']+)" }) do
+    for s, url in line:gmatch(pattern) do
+      url = url:gsub("[%.,;:!?]+$", "")
+      if col >= s and col <= s + #url - 1 then return url end
+    end
+  end
+end
+
+-- What a [label]: definition points at. Labels are case-insensitive.
+local function md_definition_target(buf, label)
+  local want = label:lower()
+  for _, l in ipairs(vim.api.nvim_buf_get_lines(buf, 0, -1, false)) do
+    local lbl, target = l:match("^%s*%[([^%]]+)%]:%s*(%S+)")
+    if lbl and lbl:lower() == want then
+      return (target:gsub("^<(.*)>$", "%1"))
+    end
+  end
+end
+
+-- The line of the heading an #anchor names, slugified the way GitHub and
+-- marksman do it. Answering with a line number rather than a search pattern
+-- keeps Vim out of it: a tag pattern that misses fails the whole jump with
+-- E434, where a number that misses still lands in the right file.
+local function md_heading_line(path, anchor)
+  local want = anchor:lower():gsub("[^%w%s-]", ""):gsub("%s+", "-")
+  local ok, lines = pcall(vim.fn.readfile, path)
+  if not ok then return 1 end
+  for i, l in ipairs(lines) do
+    local heading = l:match("^#+%s+(.*)$")
+    if heading and heading:lower():gsub("[^%w%s-]", ""):gsub("%s+", "-") == want then
+      return i
+    end
+  end
+  return 1
+end
+
+local function md_tag_for(buf, target)
+  -- A URL has no file to jump to, so hand it to the browser and stand still.
+  -- Returning a tag at the cursor keeps the jump a no-op instead of an E426.
+  if target:match("^%a[%w+.-]*:") then
+    vim.ui.open(target)
+    return { {
+      name = target,
+      filename = vim.api.nvim_buf_get_name(buf),
+      cmd = tostring(vim.fn.line(".")),
+    } }
+  end
+  local path, anchor = target:match("^([^#]*)#?(.*)$")
+  if path == "" then
+    path = vim.api.nvim_buf_get_name(buf) -- a bare #anchor is this file
+  else
+    path = vim.fs.normalize(path)
+    if not path:match("^[/~]") then
+      path = vim.fs.joinpath(vim.fs.dirname(vim.api.nvim_buf_get_name(buf)), path)
+    end
+    path = vim.fs.normalize(path)
+  end
+  return { {
+    name = target,
+    filename = path,
+    cmd = tostring(anchor ~= "" and md_heading_line(path, anchor) or 1),
+  } }
+end
+
+function _G.MarkdownTagfunc(pattern, flags, info)
+  -- "c" means the cursor is the context, which is the only case where a link
+  -- is what we are looking at; a bare :tag lookup delegates like anything else.
+  if flags:find("c") then
+    local buf = vim.api.nvim_get_current_buf()
+    local line, col = vim.api.nvim_get_current_line(), vim.fn.col(".")
+    local label, target = md_label_at_cursor(line, col)
+    target = target
+      or (label and md_definition_target(buf, label))
+      or md_url_at_cursor(line, col)
+    if target then return md_tag_for(buf, target) end
+  end
+  local ok, res = pcall(vim.lsp.tagfunc, pattern, flags, info)
+  return ok and res or nil
+end
+
+-- Markdown: disable concealment so syntax is visible as typed, and follow
+-- links as above. Claiming tagfunc here rather than on LspAttach is
+-- deliberate -- vim.lsp only sets it when it is still empty or default, so
+-- setting it first is what stops marksman from taking it back.
 vim.api.nvim_create_autocmd("FileType", {
   pattern = "markdown",
-  callback = function()
+  callback = function(args)
     vim.opt_local.conceallevel = 0
+    vim.bo[args.buf].tagfunc = "v:lua.MarkdownTagfunc"
   end,
 })
 
