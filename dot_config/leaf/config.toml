@@ -1,0 +1,8 @@
+theme = "ocean"
+
+editor = "nvim"
+
+# Watch mode: automatically reload when the file changes
+# Only applies when opening a file (ignored for stdin)
+# Default: false
+watch = false
