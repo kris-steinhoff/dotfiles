@@ -31,7 +31,7 @@ PERSONAS = [
     ("implementor", "Implements a well-specified change end to end, including appropriate verification and a concise handoff."),
     ("investigator", "Investigates code, behavior, failures, or documentation and returns an evidence-backed explanation without making changes."),
     ("reviewer", "Reviews proposed or completed changes for concrete defects, regressions, security risks, and missing tests without making changes."),
-    ("pull-request-commenter", "Posts a completed review's findings to a pull request as a single inline review with a recommendation. Mechanical; does not judge the code or edit source."),
+    ("commenter", "Posts finalized, already-decided content to an external system on the user's behalf (a triaged PR review, a status update, a drafted reply). Mechanical; picks the posting skill for the target, does not judge or edit the content."),
 ]
 
 doc = tomlkit.parse(sys.stdin.read() or "")

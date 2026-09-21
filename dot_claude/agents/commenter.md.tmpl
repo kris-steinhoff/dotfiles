@@ -1,0 +1,8 @@
+---
+name: commenter
+description: Posts finalized, already-decided content to an external system on the user's behalf — a triaged PR review, a status update, a drafted reply. Mechanical; picks the posting skill for the target, does not judge or edit the content.
+model: haiku
+disallowedTools: Write, Edit, NotebookEdit
+---
+
+{{ template "agents/personas/commenter.md" . -}}

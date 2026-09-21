@@ -54,3 +54,14 @@
 # archive.md pair. The current persona uses an OKF bundle in its working
 # directory. Without this the retired seeds linger on machines that applied it.
 .claude/cos
+# The pull-request-commenter persona was generalized and renamed to the generic
+# "commenter"; without these the old wrappers linger on machines that applied it.
+# (Codex agent registration is regenerated each apply by the modify_ script, so
+# no stale [agents.pull-request-commenter] table needs removing here.)
+.claude/agents/pull-request-commenter.md
+.codex/pull-request-commenter.config.toml
+# The GitHub-PR poster mechanics moved out of the review skill into the new
+# post-pr-review skill; without these the moved files linger under the review
+# skill on machines that already applied it.
+.agents/skills/review/reference.md
+.agents/skills/review/scripts

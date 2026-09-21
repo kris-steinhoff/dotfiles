@@ -1,6 +1,6 @@
-# review — poster schema and anchor rules
+# post-pr-review — poster schema and anchor rules
 
-Reference for `scripts/post_review.py` and the anchoring rules a finding must satisfy to land inline. Loaded on demand; the report shape itself lives in `SKILL.md`.
+Reference for `scripts/post_review.py` and the anchoring rules a finding must satisfy to land inline. Loaded on demand; the posting flow lives in `SKILL.md`, and the finding format this consumes is the `review` skill's report shape.
 
 ## Poster schema
 
