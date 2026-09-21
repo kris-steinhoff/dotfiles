@@ -49,28 +49,45 @@ Your state is an [Open Knowledge Format](https://cloud.google.com/blog/products/
 
 ```
 ./
+├── .marksman.toml          # wiki-link resolution for the editor (see below)
 ├── index.md                # the roll-up, read at session start
 ├── commitments/            # what's owed, either direction — one file per item
 │   └── <slug>.md           #   type: owed-by-me | waiting-on
 ├── in-flight/              # dispatched work — one file per item
 │   └── <slug>.md           #   type: in-flight
 ├── decisions/              # choices worth not relitigating — one per decision
-│   └── <date>-<slug>.md    #   type: decision
+│   └── <slug>.md           #   type: decision, with date: in frontmatter
 ├── people/                 # who the people are — one file per person
 │   └── <handle>.md         #   type: person
 ├── standups/               # prepared stand-up updates — one immutable record each
-│   └── <date>-<time>.md    #   type: standup
+│   └── <date>-<time>.md    #   type: standup — the one dated filename
 ├── inbox/                  # notes other agents drop for triage
-│   └── <date>-<slug>.md    #   type: inbox
+│   └── <stamp>-<slug>-<rand>.md  # type: inbox — named by the tool, not you
 └── archive/                # closed items, mirroring the live folders by type
     ├── commitments/
     ├── in-flight/
     └── decisions/
 ```
 
-Naming is uniform so the tree browses cleanly. Every filename is lowercase kebab-case ending in `.md`. A file with a stable identity is named for it — a short descriptive `<slug>` (`household-editing-spec`) in `commitments/` and `in-flight/`, the person's `<handle>` in `people/`. A dated record gets an ISO `YYYY-MM-DD` prefix so the directory sorts chronologically: `decisions/` and `inbox/` as `<date>-<slug>.md`, `standups/` as `<date>-<time>.md` (`2026-09-20-0930.md`). Keep slugs short and readable — someone skimming the folder should recognize the item without opening the file.
+Naming is uniform so the tree browses cleanly. Every filename is lowercase kebab-case ending in `.md`, and every basename is unique across the whole bundle — that uniqueness is what lets a link name a concept without naming its folder. A file with a stable identity is named for it: a short descriptive `<slug>` (`household-editing-spec`) in `commitments/`, `in-flight/`, and `decisions/`, the person's `<handle>` in `people/`. Keep slugs short and readable — someone skimming the folder should recognize the item without opening the file.
 
-If `index.md` does not exist, initialize it in the working directory with the bundle's empty section headings. Create the subdirectories as items arise. Each concept file carries YAML frontmatter and a markdown body. Every concept requires `type` and a human-readable `title`, and the body opens with that title as an `# H1` so the file reads on its own when browsed; add whatever of `due`, `since`, `resource`, `tags`, `timestamp`, `last-checked` applies. Write the body as readable markdown, because a person browses these files by hand and the bundle is not a git repo, so no commit hook comes along later to tidy what you wrote. Keep prose soft-wrapped one line per paragraph (no hard line breaks mid-paragraph), use `-` for bullets and `#` ATX headings, and leave a blank line between blocks. An in-flight item also records the live address fields that exist — `machine`, `machine-label`, `workspace`, `pane`, and `agent` — plus durable recovery context such as `repo`, `branch`, and `task`. Use `machine: local` for Local. The body holds the detail and — this is the point of the format — links to related concepts. Use reference-style (shortcut) links so the prose reads as prose: write the person or source inline as `[Rob]` or `[Andrew]`, and collect the definitions like `[Rob]: ../people/rob.md` at the bottom of the file. This keeps a sentence readable — `[Rob] and [Andrew] are still reviewing` — instead of breaking it up with inline URLs. The links still resolve to the same targets, so an owed item that links to the person it's owed to and to its source still answers "what do I owe Sarah" by following links rather than reading every file.
+A `people/` filename is a short lowercase handle (`people/eric.md`), not a full name. Resolution ignores case but does not match prefixes, so a file named for someone's full name cannot be linked by their first name. The short handle is what makes `[[Eric]]` work.
+
+Filenames carry no date; the date lives in frontmatter instead — `date:` on a decision, `timestamp:` on an archived record. The cost is real: a plain listing of `decisions/` or `archive/` no longer sorts chronologically, so sort by the frontmatter field when order matters. Two folders are exceptions, each because a filename there does a job frontmatter cannot. `standups/` keeps `<date>-<time>.md` (`2026-09-20-0930.md`), where the filename is the record's only identity and its deduplication key. And `inbox/` names are not yours to choose at all: the `add-to-inbox` script writes each drop as `<stamp>-<slug>-<rand>.md`, where the timestamp and random suffix are what stop concurrent drops from different agents colliding.
+
+If `index.md` does not exist, initialize it in the working directory with the bundle's empty section headings. Create the subdirectories as items arise. Each concept file carries YAML frontmatter and a markdown body. Every concept requires `type` and a human-readable `title`, and the body opens with that title as an `# H1` so the file reads on its own when browsed; add whatever of `due`, `since`, `resource`, `tags`, `timestamp`, `last-checked` applies. Write the body as readable markdown, because a person browses these files by hand and the bundle is not a git repo, so no commit hook comes along later to tidy what you wrote. Keep prose soft-wrapped one line per paragraph (no hard line breaks mid-paragraph), use `-` for bullets and `#` ATX headings, and leave a blank line between blocks. An in-flight item also records the live address fields that exist — `machine`, `machine-label`, `workspace`, `pane`, and `agent` — plus durable recovery context such as `repo`, `branch`, and `task`. Use `machine: local` for Local. The body holds the detail and — this is the point of the format — links to related concepts, which is what lets an owed item linking to the person it's owed to answer "what do I owe Sarah" by following links rather than reading every file.
+
+### Links
+
+A link to another concept in the bundle is a wiki-link: `[[household editing spec]]`. Never write the folder. Basenames are unique bundle-wide, so the resolver finds the file wherever it lives, and a person resolves to `people/<handle>.md` like any other concept. If two basenames ever collide the editor tells you (`Ambiguous link to document 'dup'`), and you qualify by adding trailing path components until it is unique — `[[commitments/dup]]`, or the whole `[[archive/commitments/dup]]`. Qualification matches the end of the path, so skipping a middle component (`[[archive/dup]]`) resolves to nothing.
+
+Write the link text as the slug with spaces and normal capitalization, and stop there: `[[back office tooling]]`, `[[Eric]]`. The resolver normalizes spaces against dashes and ignores case, so the prose reads naturally and still lands on `back-office-tooling.md` and `people/eric.md`. A possessive is `[[Eric]]'s`; a surname, where you want one, is plain text after the link — `[[Eric]] Burgagni` — never an alias. A slug that is itself an identifier, such as a branch name or a ticket key, reads better left dashed; the resolver accepts either form.
+
+Keep a `[[slug|display]]` alias for two cases only. Use one when the slug itself is unreadable — a tool-generated inbox name like `20260921T143012-review-pr-326-a3f1` is, so showing it would make the prose worse. And use one when the display word is load-bearing prose whose meaning differs from the concept's name — a status word or a substitute noun the sentence needs, as in "the contradiction is [[mfa mandatory 156|resolved]]". If the display is merely the concept's name reworded, drop it and use the bare link.
+
+An external web link is a markdown reference link defined at the foot of the file — never an inline URL, never a wiki-link. This is the only place reference-style definitions belong. Key them so the prose still reads: a source with a natural short ID uses it as both key and link text, with any description as plain words beside it (`[NXC-156] settings epic`, or `PR [#326] — the API refactor`); a source without one, such as a Confluence page, a Claude artifact, or a Slack thread, takes a short readable label (`[MCP V1.1 PRD]`). Group every definition at the very bottom of the file and define each distinct URL once.
+
+A URL in frontmatter (`resource:`, `task:`) stays a bare URL, because YAML has nowhere to put a link definition.
 
 ```markdown
 ---
@@ -82,9 +99,8 @@ resource: https://jira/NXC-162
 
 # Household editing spec
 
-Owed to [Sarah] from the [NXC-162] kickoff.
+Owed to [[Sarah]] from the [NXC-162] kickoff.
 
-[Sarah]: ../people/sarah.md
 [NXC-162]: https://jira/NXC-162
 ```
 
@@ -106,32 +122,52 @@ last-observed: 2026-09-17T14:30:00-04:00
 
 # Household editing implementation
 
-Coordinator implementing NXC-162 where the checkout and development services live. Expected outcome: a tested branch ready for the user to review in its pane.
+Coordinator implementing [NXC-162] where the checkout and development services live, dispatched off [[household editing spec]]. Expected outcome: a tested branch ready for the user to review in its pane.
+
+[NXC-162]: https://jira/NXC-162
 ```
 
-`index.md` is the roll-up you read at session start and keep current: one line per open item, grouped by type, each linking to its file. It is the progressive-disclosure entry point — the line is the glance, the file is the detail.
+`index.md` is the roll-up you read at session start and keep current: one line per open item, grouped by type, each a bare wiki-link to its file. The section heading already carries the folder, so the line does not repeat it. It is the progressive-disclosure entry point — the line is the glance, the file is the detail.
 
 ```markdown
 ## Owed by me
 
-- [Household editing spec](commitments/household-editing-spec.md) → @sarah · due 2026-09-19
+- [[household editing spec]] → [[Sarah]] · due 2026-09-19
 
 ## Waiting on
 
-- [Contract sign-off](commitments/contract-signoff.md) ← @legal · since 2026-09-04
+- [[contract signoff]] ← [[legal]] · since 2026-09-04
 
 ## In flight
 
-- [nxc-162-household-editing](in-flight/nxc-162-household-editing.md) · coordinator, worktree on Dev container · since 2026-09-14
+- [[nxc-162-household-editing]] · coordinator, worktree on Dev container · since 2026-09-14
 ```
 
 Keep it from rotting:
 
-- When an item closes, move its file — keeping its name — into the matching subfolder under `archive/` (`archive/commitments/`, `archive/in-flight/`, `archive/decisions/`) within a day, and drop its line from `index.md`. Closed items don't linger as `- [x]`, and the archive stays grouped by type so it browses like the live tree.
+- When an item closes, move its file into the matching subfolder under `archive/` (`archive/commitments/`, `archive/in-flight/`, `archive/decisions/`) within a day, add a `timestamp:` recording when it closed, and drop its line from `index.md`. Archiving never renames the file: its basename is what links to it already say. Closed items don't linger as `- [x]`, and the archive stays grouped by type so it browses like the live tree.
 - `decisions/` never decays, but compact or merge files when they stop being referenced.
 - Rewrite a `people/` file in place, never append. It is context, not a log.
 - Never rewrite a `standups/` file. It records exactly what a prior update said so later updates can avoid repeating it.
 - Keep `index.md` to the open items only. Past roughly 60 lines there, something isn't being closed — compact, don't just read more.
+
+### What the links depend on
+
+Every rule above rests on how the editor resolves a wiki-link, so a bundle states that rather than hoping for it. The resolver must bind links to filenames (file stems) rather than to H1 titles, and must normalize spaces against dashes and ignore case. For marksman that is a `.marksman.toml` in the bundle root, which you create on first use alongside `index.md`:
+
+```toml
+[core]
+title_from_heading = false
+
+[completion]
+wiki.style = "file-stem"
+```
+
+Without it, marksman's default binds a file's identity to its H1 title, and the failure is partial rather than obvious: a file whose heading restates its filename keeps working, while one whose heading is prose stops resolving — `[[mfa mandatory 156]]` finds nothing in `mfa-mandatory-156.md` titled `# MFA mandatory (NXC-156)`. Half-working is the trap, so ship the config with the bundle.
+
+That setting is deliberately at odds with the `# H1` requirement above, and both stand. The heading stays because a person browsing the file needs it; `title_from_heading = false` only stops the editor from treating it as the file's identity. The accepted cost is that a file can no longer be linked by its title — `[[MFA mandatory (NXC-156)]]` resolves to nothing — leaving bare slugs as the only link form. Do not "fix" this by turning the heading option back on.
+
+Two limits worth carrying. Normalization covers spaces and dashes but not underscores, so `[[under score]]` will not find `under_score.md` — which is why kebab-case is a rule rather than a preference. And a link checker has to apply the same normalization the resolver does; one that demands an exact basename match will report every spaced link as broken.
 
 ## The inbox
 
