@@ -4,7 +4,7 @@ Hard wrapping is the habit that survives being told not to, so the reliable fix 
 
 `scripts/format-markdown` exists for this and nothing else. The skill never runs it.
 
-This is deliberately not in the global config. Add it per project.
+This is deliberately not in the global config. Add it per project, or bind it to a single agent that only ever writes its own files — the `chief-of-staff` persona carries it in its agent frontmatter, which scopes it as narrowly as a per-project opt-in without needing one, because the only markdown that agent touches is its own bundle.
 
 ## Why per project and not globally
 
@@ -58,7 +58,7 @@ cat /tmp/hook-check.md
 
 ## The other two layers
 
-The hook covers Claude Code only, and it is the only layer that acts while a file is being written. The other agent surfaces (Codex, OpenCode, Gemini) have no equivalent, so there the conventions in SKILL.md are all there is.
+The hook covers Claude Code only, and it is the only layer that acts while a file is being written. Codex does have a hook system, and a profile or agent role file can carry one inline, but its `apply_patch` payload names the edit in patch text under `tool_input.command` rather than a `file_path`, so `--hook` reads nothing it recognizes; wiring it there means parsing an envelope Codex owns and does not document, which would fail silently — the way everything in `--hook` fails — the day it changed. OpenCode and Gemini have no equivalent at all. On all three, the conventions in SKILL.md are what there is.
 
 Neither catches a file that arrives some other way. For that, format on commit. This repository does, in `.pre-commit-config.yaml`:
 
