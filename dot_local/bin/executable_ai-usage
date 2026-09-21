@@ -50,7 +50,6 @@ CHATGPT_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage"
 CODEX_AUTH_PATH = Path.home() / ".codex" / "auth.json"
 
 BAR_WIDTH = 26
-BAR_WIDTH_DOLLAR = 16  # dollar amounts are wider, so shorten the bar to fit
 
 # Backoff to honor when a 429 arrives without a usable Retry-After hint.
 DEFAULT_BACKOFF = 60.0
@@ -549,7 +548,6 @@ def build_panel(
     if not windows:
         body.append(Align.center(Text("No active usage windows reported.", style="grey62")))
     else:
-        bar_width = BAR_WIDTH_DOLLAR if any(w.is_dollar for w in windows) else BAR_WIDTH
         updated = updated_cell(updated_at, fresh_age)
 
         def build_table(include_updated: bool) -> Table:
@@ -572,7 +570,7 @@ def build_panel(
                     t.add_row()
                 cells = [
                     Text(w.label, style="bold white"),
-                    bar(w, bar_width),
+                    bar(w, BAR_WIDTH),
                     amount_text(w),
                     reset_text(w.resets_at),
                 ]
