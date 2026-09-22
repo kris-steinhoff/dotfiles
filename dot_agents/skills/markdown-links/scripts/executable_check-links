@@ -1,0 +1,134 @@
+#!/usr/bin/env python3
+"""Report wiki-links and reference links in a markdown tree that go nowhere.
+
+Why this instead of a general link checker: the resolver being modelled has two
+rules, and applying one of them to both cases is worse than not checking at all,
+because it reports correct links as broken. A bare `[[slug]]` is normalized --
+lowercased, with spaces and dashes interchangeable. A qualified `[[dir/slug]]`
+is literal -- exact case, real separators, matched against the end of a path. So
+`[[rate limits]]` resolves where `[[decisions/rate limits]]` does not, and only
+a checker that knows both agrees with the editor. Underscores are never
+normalized either, which is why `[[under score]]` misses `under_score.md`.
+
+Cross-checked against marksman, the resolver in question: on a tree of
+deliberate breakage it reports the same unresolved and ambiguous links.
+
+Detection, not repair. An unresolved link's intended target is a guess, so this
+offers near matches and stops there. An ambiguous one is mechanical, so it
+prints the qualification that resolves it.
+"""
+
+import difflib
+import re
+import sys
+from pathlib import Path
+
+WIKI = re.compile(r"\[\[([^\]\[|#]+)(?:#[^\]\[|]*)?(?:\|[^\]\[]*)?\]\]")
+# A shortcut reference use: [Key] not followed by [, ( or :, and not part of
+# [[a wiki link]]. The lookarounds are what keep those two apart.
+REF_USE = re.compile(r"(?<!\[)\[([^\]\[]+)\](?!\[|\(|:)")
+REF_DEF = re.compile(r"^\s*\[([^\]\[]+)\]:\s*\S+", re.M)
+FENCE = re.compile(r"^\s*(```|~~~)")
+# An inline code span is code, the same as a fence: prose that quotes link
+# syntax is documenting it, not linking. Double backticks first, or the single
+# pattern eats their delimiters.
+CODESPAN = re.compile(r"``[^`]*``|`[^`\n]*`")
+
+
+def norm(text):
+    return text.strip().lower().replace(" ", "-")
+
+
+def strip_noncontent(text):
+    """Blank out what only looks like links: fenced code, inline code spans,
+    and YAML frontmatter.
+
+    Lines are blanked rather than dropped so reported line numbers stay true.
+    """
+    lines = text.splitlines()
+    out, inside = [], False
+
+    start = 0
+    if lines and lines[0].strip() == "---":
+        for i, line in enumerate(lines[1:], 1):
+            if line.strip() == "---":
+                start = i + 1
+                break
+    out.extend("" for _ in range(start))
+
+    for line in lines[start:]:
+        if FENCE.match(line):
+            inside = not inside
+            out.append("")
+        else:
+            out.append("" if inside else CODESPAN.sub("", line))
+    return "\n".join(out)
+
+
+def shortest_qualifier(target, root, others):
+    """The least path suffix of `target` that no other candidate shares."""
+    parts = list(target.relative_to(root).with_suffix("").parts)
+    rivals = [list(o.relative_to(root).with_suffix("").parts) for o in others]
+    for i in range(len(parts) - 1, -1, -1):
+        suffix = parts[i:]
+        if not any(r[len(r) - len(suffix) :] == suffix for r in rivals):
+            return "/".join(suffix)
+    return "/".join(parts)
+
+
+def main(argv):
+    if any(a in ("-h", "--help") for a in argv):
+        print(__doc__.strip().splitlines()[0])
+        print("usage: check-links [ROOT]")
+        return 0
+
+    root = Path(argv[0] if argv else ".").resolve()
+    if not root.is_dir():
+        print(f"check-links: not a directory: {root}", file=sys.stderr)
+        return 2
+    files = sorted(f for f in root.rglob("*.md") if ".git" not in f.parts)
+
+    stems, paths = {}, {}
+    for f in files:
+        parts = list(f.relative_to(root).with_suffix("").parts)
+        stems.setdefault(norm(parts[-1]), set()).add(f)
+        for i in range(len(parts)):
+            paths.setdefault("/".join(parts[i:]), set()).add(f)
+
+    def resolve(link):
+        link = link.strip()
+        return paths.get(link, set()) if "/" in link else stems.get(norm(link), set())
+
+    findings = []
+    for f in files:
+        where = f.relative_to(root)
+        body = strip_noncontent(f.read_text(encoding="utf-8"))
+        lines = body.splitlines()
+        defined = {norm(k) for k in REF_DEF.findall(body)}
+
+        for num, line in enumerate(lines, 1):
+            for m in WIKI.finditer(line):
+                link = m.group(1)
+                hits = resolve(link)
+                if not hits:
+                    near = difflib.get_close_matches(norm(link), stems, n=3, cutoff=0.6)
+                    hint = f" — did you mean {', '.join(f'[[{n}]]' for n in near)}?" if near else ""
+                    findings.append(f"{where}:{num}: unresolved [[{link}]]{hint}")
+                elif len(hits) > 1:
+                    fixes = ", ".join(
+                        f"[[{shortest_qualifier(h, root, hits - {h})}]]" for h in sorted(hits)
+                    )
+                    findings.append(f"{where}:{num}: ambiguous [[{link}]] — qualify as {fixes}")
+            for m in REF_USE.finditer(line):
+                if norm(m.group(1)) not in defined:
+                    findings.append(
+                        f"{where}:{num}: [{m.group(1)}] used but never defined in this file"
+                    )
+
+    for line in findings:
+        print(line, file=sys.stderr)
+    return 1 if findings else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
