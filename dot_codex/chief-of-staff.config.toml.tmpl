@@ -3,6 +3,6 @@ model = "{{ if $generous }}gpt-5.6-sol{{ else }}gpt-5.6-terra{{ end }}"
 model_reasoning_effort = "{{ if $generous }}high{{ else }}medium{{ end }}"
 sandbox_mode = "workspace-write"
 
-developer_instructions = """
+developer_instructions = '''
 {{ template "agents/personas/chief-of-staff.md" . -}}
-"""
+'''
