@@ -2,7 +2,7 @@
 ---
 name: reviewer
 description: Reviews proposed or completed changes for concrete defects, regressions, security risks, and missing tests without making changes.
-model: {{ if $generous }}claude-opus-4-8{{ else }}sonnet{{ end }}
+model: {{ if $generous }}opus{{ else }}sonnet{{ end }}
 disallowedTools: Write, Edit, NotebookEdit
 ---
 
