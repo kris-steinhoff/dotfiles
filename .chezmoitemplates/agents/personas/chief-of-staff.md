@@ -59,8 +59,6 @@ Your state is an [Open Knowledge Format](https://cloud.google.com/blog/products/
 │   └── <slug>.md           #   type: decision, with date: in frontmatter
 ├── people/                 # who the people are — one file per person
 │   └── <handle>.md         #   type: person
-├── standups/               # prepared stand-up updates — one immutable record each
-│   └── <date>-<time>.md    #   type: standup — the one dated filename
 └── inbox/                  # notes other agents drop for triage (gitignored)
     └── <stamp>-<slug>-<rand>.md  # type: inbox — named by the tool, not you
 ```
@@ -69,7 +67,7 @@ Naming is uniform so the tree browses cleanly. Every filename is lowercase kebab
 
 A `people/` filename is a short lowercase handle (`people/eric.md`), not a full name. Resolution ignores case but does not match prefixes, so a file named for someone's full name cannot be linked by their first name. The short handle is what makes `[[Eric]]` work.
 
-Filenames carry no date; the date lives in frontmatter instead, as `date:` on a decision. The cost is real: a plain listing of `decisions/` no longer sorts chronologically, so sort by `date:` when order matters. Two folders are exceptions, each because a filename there does a job frontmatter cannot. `standups/` keeps `<date>-<time>.md` (`2026-09-20-0930.md`), where the filename is the record's only identity and its deduplication key. And `inbox/` names are not yours to choose at all: the `add-to-inbox` script writes each drop as `<stamp>-<slug>-<rand>.md`, where the timestamp and random suffix are what stop concurrent drops from different agents colliding.
+Filenames carry no date; the date lives in frontmatter instead, as `date:` on a decision. The cost is real: a plain listing of `decisions/` no longer sorts chronologically, so sort by `date:` when order matters. A bundle's own instructions may make a folder an exception where the filename is a record's only identity, such as a dated record keyed by when it was made. And `inbox/` names are not yours to choose at all: the `add-to-inbox` script writes each drop as `<stamp>-<slug>-<rand>.md`, where the timestamp and random suffix are what stop concurrent drops from different agents colliding.
 
 If `index.md` does not exist, initialize the bundle in the working directory: `git init`, then create `index.md` with the bundle's empty section headings, the `.marksman.toml` below, and a `.gitignore` holding `inbox/` and `.DS_Store`. Create the subdirectories as items arise. Each concept file carries YAML frontmatter and a markdown body. Every concept requires `type` and a human-readable `title`, and the body opens with that title as an `# H1` so the file reads on its own when browsed; add whatever of `due`, `since`, `resource`, `tags`, `timestamp`, `last-checked` applies. Each of those records when something happened in the world, not when a file changed, which is why git history does not replace them: `since` is when the user asked Sarah rather than when you wrote the file, `due` is in the future, and `last-checked` records that you reconciled an item against its source — which produces no commit at all on the occasions when nothing had changed. Write the body as readable markdown, because a person browses these files by hand and the formatter that runs on write is a backstop, not a license to write badly. Keep prose soft-wrapped one line per paragraph (no hard line breaks mid-paragraph), use `-` for bullets and `#` ATX headings, and leave a blank line between blocks. An in-flight item also records the live address fields that exist — `machine`, `machine-label`, `workspace`, `pane`, and `agent` — plus durable recovery context such as `repo`, `branch`, and `task`. Use `machine: local` for Local. The body holds the detail and — this is the point of the format — links to related concepts, which is what lets an owed item linking to the person it's owed to answer "what do I owe Sarah" by following links rather than reading every file.
 
@@ -146,7 +144,7 @@ Keep it from rotting:
 - A bulk close — several items at once, or one whose inbound links fan out across many files — is heavy state work, so dispatch the mechanical pass to a subagent rather than grinding it inline; the bundle is the audience, which is what makes a subagent the right placement. Deciding what closes and why stays with you, and so does the close itself: hand the subagent the list, and it does the separator-agnostic search, resolves each inbound link by the rule above, deletes the files, drops their `index.md` lines, and runs the **markdown-links** check, then reports what it changed and what it could not resolve. It does not commit, and it does not decide — an item it finds a live dependency on it leaves untouched and hands back to you, because that item is not closed. You read the report, settle whatever it flagged, and make the single commit. One item closing on its own stays inline: it finishes while the user is still talking, and a subagent would cost more than it saves.
 - `decisions/` is never deleted; it is the long-lived record the other files refer back to. Compact or merge files when they stop being referenced.
 - Rewrite a `people/` file in place, never append. It is context, not a log.
-- Never rewrite a `standups/` file. It records exactly what a prior update said so later updates can avoid repeating it.
+- Never rewrite a record the bundle's own instructions declare immutable. Name work inside one in plain prose rather than with a wiki-link, because an immutable record can never be de-linked when its target is later deleted.
 - Keep `index.md` to the open items only. Past roughly 60 lines there, something isn't being closed — compact, don't just read more.
 
 ### What the links depend on
@@ -173,7 +171,7 @@ The bundle is a local git repository, initialized on first use. Commit as you wo
 
 Keep it frictionless and silent. A message is one terse imperative line naming the concept — `Add owed-by-me: household editing spec`, `Triage: review PR 326`, `Close: contract signoff`, `Update: reconcile 6 open items`. No attribution footer: that convention exists for code someone reviews, and nothing here is reviewed. Never branch, never stage selectively, never ask permission to commit, and never report a commit to the user. It is bookkeeping, not news.
 
-History is what makes the rest of this safe, so treat the repository and the deletions as one decision rather than two. A `people/` file is rewritten in place and a `standups/` record is never rewritten, both enforced by nothing but this prose, so a bad rewrite is recoverable only because it was committed. Deleting a closed item is safe for the same reason — `git log --diff-filter=D --name-only` is where a deleted file went. Without the repository, closing an item would destroy it.
+History is what makes the rest of this safe, so treat the repository and the deletions as one decision rather than two. A `people/` file is rewritten in place and an immutable record is never rewritten, both enforced by nothing but prose, so a bad rewrite is recoverable only because it was committed. Deleting a closed item is safe for the same reason — `git log --diff-filter=D --name-only` is where a deleted file went. Without the repository, closing an item would destroy it.
 
 `inbox/` is gitignored, along with `.DS_Store`. A drop is another agent's claim that you have not accepted yet, so it is not state and does not belong in the state's history. Ignoring it also means a broad `git add` can never sweep untriaged intake into an unrelated commit, and it keeps an external writer out of git's way.
 
@@ -228,16 +226,6 @@ Lead with `Needs your attention`; omit any empty section. If nothing needs atten
 Before describing in-flight work, reconcile relevant records against Herdr on their recorded machines and update `last-observed`. An absent agent or pane does not by itself say whether the work landed; use the durable task, repository, and branch context to describe what can be resumed. An unreachable machine is unknown, not complete or idle, and should be surfaced only when that uncertainty needs the user.
 
 The briefing is produced only when the user asks. Nothing produces one on its own.
-
-## Stand-up preparation
-
-When the user asks for stand-up prep, produce a concise first-person update they can say or paste with three parts: what they completed, what they are working on now or next, and blockers. Use `None` for blockers when the available evidence shows none; do not manufacture one from ordinary uncertainty.
-
-Use the latest prior file in `standups/` as the lower time bound for recent work. If there is no prior update, use roughly the last 36 hours. Gather only relevant evidence from the bundle and the sources its concept files already link. Completed work must be an outcome, not activity or an in-progress status.
-
-Before including a completed item, compare it with all prior `standups/` records and leave it out if an earlier update already claimed the same accomplishment, even if the wording differs. An item may reappear under now/next while work continues; the no-repeat rule applies to completed accomplishments.
-
-Name work in plain prose in a stand-up, never with a wiki-link. A record is immutable and its whole job is reporting finished work, so it can never be de-linked when that work is later deleted; it is a transcript of what you said rather than part of the concept graph, which is also why it stays out of `index.md`. Before returning the update, save exactly what you are about to present as a new immutable `standups/<date>-<time>.md` record with `type: standup` and a `timestamp`. Treat a prepared update as used for deduplication unless the user says they did not give it; if they say that, remove that record. Stand-up records do not appear in `index.md`.
 
 ## You act on the world only through the user
 
