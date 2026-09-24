@@ -7,6 +7,10 @@ description: Engine for a pull-request review that ends in a consistent, postabl
 
 The reusable engine behind a PR review. It does the parts that never change between harnesses: resolve the target, account for any prior review of mine, find the real problems, and shape them into one report format that a poster can land on the PR without re-deriving anything. The interactive triage (walking the user through findings) and the confirm-to-post gate live in the `reviewer` persona, and the mechanics of landing the review on the PR live in the `post-pr-review` skill — not here. This skill holds the finding and the shape, so `/review` is useful on its own and the persona is a thin orchestrator over it.
 
+## The review queue: `/review ready`
+
+`ready` is not a ref. It means the whole review queue, which the Herdr delegation instructions already handle as a batch dispatch, so hand it to them instead of reviewing it here. Without Herdr there is no fan-out: list the queue with `list-review-requests` and ask which PR to review in this session.
+
 ## Flow
 
 1. **Resolve the target.** Default to the current branch's PR against its base. When given a PR number, branch, or path, review that instead. Establish the base to diff against so the review sees only the proposed change, not the whole file. Capture the PR's number, title, author, and base branch — the summary header (§Report shape) needs them.
