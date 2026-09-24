@@ -78,8 +78,6 @@ def list_prs(repo, limit):
         "--limit", str(limit),
         "--json", "number,title,url,baseRefName",
     ]
-    if repo:
-        args += ["-R", repo]
     proc = subprocess.run(args, capture_output=True, text=True, cwd=repo)
     if proc.returncode != 0:
         stderr = proc.stderr.strip()
