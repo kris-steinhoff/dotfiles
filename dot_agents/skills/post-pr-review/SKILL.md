@@ -1,13 +1,13 @@
 ---
 name: post-pr-review
-description: Land a finalized, already-triaged review on a GitHub pull request as one review — the recommendation as the summary and each finding as its own inline comment. Mechanical: it renders the review into the reviews-API schema, decides where each finding anchors, dry-runs, and posts. It forms no opinions and never edits source. Invoke to post a completed PR review, from the `commenter` persona or directly.
+description: Land a finalized, already-triaged review on a GitHub pull request as one review — the recommendation as the summary and each finding as its own inline comment. Mechanical: it renders the review into the reviews-API schema, decides where each finding anchors, dry-runs, and posts. It forms no opinions and never edits source. Accepts an optional header line (e.g. attribution) that it puts at the top of every message. Invoke to post a completed PR review.
 ---
 
 # post-pr-review
 
 The GitHub-PR posting target. It takes a review that is already found and already triaged and lands it cleanly: render it into the poster's schema, decide where each finding hangs, validate against the PR's own diff, and post as a single review. It does not judge the code, form opinions, re-derive severity, or overturn the recommendation or the triage — that is all done before it runs. Its whole job is to place the finished review on the PR without losing anything.
 
-The finding format it consumes is the `/review` skill's report shape: a recommendation block (Approve or Request Changes, with a short justification) and a set of findings, each carrying a severity `[high]/[med]/[low]`, a file, a RIGHT-side line range, a title, and a body. If it arrives as loose prose, read that shape out of it. `reference.md` has the poster's JSON schema and the anchoring rules in full; load it before building the review JSON.
+The input is a review in this shape: a recommendation block (Approve or Request Changes, with a short justification) and a set of findings, each carrying a severity `[high]/[med]/[low]`, a file, a RIGHT-side line range, a title, and a body. If it arrives as loose prose, read that shape out of it. `reference.md` has the poster's JSON schema and the anchoring rules in full; load it before building the review JSON.
 
 ## Posting
 
@@ -18,13 +18,13 @@ scripts/post_review.py --dry-run review.json
 scripts/post_review.py review.json
 ```
 
-Build one review JSON: `{pr, event, body, comments: [{path, line, body}], thread_replies: [{in_reply_to, body}], footer}`.
+Build one review JSON: `{pr, event, body, comments: [{path, line, body}], thread_replies: [{in_reply_to, body}], header}`.
 
 - **event** — from the recommendation: Approve → `APPROVE`, Request Changes → `REQUEST_CHANGES`, otherwise → `COMMENT`.
 - **comments** — one per finding that anchors inline, on its RIGHT-side line, body prefixed with the severity marker. This is where nearly every finding goes: a finding whose exact subject isn't in the diff still anchors to the nearest related changed line, its body opening on the gap ("not directly related to this code, but …"). Inline is the only threadable surface, so it is what lets a re-review answer a finding.
 - **body** — the recommendation block verbatim. Append only the genuinely non-anchorable findings here — the rare ones with no reasonable inline home — each under a short clear **name** (e.g. "Finding A — …") and ordered by severity. The name is not decoration: a body finding cannot be threaded, so its name is the handle a later review uses to mark it resolved.
 - **thread_replies** — re-review only: one entry per still-open prior finding **that was posted inline**, `in_reply_to` set to the id of that finding's earlier review comment, so the reply lands in the existing thread instead of a duplicate. A still-open prior finding that lived in the body (a named one) has no thread — state its status in the body by name instead. Resolved prior findings need no reply either; note their status in the body if useful. Omit on a first review.
-- **footer** — the attribution line, passed verbatim; the poster appends it to the body, every comment, and every reply. The caller (the `commenter` persona) owns what the footer says.
+- **header** — optional. A line that should open every message, such as an attribution line. Pass it here, not in the individual bodies: the poster puts it verbatim at the top of the body, every comment, and every reply. This skill doesn't decide what, if anything, goes there.
 
 ## Anchoring is decided here
 

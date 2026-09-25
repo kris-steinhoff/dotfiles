@@ -9,7 +9,7 @@ re-posting them. Input is one review object (see reference.md):
   {pr, event, body,
    comments: [{path, line, body}],            # fresh inline comments
    thread_replies: [{in_reply_to, body}],     # replies on prior threads
-   footer?}
+   header?}
 
   event in {APPROVE, REQUEST_CHANGES, COMMENT}
 
@@ -19,9 +19,9 @@ dry-run first: the reviews API rejects the whole call if any comment anchors to 
 line that is not a RIGHT-side position in the diff, so one bad anchor would
 otherwise sink the batch, and a reply to a stale comment id just errors.
 
-The repo is inferred from the working directory via `gh`. The footer, when
-given, is appended verbatim to the body, every inline comment, and every reply;
-this script does not synthesize attribution.
+The repo is inferred from the working directory via `gh`. The header, when
+given, is prepended verbatim to the body, every inline comment, and every reply;
+this script does not decide attribution.
 """
 
 import argparse
@@ -94,7 +94,7 @@ def main():
     event = review["event"]
     if event not in {"APPROVE", "REQUEST_CHANGES", "COMMENT"}:
         sys.exit(f"invalid event: {event!r}")
-    footer = review.get("footer")
+    header = review.get("header")
     comments = review.get("comments", [])
     thread_replies = review.get("thread_replies", [])
 
@@ -108,6 +108,7 @@ def main():
 
     if args.dry_run:
         print(f"PR #{pr}: {event}, {len(comments)} inline comment(s), {len(thread_replies)} reply(ies)")
+        print(f"header: {header}" if header else "header: (none)")
         for c in comments:
             ok = c["line"] in valid.get(c["path"], set())
             print(f"  [{'ok ' if ok else 'BAD'}] {c['path']}:{c['line']}")
@@ -135,14 +136,14 @@ def main():
                             + ", ".join(str(r["in_reply_to"]) for r in bad_replies))
         sys.exit("refusing to post: " + "; ".join(problems) + ". Re-run with --dry-run.")
 
-    def with_footer(text):
-        return f"{text}\n\n{footer}" if footer else text
+    def with_header(text):
+        return f"{header}\n\n{text}" if header else text
 
     payload = {
         "event": event,
-        "body": with_footer(review.get("body", "")),
+        "body": with_header(review.get("body", "")),
         "comments": [
-            {"path": c["path"], "line": c["line"], "side": "RIGHT", "body": with_footer(c["body"])}
+            {"path": c["path"], "line": c["line"], "side": "RIGHT", "body": with_header(c["body"])}
             for c in comments
         ],
     }
@@ -163,7 +164,7 @@ def main():
         cid = int(r["in_reply_to"])
         res = subprocess.run(
             ["gh", "api", f"repos/{slug}/pulls/{pr}/comments/{cid}/replies", "-X", "POST", "--input", "-"],
-            input=json.dumps({"body": with_footer(r["body"])}),
+            input=json.dumps({"body": with_header(r["body"])}),
             capture_output=True, text=True, check=False,
         )
         if res.returncode != 0:

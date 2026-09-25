@@ -1,6 +1,6 @@
 # post-pr-review — poster schema and anchor rules
 
-Reference for `scripts/post_review.py` and the anchoring rules a finding must satisfy to land inline. Loaded on demand; the posting flow lives in `SKILL.md`, and the finding format this consumes is the `review` skill's report shape.
+Reference for `scripts/post_review.py` and the anchoring rules a finding must satisfy to land inline. Loaded on demand; the posting flow and the input review's shape live in `SKILL.md`.
 
 ## Poster schema
 
@@ -16,7 +16,7 @@ Reference for `scripts/post_review.py` and the anchoring rules a finding must sa
     { "path": "src/auth.py", "line": 88, "body": "[med] ..." }
   ],
   "thread_replies": [{ "in_reply_to": 987654, "body": "[med] Still open — the guard added at L88 doesn't cover ..." }],
-  "footer": "_Posted by Claude on behalf of Kris Steinhoff._"
+  "header": "_🤖 Posted on behalf of Kris Steinhoff_"
 }
 ```
 
@@ -25,7 +25,8 @@ Reference for `scripts/post_review.py` and the anchoring rules a finding must sa
 - `body` — the recommendation block, verbatim. Becomes the review's summary comment.
 - `comments` — inline comments, each anchored to a RIGHT-side `line`. A `{path, line, side}` range uses `side: "RIGHT"` implicitly.
 - `thread_replies` — replies on the threads of still-open prior findings (re-review only). Each `in_reply_to` is the id of one of my earlier review comments; the reply lands in that thread instead of a duplicate inline comment. Omit or `[]` on a first review.
-- `footer` — optional. Appended to the body, every inline comment, and every reply, so the on-behalf attribution shows wherever the review appears. `post_review.py` does not synthesize it; the caller passes the exact footer.
+
+- `header` — optional. Prepended verbatim to the body, every inline comment, and every reply. `post_review.py` does not synthesize it; the caller passes the exact text.
 
 Run it two ways:
 
