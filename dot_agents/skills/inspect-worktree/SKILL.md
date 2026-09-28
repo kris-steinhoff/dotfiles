@@ -18,7 +18,7 @@ scripts/inspect-worktree --worktree <path-or-workspace-id> [--repo <path>]
 `{ path, branch, ours, dirty, ahead, behind, pr_state, agent_live, idle_minutes, prunable }`
 
 - `ours` — the dispatch provenance marker (`.herdr-dispatch.json`) is present.
-- `ahead`/`behind` — vs the branch's upstream if configured, else vs `origin/<base>` from the provenance marker if that ref exists, else `null` (never a fabricated number).
+- `ahead`/`behind` — vs the branch's upstream if configured, else vs `origin/<base>` from the provenance marker if that ref exists (or `<base>` itself when it already names a remote-tracking ref, like `origin/main`), else `null` (never a fabricated number).
 - `pr_state` — `merged` / `open` / `closed` / `none` / `branch-gone`. A flaky `gh` call degrades to `none` rather than erroring the whole read.
 - `agent_live` — a live agent occupies some pane in the worktree's workspace.
 - `idle_minutes` — best-effort: a live agent's activity timestamp if one can be found, else the last-commit time as a "last touched" proxy, else `null`.

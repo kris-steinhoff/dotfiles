@@ -13,6 +13,25 @@ handles name collisions itself, so no caller runs a check-then-retry loop:
   3. Else create fresh on the requested name (checking out an existing bare
      branch if one is there, so fetch-pr-head -> create-worktree chains cleanly).
 
+With --path, the caller picks where the checkout goes (a bare-backed container
+wants <container>/<branch>). A path is occupied if anything exists there or git
+still has a worktree registered there. A branch collision suffixes branch and
+path together (foo at <dir>/foo becomes foo-2 at <dir>/foo-2). When only the
+path is occupied, only the path is suffixed and the branch is kept (pr-254 at
+<dir>/pr-254-2): suffixing the branch would cut a new one from the base and
+silently drop an existing branch's commits, such as a PR head fetch-pr-head
+just brought in. The path is checked before herdr runs because a failed
+`git worktree add` onto an occupied path still leaves its new branch behind.
+Convergence stays keyed on the branch alone: our marked worktree on the branch
+is reused wherever it sits, and its real path is returned, since git cannot
+check the branch out a second time anyway.
+
+With --workspace, herdr creates from that workspace instead of from --cwd
+<repo> (herdr takes one or the other). The collision checks still run against
+--repo, which defaults to the workspace's repo root. If --repo is also given
+and is a different repo from the workspace's, that is needs-judgment rather
+than checking one repo and creating in another.
+
 Every created worktree is stamped with a marker file so teardown can later
 recognize it as dispatch-created, with no external registry. The marker is
 excluded via the repo's shared .git/info/exclude (not the worktree's own
@@ -191,13 +210,51 @@ def write_marker(path, branch, base):
         json.dump(payload, handle)
 
 
-def next_free_branch(repo, base):
+def path_occupied(repo, path):
+    """Anything on disk at `path`, or a worktree git still has registered there
+    (its directory deleted but not yet pruned)."""
+    if os.path.lexists(path):
+        return True
+    target = os.path.realpath(path)
+    return any(os.path.realpath(entry["path"]) == target for entry in git_worktrees(repo))
+
+
+def next_free(repo, base, path):
+    """The first -N suffix free for the branch and, if given, for the path too,
+    so a suffixed branch lands at a matching suffixed path."""
     suffix = 2
     while True:
         candidate = f"{base}-{suffix}"
-        if not git_branch_exists(repo, candidate) and not worktree_path_for_branch(repo, candidate):
-            return candidate
+        candidate_path = f"{path}-{suffix}" if path else None
+        if (not git_branch_exists(repo, candidate)
+                and not worktree_path_for_branch(repo, candidate)
+                and not (candidate_path and path_occupied(repo, candidate_path))):
+            return candidate, candidate_path
         suffix += 1
+
+
+def next_free_path(repo, path):
+    suffix = 2
+    while path_occupied(repo, f"{path}-{suffix}"):
+        suffix += 1
+    return f"{path}-{suffix}"
+
+
+def workspace_source(workspace_id):
+    """(repo_root, repo_key) for a workspace; repo_key is its git common dir."""
+    result = herdr_json(["worktree", "list", "--workspace", workspace_id])
+    source = result.get("source") if isinstance(result, dict) else None
+    root = source.get("repo_root") if isinstance(source, dict) else None
+    if not root:
+        raise HerdrError(f"workspace {workspace_id} reports no repo root")
+    return root, source.get("repo_key")
+
+
+def git_common_dir(repo):
+    proc = run(["git", "-C", repo, "rev-parse", "--path-format=absolute", "--git-common-dir"])
+    if proc.returncode != 0:
+        raise HerdrError(f"{repo} is not a git repo: {proc.stderr.strip()}")
+    return os.path.realpath(proc.stdout.strip())
 
 
 def workspace_id_for_path(repo, target):
@@ -229,8 +286,11 @@ def shell_pane_id(workspace_id):
     return panes[0].get("pane_id") if panes else None
 
 
-def create_fresh(repo, branch, base, label):
-    args = ["worktree", "create", "--branch", branch, "--no-focus", "--cwd", repo]
+def create_fresh(repo, branch, base, label, workspace, path):
+    args = ["worktree", "create", "--branch", branch, "--no-focus"]
+    args += ["--workspace", workspace] if workspace else ["--cwd", repo]
+    if path:
+        args += ["--path", path]
     if label:
         args += ["--label", label]
     if base:
@@ -254,14 +314,25 @@ def main():
     parser.add_argument("--branch", required=True, help="branch to create or check out")
     parser.add_argument("--base", help="base ref for a new branch")
     parser.add_argument("--label", help="Herdr workspace label")
-    parser.add_argument("--repo", default=os.getcwd(), help="git repo to operate in (default: cwd)")
+    parser.add_argument("--repo",
+                        help="git repo to operate in (default: the --workspace's repo, else cwd)")
+    parser.add_argument("--workspace", help="Herdr workspace to create from, instead of --repo")
+    parser.add_argument("--path", help="explicit worktree path (default: herdr's own placement)")
     args = parser.parse_args()
 
     if os.environ.get("HERDR_ENV") != "1":
         emit_judgment("not running inside a Herdr session (HERDR_ENV != 1)")
 
-    repo = args.repo
+    path = os.path.abspath(args.path) if args.path else None
     try:
+        repo = args.repo or os.getcwd()
+        if args.workspace:
+            ws_root, ws_key = workspace_source(args.workspace)
+            if not args.repo:
+                repo = ws_root
+            elif git_common_dir(repo) != os.path.realpath(ws_key or git_common_dir(ws_root)):
+                emit_judgment(f"--repo {args.repo} is not the repo of workspace {args.workspace} "
+                              f"({ws_root})", repo=args.repo, workspace_repo=ws_root)
         existing = worktree_path_for_branch(repo, args.branch)
         if existing and marker_is_ours(existing):
             workspace_id = workspace_id_for_path(repo, existing)
@@ -275,8 +346,12 @@ def main():
                 "created": False,
             })
 
-        branch = next_free_branch(repo, args.branch) if existing else args.branch
-        emit_success(create_fresh(repo, branch, args.base, args.label))
+        branch = args.branch
+        if existing:
+            branch, path = next_free(repo, args.branch, path)
+        elif path and path_occupied(repo, path):
+            path = next_free_path(repo, path)
+        emit_success(create_fresh(repo, branch, args.base, args.label, args.workspace, path))
     except HerdrError as error:
         emit_error(str(error))
 

@@ -13,7 +13,8 @@ Each record is inspect-worktree-shaped plus `ours` and `stale`:
 
 `stale` is true when the worktree has been idle at least `--stale-after` minutes
 (default 1440 = 24h) and has no live agent. The primary checkout (the entry whose
-path is the repo root) is skipped — it is never a teardown candidate.
+path is the repo root) and a bare repo's own entry (a bare-backed container's
+.bare/) are skipped — neither is ever a teardown candidate.
 
 The per-worktree logic duplicates inspect-worktree on purpose: the primitives are
 flat atoms that don't call each other (see the PRD's Composition and ownership).
@@ -123,7 +124,7 @@ def enumerate_worktrees(repo):
                 nodes = collect_dicts(entry)
                 path = first_value(nodes, "path")
                 workspace_id = first_value(nodes, "open_workspace_id", "workspace_id")
-                if path:
+                if path and not entry.get("is_bare"):
                     out.append((path, workspace_id))
             if out:
                 return out
@@ -132,8 +133,12 @@ def enumerate_worktrees(repo):
     proc = run(["git", "-C", repo, "worktree", "list", "--porcelain"])
     if proc.returncode != 0:
         raise HerdrError(f"git worktree list failed: {proc.stderr.strip()}")
-    return [(line[len("worktree "):], None)
-            for line in proc.stdout.splitlines() if line.startswith("worktree ")]
+    out = []
+    for block in proc.stdout.split("\n\n"):
+        lines = block.splitlines()
+        if lines and lines[0].startswith("worktree ") and "bare" not in lines:
+            out.append((lines[0][len("worktree "):], None))
+    return out
 
 
 def repo_root(repo):
@@ -194,10 +199,12 @@ def ahead_behind(path, marker_base):
         behind, ahead = count_ahead_behind(path, upstream, "HEAD")
         return ahead, behind
     if marker_base:
-        base_ref = f"origin/{marker_base}"
-        if ref_exists(path, base_ref):
-            behind, ahead = count_ahead_behind(path, base_ref, "HEAD")
-            return ahead, behind
+        # A bare branch name (main) means origin/main; a base that already
+        # names a remote-tracking ref (origin/main) is used as given.
+        for base_ref in (f"origin/{marker_base}", f"refs/remotes/{marker_base}"):
+            if ref_exists(path, base_ref):
+                behind, ahead = count_ahead_behind(path, base_ref, "HEAD")
+                return ahead, behind
     return None, None
 
 
