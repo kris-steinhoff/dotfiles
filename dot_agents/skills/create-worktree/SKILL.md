@@ -17,7 +17,7 @@ Requires `HERDR_ENV=1`; it drives the `herdr` CLI. `--repo` is the git repo the 
 
 Two optional flags place a worktree somewhere other than Herdr's default location, such as flat inside a bare-backed container (a directory holding the bare repo in `.bare/` and a `.git` file pointing at it). Without them, behavior is unchanged.
 
-- `--workspace <id>` has Herdr create from that workspace rather than from `--repo`'s directory. A bare-backed container's worktrees are created from the container's own workspace. Passing a `--repo` that is a different repo from the workspace's is refused as needs-judgment, since the script would otherwise check one repo and create in another.
+- `--workspace <id>` has Herdr create from that workspace rather than from `--repo`'s directory. It normally names the repo's **parent workspace**, the one on its primary checkout; for a bare-backed container that is the container's own workspace. Passing a `--repo` that is a different repo from the workspace's is refused as needs-judgment, since the script would otherwise check one repo and create in another.
 - `--path <path>` is where the checkout goes, typically `<container>/<branch>`. A relative path resolves against the current directory.
 
 ## What it does
@@ -37,6 +37,16 @@ With `--path`, the path takes part in both rules:
 - When only the path is occupied, only the path is suffixed: `pr-254` stays `pr-254`, at `<dir>/pr-254-2`. Renaming the branch would cut a new one from the base and drop an existing branch's commits, such as a PR head `fetch-pr-head` just fetched. A re-run then converges on that worktree by its branch.
 - A path is occupied if anything is there, an empty directory included, or if git still has a worktree registered there after its directory was deleted.
 
+### Linked-worktree sources
+
+Herdr creates worktrees only from a parent workspace. It refuses (`linked_worktree_source`) a **linked-worktree workspace**, one on a linked `git worktree` checkout, and also `--repo` or the current directory being a linked checkout. On that refusal the script finds the repo's open parent workspace and creates from it instead, without the caller having to name it. It never guesses where a new branch starts:
+
+- A branch that doesn't exist yet needs an explicit `--base`. Without one, the branch would start from the parent checkout's HEAD rather than the caller's branch, so the script stops with needs-judgment and names the parent workspace. A checkout-relative base (`HEAD`, `@`, `HEAD~1`, `@{u}`) is refused the same way, since it would resolve in the parent checkout.
+- A branch that already exists, such as one `fetch-pr-head` just fetched, starts from nothing, so it needs no `--base`. The marker records whatever base the caller passed, or none.
+- With no parent workspace open for the repo, it stops with needs-judgment.
+
+From a parent workspace or a primary checkout, none of this applies and Herdr is called exactly as before.
+
 ## Output (stdout, JSON)
 
 `{ workspace_id, path, pane_id, branch, created }`
@@ -47,7 +57,7 @@ With `--path`, the path takes part in both rules:
 ## Exit codes
 
 - `0` — success, result on stdout.
-- `2` — needs judgment: not running inside Herdr (`HERDR_ENV != 1`), or `--repo` and `--workspace` name different repos. stdout is `{"status": "needs_judgment", "reason": ...}`.
+- `2` — needs judgment: not running inside Herdr (`HERDR_ENV != 1`), `--repo` and `--workspace` name different repos, or a linked-worktree source it can't resolve (a new branch without an explicit `--base`, or no parent workspace open). stdout is `{"status": "needs_judgment", "reason": ...}`.
 - `1` — real error (git or herdr failed, or malformed herdr JSON). Diagnostics on stderr.
 
 A name collision is never an error; it is resolved by suffixing.

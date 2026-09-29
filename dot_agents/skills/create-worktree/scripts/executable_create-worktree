@@ -32,6 +32,29 @@ With --workspace, herdr creates from that workspace instead of from --cwd
 and is a different repo from the workspace's, that is needs-judgment rather
 than checking one repo and creating in another.
 
+`herdr worktree create` only runs from a repo's parent workspace (the one on
+its primary checkout, or on a bare-backed container). From a linked-worktree
+workspace (one on a linked git worktree checkout), or with --cwd on a linked
+checkout even when no workspace is open for it, herdr refuses with
+linked_worktree_source before touching git. The script lets herdr be the judge
+rather than classifying the source itself, because a workspace's `worktree`
+record can be missing (on parents as well as linked-worktree workspaces), so a
+missing record says nothing either way. On that refusal it finds the repo's
+open parent workspace and retries from it. The parent comes from `herdr
+worktree list`'s source_workspace_id, which does not depend on the record,
+falling back to a scan for a workspace whose record matches the repo_key with
+is_linked_worktree false (herdr reports no source_workspace_id for --cwd on a
+bare-backed container's linked checkout). No open parent is needs-judgment.
+
+The retry never guesses where a new branch starts. Without --base, herdr
+would branch from the parent checkout's HEAD rather than the caller's branch,
+so a new branch needs an explicit --base, and a checkout-relative one (HEAD,
+@, HEAD~1, @{u}) is refused too, since it would resolve in the parent
+checkout. Both are needs-judgment. An existing branch, such as one
+fetch-pr-head brought in, starts from nothing, so it needs no --base; the
+marker records whatever base the caller passed, or none. A parent workspace or
+primary checkout succeeds on the first call, exactly as before.
+
 Every created worktree is stamped with a marker file so teardown can later
 recognize it as dispatch-created, with no external registry. The marker is
 excluded via the repo's shared .git/info/exclude (not the worktree's own
@@ -44,7 +67,8 @@ Requires HERDR_ENV=1: it drives the `herdr` CLI.
 Exit codes (shared across the Herdr dispatch primitives):
   0  success. The JSON result object is printed to stdout.
   2  needs judgment. An expected situation the script cannot resolve
-     mechanically (here: not running inside Herdr). stdout is JSON,
+     mechanically (here: not running inside Herdr, a --repo/--workspace
+     mismatch, or a linked-worktree source it cannot resolve). stdout is JSON,
      {"status": "needs_judgment", "reason": ...} plus any known partial fields.
      The caller's cue to apply judgment or ask.
   1  real error (unexpected failure: subprocess crash, malformed herdr JSON).
@@ -66,7 +90,12 @@ MARKER_TAG = "herdr-dispatch"
 
 
 class HerdrError(Exception):
-    """A herdr/git subprocess failed or returned something unparsable."""
+    """A herdr/git subprocess failed or returned something unparsable. `code`
+    carries herdr's own error code when it reported one."""
+
+    def __init__(self, message, code=None):
+        super().__init__(message)
+        self.code = code
 
 
 def run(argv):
@@ -91,9 +120,14 @@ def emit_error(message):
 def herdr_json(args):
     proc = run(["herdr", *args])
     if proc.returncode != 0:
+        try:
+            code = json.loads(proc.stderr or proc.stdout).get("error", {}).get("code")
+        except (ValueError, AttributeError):
+            code = None
         raise HerdrError(
             f"herdr {' '.join(args)} failed ({proc.returncode}): "
-            f"{proc.stderr.strip() or proc.stdout.strip()}"
+            f"{proc.stderr.strip() or proc.stdout.strip()}",
+            code=code,
         )
     try:
         return json.loads(proc.stdout).get("result", {})
@@ -257,6 +291,61 @@ def git_common_dir(repo):
     return os.path.realpath(proc.stdout.strip())
 
 
+def parent_workspace(workspace, repo):
+    """(workspace_id, label) of the repo's open parent workspace, or None.
+
+    `herdr worktree list` names it as source_workspace_id without relying on the
+    workspace's `worktree` record, so that comes first. It is missing for --cwd
+    on a bare-backed container's linked checkout, where only a scan of the
+    workspace records finds the parent."""
+    scope = ["--workspace", workspace] if workspace else ["--cwd", repo]
+    result = herdr_json(["worktree", "list", *scope])
+    source = result.get("source") if isinstance(result, dict) else None
+    source_id = source.get("source_workspace_id") if isinstance(source, dict) else None
+    if source_id and source_id != workspace:
+        return source_id, None
+    repo_key = git_common_dir(repo)
+    result = herdr_json(["workspace", "list"])
+    workspaces = result.get("workspaces") if isinstance(result, dict) else None
+    for candidate in workspaces or []:
+        info = candidate.get("worktree") or {}
+        if (info.get("repo_key") and info.get("is_linked_worktree") is False
+                and os.path.realpath(info["repo_key"]) == repo_key):
+            return candidate.get("workspace_id"), candidate.get("label")
+    return None
+
+
+def resolve_parent(workspace, repo, branch, base):
+    """The parent workspace to retry from after herdr refused a linked-worktree
+    source, or needs-judgment.
+
+    A new branch needs an explicit, checkout-independent base: with none, herdr
+    branches from the source checkout's HEAD, and a HEAD- or @-relative base
+    resolves there too, and from the parent neither is the caller's branch. An
+    existing branch starts from nothing, so it needs no base."""
+    source = (f"workspace {workspace} is a linked-worktree workspace" if workspace
+              else f"{repo} is a linked worktree checkout")
+    parent = parent_workspace(workspace, repo)
+    parent_id = parent[0] if parent else None
+    named = (f"{parent_id} ({parent[1]})" if parent and parent[1] else parent_id)
+    if not git_branch_exists(repo, branch):
+        where = (f"the parent workspace {named}" if parent
+                 else "the repo's parent workspace, and none is open")
+        if not base:
+            emit_judgment(f"{source}; worktrees are created from {where}. Branch {branch} "
+                          "doesn't exist yet, and without --base it would start from the parent "
+                          "checkout's HEAD, not this checkout's branch, so pass --base "
+                          "explicitly.", parent_workspace=parent_id)
+        if base.startswith(("HEAD", "@")):
+            emit_judgment(f"{source}; worktrees are created from {where}, where --base {base} "
+                          "would resolve against the parent checkout, not this one. Pass an "
+                          "explicit ref or commit.", parent_workspace=parent_id)
+    if not parent:
+        emit_judgment(f"{source}, and no parent workspace is open for its repo "
+                      f"({git_common_dir(repo)}). Open one on the primary checkout, then retry.")
+    return parent_id
+
+
 def workspace_id_for_path(repo, target):
     result = herdr_json(["worktree", "list", "--cwd", repo])
     entries = None
@@ -351,7 +440,14 @@ def main():
             branch, path = next_free(repo, args.branch, path)
         elif path and path_occupied(repo, path):
             path = next_free_path(repo, path)
-        emit_success(create_fresh(repo, branch, args.base, args.label, args.workspace, path))
+        try:
+            result = create_fresh(repo, branch, args.base, args.label, args.workspace, path)
+        except HerdrError as error:
+            if error.code != "linked_worktree_source":
+                raise
+            parent = resolve_parent(args.workspace, repo, branch, args.base)
+            result = create_fresh(repo, branch, args.base, args.label, parent, path)
+        emit_success(result)
     except HerdrError as error:
         emit_error(str(error))
 
