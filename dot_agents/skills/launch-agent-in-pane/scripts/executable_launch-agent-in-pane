@@ -13,10 +13,18 @@ not restart it or re-deliver the seed prompt, which may already be mid-turn.
 A pane occupied by a *different* kind than requested is a needs-judgment case,
 not a silent override.
 
-Otherwise, the agent name starts from a base — the persona when `--persona` is
-given (so the pane label reads as its job, e.g. `reviewer`), else the kind (e.g.
-`claude`) — and auto-suffixes (-2, -3, ...) past any live agent already holding
+Otherwise, the agent name starts from a base — `--name` when given, else the
+persona when `--persona` is given (so the pane label reads as its job, e.g.
+`reviewer`), else the kind (e.g. `claude`) — and auto-suffixes (-2, -3, ...) past any live agent already holding
 that name, keeping it inside Herdr's [a-z][a-z0-9_-]{0,31} rule.
+
+With `--name`, the final suffixed name is also handed to the agent itself where
+its kind has a session-name flag (the NAME_FLAGS table: `claude -n <name>`), so
+one name serves as both the Herdr agent name and the agent's own session name —
+for claude, its ListAgents/SendMessage address. The name is resolved before the
+launch, so two launches with the same `--name` stay distinct in both systems.
+Herdr binds the name at `agent start`, and keeps it even when startup returns
+`agent_not_ready` (e.g. a trust prompt), so no rename after startup is needed.
 
 A `--persona` launches a persona rather than a bare harness: `claude --agent
 <name>` / `codex --profile <name>`. Only those two kinds support personas (the
@@ -46,6 +54,7 @@ prompts and names cannot inject.
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -65,6 +74,16 @@ PERSONA_FLAGS = {
     "claude": "--agent",
     "codex": "--profile",
 }
+
+# Turn the resolved agent name into the agent CLI's own session-name flag, so the
+# one name also names the session inside the agent. Only applied with --name;
+# kinds absent here just get the Herdr name.
+NAME_FLAGS = {
+    "claude": "-n",
+}
+
+# Herdr's agent-name rule.
+AGENT_NAME = re.compile(r"[a-z][a-z0-9_-]{0,31}")
 
 
 class HerdrError(Exception):
@@ -171,6 +190,12 @@ def persona_args(kind, name):
     return [PERSONA_FLAGS[kind], name]
 
 
+def name_args(kind, name):
+    if not name or kind not in NAME_FLAGS:
+        return []
+    return [NAME_FLAGS[kind], name]
+
+
 def compose_prompt(seed_prompt, report_to_pane):
     parts = []
     if seed_prompt:
@@ -189,6 +214,7 @@ def main():
     parser.add_argument("--kind", required=True, choices=KINDS, help="agent kind")
     parser.add_argument("--model", help="model hint, e.g. opus")
     parser.add_argument("--persona", help="persona to launch, e.g. reviewer (claude/codex only)")
+    parser.add_argument("--name", help="agent name base, e.g. nxc-162 (claude: also its session name)")
     parser.add_argument("--seed-prompt", help="prompt to deliver after launch")
     parser.add_argument("--report-to-pane", help="pane the launched agent should report back to")
     args = parser.parse_args()
@@ -201,6 +227,13 @@ def main():
             f"kind {args.kind} does not support personas; only "
             f"{', '.join(sorted(PERSONA_FLAGS))} do",
             kind=args.kind, persona=args.persona, pane_id=args.pane_id,
+        )
+
+    if args.name and not AGENT_NAME.fullmatch(args.name):
+        emit_judgment(
+            f"name {args.name!r} does not match Herdr's agent-name rule "
+            "[a-z][a-z0-9_-]{0,31}",
+            name=args.name, pane_id=args.pane_id,
         )
 
     try:
@@ -220,9 +253,11 @@ def main():
                 "pane_id": args.pane_id,
             })
 
-        name = unique_agent_name(args.persona or args.kind)
+        name = unique_agent_name(args.name or args.persona or args.kind)
         start = ["agent", "start", name, "--kind", args.kind, "--pane", args.pane_id]
         extra = model_args(args.kind, args.model) + persona_args(args.kind, args.persona)
+        if args.name:
+            extra += name_args(args.kind, name)
         if extra:
             start += ["--", *extra]
         herdr_json(start)
