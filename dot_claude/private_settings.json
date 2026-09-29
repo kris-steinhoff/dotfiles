@@ -75,7 +75,11 @@
         "~/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock"
       ],
       "allowWrite": [
-        "~/.cache/uv"
+        "~/.cache/uv",
+        "~/Library/Developer/Xcode/DerivedData",
+        "~/Library/Developer/CoreSimulator",
+        "~/Library/Caches/org.swift.swiftpm",
+        "~/Library/org.swift.swiftpm"
       ],
       "denyRead": [
         "~/.ssh/agent",
@@ -90,6 +94,9 @@
     },
     "network": {
       "allowLocalBinding": true,
+      "allowMachLookup": [
+        "com.apple.CoreSimulator.CoreSimulatorService"
+      ],
       "allowUnixSockets": [
         "~/.config/herdr/herdr.sock",
         "~/.config/herdr/herdr-client.sock",
