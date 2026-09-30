@@ -76,6 +76,8 @@
       ],
       "allowWrite": [
         "~/.cache/uv",
+        "~/.local/share/uv/tools",
+        "~/.npm/_cacache",
         "~/Library/Developer/Xcode/DerivedData",
         "~/Library/Developer/CoreSimulator",
         "~/Library/Caches/org.swift.swiftpm",
