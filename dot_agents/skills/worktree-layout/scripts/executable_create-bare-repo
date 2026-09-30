@@ -1,0 +1,304 @@
+#!/usr/bin/env python3
+"""Create a bare-backed repo directory and open it as a Herdr parent workspace.
+
+The layout's setup script. The directory holds the bare repo in .bare/ and a one-line
+.git file ("gitdir: ./.bare") that makes the directory act as the repo's root, so
+git commands and `git worktree add` work from it though it has no working tree
+of its own. Worktrees then sit flat inside it.
+
+  1. Clone bare from --from (a local checkout or bare repo, which hardlinks
+     objects, so it is fast and cheap) or from a URL, into <path>/.bare.
+  2. Write <path>/.git.
+  3. Point origin at --origin, default the source's own origin URL (or the URL
+     itself when cloning from one).
+  4. Add the fetch refspec a bare clone lacks and fetch, so origin/* exists.
+  5. Take the default branch from origin's HEAD, falling back to the clone's
+     own, point the bare repo's HEAD at it, and move it to origin's tip.
+  6. On the first build only, delete every other local branch. A bare clone
+     copies the source's local branches in as its own, and they still exist in
+     the source.
+  7. Leave the default branch with no upstream. Nothing moves a bare repo's
+     default branch forward, so with an upstream Herdr shows it falling behind
+     every time origin moves.
+  8. Set branch defaults (branch.autoSetupMerge=simple, push.autoSetupRemote=true,
+     push.default=upstream), so a branch cut from origin/<default> doesn't track
+     it and a bare `git push` never aims at the default branch.
+  9. Open the directory as a Herdr parent workspace with --label, unless
+     --no-workspace or not inside Herdr.
+
+Re-running converges, and finishes a build that failed partway. Steps 2-4, 7,
+and 8 are safe to repeat and always run, so a re-run with a corrected --origin
+takes effect. Step 5 runs only while the build is unfinished, so a HEAD
+repointed later on purpose is left alone. Step 6 runs only on a clone this
+script made, tracked in the bare repo's config as create-bare-repo.state
+(cloned, then done), so a re-run never deletes branches in an established repo
+and a bare repo made some other way is never pruned. An open workspace on
+<path> is reused. A <path> that exists with anything else in it, or whose .git
+is not our pointer, is needs-judgment.
+
+Claude Code's sandbox deletes a .git that appears in the session's own working
+directory, so run this from outside <path> (for example the parent directory).
+When <path> is the current directory the result carries pointer_at_cwd=true: the
+session has to restart before the pointer sticks.
+
+Exit codes (shared across the dispatch primitives):
+  0  success. The JSON result object is printed to stdout.
+  2  needs judgment: <path> is occupied by something else or is a file, its
+     .git is not our pointer, or --from is not a git repo. stdout is {"status": "needs_judgment", "reason": ...}.
+  1  real error (a git or herdr failure). Diagnostics on stderr.
+
+All subprocesses are invoked as argv lists, never a shell string.
+"""
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+
+POINTER = "gitdir: ./.bare\n"
+STATE_KEY = "create-bare-repo.state"
+
+
+class Failure(Exception):
+    pass
+
+
+def run(argv, cwd=None):
+    return subprocess.run(argv, capture_output=True, text=True, cwd=cwd)
+
+
+def emit_success(obj):
+    print(json.dumps(obj))
+    sys.exit(0)
+
+
+def emit_judgment(reason, **partial):
+    print(json.dumps({"status": "needs_judgment", "reason": reason, **partial}))
+    sys.exit(2)
+
+
+def emit_error(message):
+    print(f"create-bare-repo: {message}", file=sys.stderr)
+    sys.exit(1)
+
+
+def git(bare, *args):
+    proc = run(["git", "--git-dir", bare, *args])
+    if proc.returncode != 0:
+        raise Failure(f"git {' '.join(args)}: {proc.stderr.strip()}")
+    return proc.stdout.strip()
+
+
+def git_ok(bare, *args):
+    return run(["git", "--git-dir", bare, *args]).returncode == 0
+
+
+def config_get(bare, key):
+    proc = run(["git", "--git-dir", bare, "config", "--get", key])
+    return proc.stdout.strip() if proc.returncode == 0 else None
+
+
+def is_bare_repo(path):
+    proc = run(["git", "--git-dir", path, "rev-parse", "--is-bare-repository"])
+    return proc.returncode == 0 and proc.stdout.strip() == "true"
+
+
+def is_url(source):
+    """A URL (scheme://...) or scp-style address (user@host:path). Anything else
+    is a local path, so a mistyped one is reported rather than sent to ssh."""
+    return "://" in source or re.match(r"^[\w.-]+@[\w.-]+:", source) is not None
+
+
+def remote_url(repo):
+    proc = run(["git", "-C", repo, "remote", "get-url", "origin"])
+    return proc.stdout.strip() if proc.returncode == 0 else None
+
+
+def herdr_json(args):
+    proc = run(["herdr", *args])
+    if proc.returncode != 0:
+        raise Failure(f"herdr {' '.join(args)}: {proc.stderr.strip() or proc.stdout.strip()}")
+    try:
+        data = json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        raise Failure(f"herdr {' '.join(args)} returned non-JSON: {proc.stdout[:200]}")
+    return data.get("result", data) if isinstance(data, dict) else data
+
+
+def dicts(obj):
+    if isinstance(obj, dict):
+        yield obj
+        for value in obj.values():
+            yield from dicts(value)
+    elif isinstance(obj, list):
+        for value in obj:
+            yield from dicts(value)
+
+
+def open_workspace(path):
+    """The workspace already open on `path`, or None.
+
+    A workspace just opened on a bare-backed directory carries no repo metadata
+    until its first worktree action, so `herdr worktree list --cwd` (which names
+    the source workspace) comes first, and the metadata scan second."""
+    target = os.path.realpath(path)
+    source = herdr_json(["worktree", "list", "--cwd", path]).get("source") or {}
+    if (source.get("source_workspace_id") and source.get("source_checkout_path")
+            and os.path.realpath(source["source_checkout_path"]) == target):
+        return source["source_workspace_id"]
+    for workspace in herdr_json(["workspace", "list"]).get("workspaces", []):
+        info = workspace.get("worktree") or {}
+        if (info.get("checkout_path") and info.get("is_linked_worktree") is False
+                and os.path.realpath(info["checkout_path"]) == target):
+            return workspace["workspace_id"]
+    return None
+
+
+def shell_pane(workspace_id):
+    panes = [node for node in dicts(herdr_json(["pane", "list", "--workspace", workspace_id]))
+             if node.get("pane_id")]
+    for pane in panes:
+        if not pane.get("agent"):
+            return pane["pane_id"]
+    return panes[0]["pane_id"] if panes else None
+
+
+def ensure_workspace(path, label):
+    workspace_id = open_workspace(path)
+    if not workspace_id:
+        args = ["workspace", "create", "--cwd", path, "--no-focus"]
+        if label:
+            args += ["--label", label]
+        created = [node["workspace_id"] for node in dicts(herdr_json(args)) if node.get("workspace_id")]
+        if not created:
+            raise Failure("workspace create returned no workspace id")
+        workspace_id = created[0]
+    return workspace_id, shell_pane(workspace_id)
+
+
+def origin_default(bare):
+    """The default branch origin advertises, or None."""
+    proc = run(["git", "--git-dir", bare, "ls-remote", "--symref", "origin", "HEAD"])
+    match = re.search(r"^ref: refs/heads/(\S+)\tHEAD$", proc.stdout, re.MULTILINE)
+    return match.group(1) if match else None
+
+
+def configure(bare, origin):
+    """The steps that are safe to repeat: origin, refspec, fetch, branch defaults."""
+    if origin:
+        git(bare, "remote", "set-url", "origin", origin)
+    refspec = "+refs/heads/*:refs/remotes/origin/*"
+    existing = run(["git", "--git-dir", bare, "config", "--get-all", "remote.origin.fetch"]).stdout.split()
+    if refspec not in existing:
+        git(bare, "config", "--add", "remote.origin.fetch", refspec)
+    git(bare, "fetch", "--prune", "origin")
+    git(bare, "config", "branch.autoSetupMerge", "simple")
+    git(bare, "config", "push.autoSetupRemote", "true")
+    git(bare, "config", "push.default", "upstream")
+
+
+def settle_default(bare):
+    """Point HEAD at origin's default branch, moved to origin's tip."""
+    default = origin_default(bare) or git(bare, "symbolic-ref", "--short", "HEAD")
+    if git_ok(bare, "rev-parse", "--verify", "--quiet", f"refs/remotes/origin/{default}"):
+        git(bare, "update-ref", f"refs/heads/{default}", f"refs/remotes/origin/{default}")
+    git(bare, "symbolic-ref", "HEAD", f"refs/heads/{default}")
+    return default
+
+
+def prune(bare, default):
+    for branch in git(bare, "for-each-ref", "--format=%(refname:short)", "refs/heads").splitlines():
+        if branch != default:
+            git(bare, "branch", "-D", branch)
+
+
+def unset_upstream(bare, default):
+    for key in (f"branch.{default}.remote", f"branch.{default}.merge"):
+        run(["git", "--git-dir", bare, "config", "--unset", key])
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Create a bare-backed repo directory.")
+    parser.add_argument("--path", required=True, help="the directory to create (holds .bare/ and .git)")
+    parser.add_argument("--from", dest="source", required=True,
+                        help="what to clone: a local checkout or bare repo (hardlinked), or a URL")
+    parser.add_argument("--origin", help="origin URL (default: the source's origin, or the URL cloned)")
+    parser.add_argument("--label", help="Herdr workspace label")
+    parser.add_argument("--no-workspace", action="store_true", help="don't open a Herdr workspace")
+    args = parser.parse_args()
+
+    path = os.path.abspath(args.path)
+    bare = os.path.join(path, ".bare")
+    pointer = os.path.join(path, ".git")
+    source = args.source if is_url(args.source) else os.path.abspath(args.source)
+
+    try:
+        if os.path.lexists(path) and not os.path.isdir(path):
+            emit_judgment(f"{path} exists and is not a directory", path=path)
+        if os.path.lexists(pointer):
+            content = open(pointer, encoding="utf-8").read() if os.path.isfile(pointer) else None
+            if content is None or content.strip() != POINTER.strip():
+                emit_judgment(f"{pointer} exists and is not a pointer to ./.bare; this is not a "
+                              "bare-backed repo directory", path=path)
+
+        created = False
+        origin = args.origin
+        if not is_bare_repo(bare):
+            if os.path.lexists(path) and os.listdir(path):
+                emit_judgment(f"{path} already exists and is not a bare-backed repo directory; "
+                              "pick another path or clear it first", path=path)
+            if not is_url(source) and run(["git", "-C", source, "rev-parse", "--git-dir"]).returncode != 0:
+                emit_judgment(f"--from {source} is not a git repo (a remote needs a scheme:// "
+                              "or user@host: URL)")
+            proc = run(["git", "clone", "--bare", source, bare])
+            if proc.returncode != 0:
+                raise Failure(f"git clone --bare {source}: {proc.stderr.strip()}")
+            # Repoint origin before recording the resumable state, so a run that
+            # dies later never leaves a `cloned` repo whose origin is the local
+            # source, whose checked-out branch would then pass for the default.
+            if origin is None:
+                origin = source if is_url(source) else remote_url(source)
+            if origin:
+                git(bare, "remote", "set-url", "origin", origin)
+            git(bare, "config", STATE_KEY, "cloned")
+            created = True
+
+        if not os.path.exists(pointer):
+            try:
+                with open(pointer, "w", encoding="utf-8") as handle:
+                    handle.write(POINTER)
+            except OSError as error:
+                raise Failure(f"writing {pointer}: {error}")
+
+        configure(bare, origin)
+        state = config_get(bare, STATE_KEY)
+        if state == "cloned":
+            default = settle_default(bare)
+            prune(bare, default)
+            git(bare, "config", STATE_KEY, "done")
+        else:
+            # Finished, or made some other way: leave its branches and HEAD alone.
+            default = origin_default(bare) or git(bare, "symbolic-ref", "--short", "HEAD")
+        unset_upstream(bare, default)
+
+        workspace_id = pane_id = None
+        if not args.no_workspace and os.environ.get("HERDR_ENV") == "1":
+            workspace_id, pane_id = ensure_workspace(path, args.label)
+
+        emit_success({
+            "path": path,
+            "default_branch": default,
+            "origin": remote_url(path),
+            "workspace_id": workspace_id,
+            "pane_id": pane_id,
+            "created": created,
+            "pointer_at_cwd": os.path.realpath(path) == os.path.realpath(os.getcwd()),
+        })
+    except Failure as error:
+        emit_error(str(error))
+
+
+if __name__ == "__main__":
+    main()
