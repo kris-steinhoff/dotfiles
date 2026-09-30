@@ -11,12 +11,14 @@ The input is a review in this shape: a recommendation block (Approve or Request 
 
 ## Posting
 
-Post through `scripts/post_review.py`, which lands the summary body and its inline comments as a single reviews-API call:
+Post through `scripts/post_review.py`, which lands the summary body and its inline comments as a single reviews-API call. The script lives in this skill's own directory (the base directory the harness reports when the skill loads), not in the repository under review, so run it by that full path from wherever you are:
 
 ```bash
-scripts/post_review.py --dry-run review.json
-scripts/post_review.py review.json
+<skill-dir>/scripts/post_review.py --dry-run review.json
+<skill-dir>/scripts/post_review.py review.json
 ```
+
+If the script cannot be found or will not run, stop and report that to the caller. Do not rebuild the post by hand with `gh pr review`, `gh pr comment`, or raw `gh api` calls: that path skips the dry-run, drops the header, and lands findings as loose PR comments instead of inline comments in one review, which is the failure this script exists to prevent.
 
 Build one review JSON: `{pr, event, body, comments: [{path, line, body}], thread_replies: [{in_reply_to, body}], header}`.
 
