@@ -28,6 +28,10 @@
           "model": {
             "enabled": true
           },
+          "agent": {
+            "enabled": true,
+            "showLabel": false
+          },
           "context": {
             "enabled": true,
             "displayStyle": "text",
@@ -79,10 +83,6 @@
           "env": {
             "enabled": false,
             "variable": ""
-          },
-          "agent": {
-            "enabled": false,
-            "showLabel": false
           },
           "thinking": {
             "enabled": false,
