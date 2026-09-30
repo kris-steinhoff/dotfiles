@@ -22,7 +22,17 @@ vim.g.maplocalleader = "\\"
 vim.opt.showcmd = true
 vim.opt.showmode = false
 vim.opt.incsearch = true
-vim.opt.hlsearch = true
+-- Highlight every match only while a / or ? search is being typed; once it is
+-- accepted or cancelled the highlights go, so they don't linger over the text.
+vim.opt.hlsearch = false
+vim.api.nvim_create_autocmd("CmdlineEnter", {
+  pattern = { "/", "\\?" },
+  callback = function() vim.opt.hlsearch = true end,
+})
+vim.api.nvim_create_autocmd("CmdlineLeave", {
+  pattern = { "/", "\\?" },
+  callback = function() vim.opt.hlsearch = false end,
+})
 vim.opt.wrap = true
 vim.opt.linebreak = true
 vim.opt.tabstop = 4
