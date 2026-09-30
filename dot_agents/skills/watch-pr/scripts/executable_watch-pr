@@ -1,0 +1,410 @@
+#!/usr/bin/env python3
+"""Block until a GitHub pull request reaches the state being waited for.
+
+A PR primitive. It polls one PR and exits once, when the watched event happens,
+so an agent can run it in the background and be woken by its exit instead of
+checking back on a timer. It prints one JSON line on exit and nothing before, so
+an empty output means the watch is still running.
+
+  --until ci      the checks on one commit (the PR head at start, or --sha)
+                  have all finished. Outcome pass, fail, none (no checks
+                  appeared within --checks-grace), or superseded (the head moved
+                  off the watched commit).
+  --until review  someone other than me has reviewed or commented more recently
+                  than my own latest review or comment on the PR. Outcome
+                  activity. With --since, the baseline is that fixed time.
+  --until push    the PR head moved off the watched commit. Outcome pushed.
+  --until closed  the PR merged or closed. Outcome merged or closed.
+
+A --sha that is already in the PR's history but isn't its head has been moved
+off. One the PR doesn't contain yet may be a push GitHub hasn't shown, so the
+head counts as moved off it only once seen there, or after HEAD_SYNC_GRACE.
+
+Any watch also ends early if the PR merges or closes (outcome merged or closed),
+and every watch ends at --timeout (outcome timeout).
+
+The review rule is what makes the watch safe to re-arm. Agents post as my
+account, so their own replies (which GitHub records as reviews) raise the
+baseline instead of tripping the watch, and a review that arrived while nothing
+was watching still counts as unanswered. "Me" is the authenticated gh user.
+Bots are ignored unless --include-bots is passed.
+
+CI needs two consecutive polls with every check finished before it reports, so a
+check suite that starts after the first one finishes is not missed. --fail-fast
+reports on the first failed check instead.
+
+A failed gh call is retried and never read as the event happening. Only a run of
+consecutive failures longer than --max-failures ends the watch, as an error.
+
+Exit codes (shared with the other primitives):
+  0  success, including timeout. The JSON result is printed to stdout.
+  2  needs judgment: no GitHub repo resolved from --repo, the PR does not
+     exist, gh is not authenticated, or --sha or --since can't be read. stdout
+     is {"status": "needs_judgment", "reason": ...}.
+  1  real error (repeated gh failures, malformed output). Diagnostics on stderr.
+
+All subprocesses are invoked as argv lists, never a shell string.
+"""
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
+
+QUERY = """
+query($owner: String!, $repo: String!, $number: Int!, $sha: GitObjectID!) {
+  viewer { login }
+  repository(owner: $owner, name: $repo) {
+    object(oid: $sha) {
+      ... on Commit {
+        statusCheckRollup {
+          contexts(first: 100) {
+            nodes {
+              __typename
+              ... on CheckRun { name status conclusion detailsUrl }
+              ... on StatusContext { context state targetUrl }
+            }
+          }
+        }
+      }
+    }
+    pullRequest(number: $number) {
+      url
+      state
+      isDraft
+      mergeable
+      reviewDecision
+      headRefOid
+      createdAt
+      commits(last: 100) { nodes { commit { oid } } }
+      reviews(last: 100) {
+        nodes { author { __typename login } state submittedAt url }
+      }
+      comments(last: 100) {
+        nodes { author { __typename login } createdAt url }
+      }
+      reviewThreads(last: 100) {
+        nodes {
+          comments(last: 100) {
+            nodes { author { __typename login } createdAt url pullRequestReview { state } }
+          }
+        }
+      }
+    }
+  }
+}
+"""
+
+# Placeholder oid for the first poll, before the head is known. An unknown oid
+# resolves to a null object rather than an error.
+NULL_SHA = "0" * 40
+
+FAILED_CONCLUSIONS = {
+    "FAILURE",
+    "TIMED_OUT",
+    "CANCELLED",
+    "ACTION_REQUIRED",
+    "STARTUP_FAILURE",
+}
+FAILED_STATES = {"FAILURE", "ERROR"}
+PENDING_STATES = {"PENDING", "EXPECTED"}
+
+NO_REPO_MARKERS = (
+    "not a git repository",
+    "no git remotes found",
+    "could not determine",
+    "none of the git remotes",
+    "could not resolve to a repository",
+)
+
+# gh reports these when it has no working credentials; retrying won't help.
+AUTH_MARKERS = ("gh auth login", "bad credentials", "http 401", "authentication required")
+
+# How long a --sha may run ahead of the PR head GitHub reports before the head
+# counts as having moved off it. A push takes a few seconds to show up.
+HEAD_SYNC_GRACE = 120
+
+
+def emit_success(obj):
+    print(json.dumps(obj))
+    sys.exit(0)
+
+
+def emit_judgment(reason):
+    print(json.dumps({"status": "needs_judgment", "reason": reason}))
+    sys.exit(2)
+
+
+def emit_error(message):
+    print(f"watch-pr: {message}", file=sys.stderr)
+    sys.exit(1)
+
+
+class Transient(Exception):
+    """A gh failure worth retrying: network, rate limit, or a server error."""
+
+
+def poll(repo, number, sha):
+    """One GraphQL read of the PR and the watched commit's checks."""
+    proc = subprocess.run(
+        [
+            "gh", "api", "graphql",
+            "-f", f"query={QUERY}",
+            "-F", "owner={owner}",
+            "-F", "repo={repo}",
+            "-F", f"number={number}",
+            "-f", f"sha={sha}",
+        ],
+        capture_output=True,
+        text=True,
+        cwd=repo,
+    )
+    if proc.returncode != 0:
+        stderr = proc.stderr.strip()
+        if any(marker in stderr.lower() for marker in NO_REPO_MARKERS):
+            emit_judgment(f"no GitHub repo resolved from {repo!r}: {stderr}")
+        if any(marker in stderr.lower() for marker in AUTH_MARKERS):
+            emit_judgment(f"gh is not authenticated: {stderr}")
+        if "could not resolve to a pullrequest" in stderr.lower():
+            emit_judgment(f"PR #{number} not found: {stderr}")
+        raise Transient(stderr or f"gh exited {proc.returncode}")
+    try:
+        data = json.loads(proc.stdout)["data"]
+    except (json.JSONDecodeError, KeyError, TypeError):
+        raise Transient(f"gh returned unexpected output: {proc.stdout[:200]}")
+    if data["repository"]["pullRequest"] is None:
+        emit_judgment(f"PR #{number} not found")
+    return data
+
+
+def normalize_since(value):
+    """--since as a UTC timestamp in GitHub's format, so it compares as a string.
+    Accepts `now` and any ISO 8601 time; one without an offset is taken as UTC."""
+    if value is None:
+        return None
+    if value == "now":
+        moment = datetime.now(timezone.utc)
+    else:
+        try:
+            moment = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            emit_judgment(f"--since {value!r} is not an ISO 8601 time or `now`")
+        if moment.tzinfo is None:
+            moment = moment.replace(tzinfo=timezone.utc)
+    return moment.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def resolve_sha(repo, value):
+    """--sha as a full 40-character oid; GitHub rejects abbreviations. A short
+    one is resolved through the local clone."""
+    if value is None or re.fullmatch(r"[0-9a-f]{40}", value):
+        return value
+    proc = subprocess.run(["git", "-C", repo, "rev-parse", "--verify", "--quiet", f"{value}^{{commit}}"],
+                          capture_output=True, text=True)
+    if proc.returncode != 0:
+        emit_judgment(f"--sha {value!r} is not a full commit oid and doesn't resolve in {repo!r}")
+    return proc.stdout.strip()
+
+
+def is_bot(author):
+    return author is None or author["__typename"] == "Bot" or author["login"].endswith("[bot]")
+
+
+def activity(pr):
+    """Every review and comment on the PR as (author, at, kind, state, url)."""
+    for review in pr["reviews"]["nodes"]:
+        if review["submittedAt"]:
+            yield review["author"], review["submittedAt"], "review", review["state"], review["url"]
+    for comment in pr["comments"]["nodes"]:
+        yield comment["author"], comment["createdAt"], "comment", None, comment["url"]
+    for thread in pr["reviewThreads"]["nodes"]:
+        for comment in thread["comments"]["nodes"]:
+            if (comment.get("pullRequestReview") or {}).get("state") == "PENDING":
+                continue  # my own unsubmitted draft, visible only to me
+            yield comment["author"], comment["createdAt"], "thread_comment", None, comment["url"]
+
+
+def unanswered(pr, login, since, include_bots):
+    """Others' reviews and comments newer than the baseline, oldest first.
+
+    The baseline is --since when given, else my latest review or comment on the
+    PR, else the PR's creation. GitHub timestamps are ISO 8601 in UTC, so they
+    compare correctly as strings."""
+    items = list(activity(pr))
+    if since is None:
+        mine = [at for author, at, *_ in items if author and author["login"] == login]
+        since = max(mine, default=pr["createdAt"])
+    found = [
+        {"author": author["login"] if author else None, "at": at, "kind": kind, "state": state, "url": url}
+        for author, at, kind, state, url in items
+        if at > since
+        and not (author and author["login"] == login)
+        and (include_bots or not is_bot(author))
+    ]
+    return since, sorted(found, key=lambda item: item["at"])
+
+
+def checks(data):
+    """The watched commit's checks as (name, bucket), bucket pass/fail/pending."""
+    commit = data["repository"]["object"]
+    rollup = commit and commit.get("statusCheckRollup")
+    if not rollup:
+        return []
+    result = []
+    for node in rollup["contexts"]["nodes"]:
+        if node["__typename"] == "CheckRun":
+            if node["status"] != "COMPLETED":
+                bucket = "pending"
+            elif node["conclusion"] in FAILED_CONCLUSIONS:
+                bucket = "fail"
+            else:
+                bucket = "pass"
+            result.append((node["name"], bucket))
+        else:
+            if node["state"] in PENDING_STATES:
+                bucket = "pending"
+            elif node["state"] in FAILED_STATES:
+                bucket = "fail"
+            else:
+                bucket = "pass"
+            result.append((node["context"], bucket))
+    return result
+
+
+def snapshot(pr):
+    return {
+        "state": pr["state"],
+        "is_draft": pr["isDraft"],
+        "mergeable": pr["mergeable"],
+        "review_decision": pr["reviewDecision"],
+        "head_sha": pr["headRefOid"],
+    }
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Block until a pull request reaches a state.")
+    parser.add_argument("number", type=int, help="the PR number")
+    parser.add_argument("--until", required=True, choices=["ci", "review", "push", "closed"])
+    parser.add_argument("--repo", default=".", help="git repo gh detects the GitHub repo from (default: cwd)")
+    parser.add_argument("--sha", help="for ci and push: the commit to watch (default: the PR head at start)")
+    parser.add_argument("--since", help="for review: a fixed baseline, `now` or ISO 8601, instead of my latest activity")
+    parser.add_argument("--include-bots", action="store_true", help="for review: count bot reviews and comments")
+    parser.add_argument("--fail-fast", action="store_true", help="for ci: report on the first failed check")
+    parser.add_argument("--interval", type=int, default=60, help="seconds between polls (default: 60)")
+    parser.add_argument("--checks-grace", type=int, default=600,
+                        help="for ci: seconds to wait for any check to appear (default: 600)")
+    parser.add_argument("--timeout", type=int, default=43200, help="seconds before giving up (default: 43200)")
+    parser.add_argument("--max-failures", type=int, default=10,
+                        help="consecutive failed polls before erroring out (default: 10)")
+    args = parser.parse_args()
+
+    repo = os.path.abspath(args.repo)
+    number = args.number
+    started = time.time()  # wall clock: monotonic time stops while a laptop sleeps
+    failures = 0
+    sha = resolve_sha(repo, args.sha)
+    since = normalize_since(args.since)
+    head_synced = args.sha is None  # the head has been seen at the watched commit
+    settled = False  # ci: the previous poll also saw every check finished
+
+    def result(outcome, summary, pr, **extra):
+        emit_success({
+            "pr": number,
+            "url": pr["url"],
+            "until": args.until,
+            "outcome": outcome,
+            "summary": summary,
+            "pr_state": snapshot(pr),
+            **extra,
+        })
+
+    while True:
+        try:
+            data = poll(repo, number, sha or NULL_SHA)
+            failures = 0
+        except Transient as exc:
+            failures += 1
+            if failures > args.max_failures:
+                emit_error(f"{failures} consecutive failed polls; last: {exc}")
+            if time.time() - started >= args.timeout:
+                emit_error(f"timed out after {args.timeout}s while polls were failing; last: {exc}")
+            time.sleep(min(args.interval, 15 * failures))
+            continue
+
+        pr = data["repository"]["pullRequest"]
+        login = data["viewer"]["login"]
+        if sha is None:
+            # First poll: fix the watched commit, then read its checks.
+            sha = pr["headRefOid"]
+            continue
+
+        if pr["state"] != "OPEN" and args.until != "closed":
+            outcome = pr["state"].lower()
+            result(outcome, f"#{number} {outcome} while waiting for {args.until}", pr)
+
+        if args.until == "closed" and pr["state"] != "OPEN":
+            outcome = pr["state"].lower()
+            result(outcome, f"#{number} {outcome}", pr)
+
+        # A --sha already in the PR's history has been moved off. One it doesn't
+        # contain may be a push GitHub hasn't shown yet, so the head only counts
+        # as moved off it once seen there, or once HEAD_SYNC_GRACE has passed.
+        history = {node["commit"]["oid"] for node in pr["commits"]["nodes"]}
+        if pr["headRefOid"] == sha or sha in history:
+            head_synced = True
+        moved = pr["headRefOid"] != sha and (head_synced or time.time() - started >= HEAD_SYNC_GRACE)
+
+        if args.until == "push" and moved:
+            result("pushed", f"#{number} head moved {sha[:8]} -> {pr['headRefOid'][:8]}", pr,
+                   sha=sha, new_sha=pr["headRefOid"])
+
+        progress = {}
+        if args.until == "review":
+            baseline, found = unanswered(pr, login, since, args.include_bots)
+            if found:
+                who = ", ".join(sorted({item["author"] or "unknown" for item in found}))
+                result("activity", f"#{number}: {len(found)} new from {who} since {baseline}", pr,
+                       since=baseline, items=found)
+            progress = {"since": baseline}
+
+        if args.until == "ci":
+            if moved:
+                result("superseded", f"#{number} head moved off {sha[:8]} before its checks finished", pr,
+                       sha=sha, new_sha=pr["headRefOid"])
+            runs = checks(data)
+            failed = sorted(name for name, bucket in runs if bucket == "fail")
+            pending = sorted(name for name, bucket in runs if bucket == "pending")
+            elapsed = time.time() - started
+            progress = {"sha": sha, "failed": failed, "pending": pending, "total": len(runs)}
+            if not runs:
+                if elapsed >= args.checks_grace:
+                    result("none", f"#{number}: no checks appeared on {sha[:8]} within {args.checks_grace}s", pr,
+                           sha=sha, failed=[], pending=[], total=0)
+            elif failed and args.fail_fast:
+                result("fail", f"#{number}: {len(failed)} failed on {sha[:8]}: {', '.join(failed)}", pr,
+                       sha=sha, failed=failed, pending=pending, total=len(runs))
+            elif not pending:
+                if settled:
+                    outcome = "fail" if failed else "pass"
+                    detail = f"{len(failed)} failed: {', '.join(failed)}" if failed else f"all {len(runs)} passed"
+                    result(outcome, f"#{number} checks on {sha[:8]}: {detail}", pr,
+                           sha=sha, failed=failed, pending=[], total=len(runs))
+                settled = True
+            else:
+                settled = False
+
+        if time.time() - started >= args.timeout:
+            result("timeout", f"#{number}: no {args.until} event within {args.timeout}s", pr, **progress)
+
+        time.sleep(args.interval)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (KeyError, TypeError) as exc:
+        emit_error(f"unexpected response shape: {exc!r}")
