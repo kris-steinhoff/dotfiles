@@ -20,12 +20,8 @@ This applies wherever you produce prose for people: chat responses, documents, c
 
 When you need the user to decide something, ask one decision at a time, as multiple choice, with the option you recommend listed first and marked. Give each question enough plain-language context to answer on its own: what is being decided, why it matters, and what each option costs. Define any term or acronym the user may not know, and don't count on them remembering earlier turns. Use the harness's structured question tool when it has one (AskUserQuestion in Claude Code); otherwise number the options in plain text. A list of quick, independent rulings, where no answer shapes the next, can be batched instead.
 
-### Attribution
+### Posting on the user's behalf
 
-When you post a message to other people on the user's behalf (a PR or issue comment, a Slack or chat message, an email), make it visible that an agent wrote it. Name yourself, do not pose as the user. Add a footer on its own line, or a trailing parenthetical when a separate line does not fit:
+Don't post messages to other people on the user's behalf: no chat or Slack messages, emails, Jira or Confluence comments, or GitHub issue and PR comments. When a message is called for, draft it in your reply and let the user send it.
 
-```markdown
-_Posted by {agent_name} ({model_name, if available})> on behalf of {user_full_name}._
-```
-
-Use the name you go by (e.g. Claude, Gemini), include the model if available (e.g Sonnet 5, Opus 4.8). This is for messages you send outward, and only where the surface doesn't already attribute the agent itself. Commit messages and PR descriptions carry their own footer convention, and artifact comment replies are stamped automatically as "Claude · via the user"; leave all of those alone rather than adding this footer.
+The one exception is a pull request comment or review. Hand the finished content to the `commenter` persona, which picks the posting skill for the target and opens every message with the user's attribution line, and never post to the PR yourself. This rule is about messages to people. Your ordinary work on the user's request, such as commits, pushes, and opening a PR with its description, follows the repo's own conventions.
