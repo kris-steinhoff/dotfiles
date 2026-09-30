@@ -3,39 +3,22 @@
 
 A Herdr dispatch primitive — the plural cousin of resolve-task. Where resolve-task
 types one ref, this enumerates the review queue: the deterministic
-source-enumeration step for a batch review dispatch.
+source-enumeration step for a batch review dispatch. Enumeration is dumb — it lists
+what GitHub says is awaiting review and stops there. The reviewer works out prior
+findings and first-vs-re-review itself, later; this primitive carries no such tag.
 
-  {items: [{number, title, url, base_branch, reasons}, ...]}
+  {items: [{number, title, url, base_branch}, ...]}
 
-The queue is the union of two `gh pr list` searches in the current repo, deduped
-by PR number:
+The queue is one `gh pr list` search in the current repo:
 
-  is:open -is:draft review-requested:@me -author:@me   (reason "requested")
-  is:open -is:draft reviewed-by:@me -author:@me        (re-review candidates)
+  is:open -is:draft review-requested:@me -author:@me
 
 `review-requested:@me` is deliberately the union of directly-requested and
 team-requested PRs (GitHub folds both into that qualifier), so the queue covers
 both. `-is:draft` drops drafts; `-author:@me` drops my own PRs.
 
-A PR I have already reviewed joins the queue only when something happened since
-my latest review, checked with one batched GraphQL query over the reviewed PRs:
-
-  new_commits   the PR's head is no longer the commit my latest review was made
-                against.
-  thread_reply  in a review thread I commented in, the latest comment is someone
-                else's and was posted after my latest review.
-
-"My latest review" is the most recent submitted review I authored, in any state
-(approved, changes requested, commented, or dismissed); pending reviews are never
-returned to the query. A COMMENTED review that is nothing but replies in existing
-threads (no body, every comment a reply) is thread conversation, not a review,
-so it is skipped when picking the latest one — otherwise answering a thread after
-a push would hide the push. "Me" is the authenticated gh user.
-
-`reasons` lists every reason that applies, in the order requested, new_commits,
-thread_reply, so a requested PR I have reviewed before carries its re-review
-reasons too. Current-repo scope is v1. `gh`'s `baseRefName` maps to
-`base_branch`, matching resolve-task's snake_case field.
+Current-repo scope is v1: the queue is whatever repo you invoke from. `gh`'s
+`baseRefName` maps to `base_branch`, matching resolve-task's snake_case field.
 
 Part of the Herdr dispatch flow (HERDR_ENV=1), though it drives only `gh` and needs
 no Herdr socket, so it also runs standalone.
@@ -58,38 +41,7 @@ import os
 import subprocess
 import sys
 
-REQUESTED_SEARCH = "is:open -is:draft review-requested:@me -author:@me"
-REVIEWED_SEARCH = "is:open -is:draft reviewed-by:@me -author:@me"
-
-REASON_ORDER = ("requested", "new_commits", "thread_reply")
-
-# PRs per GraphQL request. Each PR can cost up to ~20k nodes (100 reviews x 100
-# comments, 100 threads x 100 comments); ten stays well under GitHub's 500k cap.
-BATCH_SIZE = 10
-
-# My reviews on a PR, and its review threads with each comment's author and time.
-# Pending reviews are excluded by the states filter (and are only ever visible to
-# their author anyway).
-ACTIVITY_FRAGMENT = """
-fragment Activity on PullRequest {
-  headRefOid
-  reviews(author: $login, last: 100,
-          states: [APPROVED, CHANGES_REQUESTED, COMMENTED, DISMISSED]) {
-    nodes {
-      state
-      body
-      submittedAt
-      commit { oid }
-      comments(first: 100) { nodes { replyTo { id } } }
-    }
-  }
-  reviewThreads(first: 100) {
-    nodes {
-      comments(first: 100) { nodes { author { login } createdAt } }
-    }
-  }
-}
-"""
+SEARCH = "is:open -is:draft review-requested:@me -author:@me"
 
 # gh reports these when it can't resolve a GitHub repo from the working directory.
 NO_REPO_MARKERS = (
@@ -115,110 +67,32 @@ def emit_error(message):
     sys.exit(1)
 
 
-def gh(repo, args):
-    """Run a `gh` read and return its stdout.
+def list_prs(repo, limit):
+    """Run the `gh pr list` review-queue search and return the parsed array.
 
     gh detects the repo from its working directory, so the repo path is passed as
     the subprocess cwd rather than relied on ambiently."""
-    proc = subprocess.run(["gh", *args], capture_output=True, text=True, cwd=repo)
+    args = [
+        "gh", "pr", "list",
+        "--search", SEARCH,
+        "--limit", str(limit),
+        "--json", "number,title,url,baseRefName",
+    ]
+    proc = subprocess.run(args, capture_output=True, text=True, cwd=repo)
     if proc.returncode != 0:
         stderr = proc.stderr.strip()
         if any(marker in stderr.lower() for marker in NO_REPO_MARKERS):
             emit_judgment(f"no GitHub repo resolved from {repo!r}: {stderr}")
         raise RuntimeError(stderr or f"gh exited {proc.returncode}")
-    return proc.stdout
-
-
-def gh_json(repo, args):
-    stdout = gh(repo, args)
     try:
-        return json.loads(stdout)
+        return json.loads(proc.stdout)
     except json.JSONDecodeError:
-        raise RuntimeError(f"gh returned non-JSON: {stdout[:200]}")
-
-
-def list_prs(repo, search, limit):
-    """Run one `gh pr list` search in the current repo and return the parsed array."""
-    return gh_json(repo, [
-        "pr", "list",
-        "--search", search,
-        "--limit", str(limit),
-        "--json", "number,title,url,baseRefName",
-    ])
-
-
-def fetch_activity(repo, numbers, login):
-    """Return {number: PullRequest activity} for the given PRs, a batch of aliased
-    pullRequest fields per GraphQL request. `{owner}`/`{repo}` are filled in by gh
-    from the working directory's repo."""
-    activity = {}
-    for start in range(0, len(numbers), BATCH_SIZE):
-        batch = numbers[start:start + BATCH_SIZE]
-        fields = "\n".join(
-            f"    pr{n}: pullRequest(number: {int(n)}) {{ ...Activity }}" for n in batch)
-        query = (
-            "query($owner: String!, $name: String!, $login: String!) {\n"
-            "  repository(owner: $owner, name: $name) {\n"
-            f"{fields}\n"
-            "  }\n"
-            "}\n" + ACTIVITY_FRAGMENT)
-        data = gh_json(repo, [
-            "api", "graphql",
-            "-f", f"query={query}",
-            "-F", "owner={owner}",
-            "-F", "name={repo}",
-            "-F", f"login={login}",
-        ])
-        repository = data["data"]["repository"]
-        for n in batch:
-            activity[n] = repository[f"pr{n}"]
-    return activity
-
-
-def is_reply_only(review):
-    """A COMMENTED review with no body whose comments are all thread replies —
-    what GitHub records when I answer in an existing thread."""
-    comments = review["comments"]["nodes"]
-    return (
-        review["state"] == "COMMENTED"
-        and not (review.get("body") or "").strip()
-        and bool(comments)
-        and all(c.get("replyTo") for c in comments)
-    )
-
-
-def rereview_reasons(pr, login):
-    """Return the re-review reasons that apply to one PR's activity."""
-    reviews = [r for r in pr["reviews"]["nodes"]
-               if r.get("submittedAt") and not is_reply_only(r)]
-    if not reviews:
-        return []
-    # ISO-8601 UTC timestamps from the API compare correctly as strings.
-    latest = max(reviews, key=lambda r: r["submittedAt"])
-
-    reasons = []
-    reviewed_oid = (latest.get("commit") or {}).get("oid")
-    if reviewed_oid and reviewed_oid != pr["headRefOid"]:
-        reasons.append("new_commits")
-
-    for thread in pr["reviewThreads"]["nodes"]:
-        comments = thread["comments"]["nodes"]
-        authors = [(c.get("author") or {}).get("login") for c in comments]
-        if login not in authors:
-            continue
-        last = max(comments, key=lambda c: c["createdAt"])
-        if ((last.get("author") or {}).get("login") != login
-                and last["createdAt"] > latest["submittedAt"]):
-            reasons.append("thread_reply")
-            break
-
-    return reasons
+        raise RuntimeError(f"gh returned non-JSON: {proc.stdout[:200]}")
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="List open PRs in the current repo awaiting my or my team's "
-                    "review, or my re-review.")
+        description="List open PRs in the current repo awaiting my or my team's review.")
     parser.add_argument("--repo", default=os.getcwd(),
                         help="git repo path for gh's repo detection (default: cwd)")
     parser.add_argument("--limit", type=int, default=50,
@@ -226,35 +100,21 @@ def main():
     args = parser.parse_args()
 
     try:
-        requested = list_prs(args.repo, REQUESTED_SEARCH, args.limit)
-        reviewed = list_prs(args.repo, REVIEWED_SEARCH, args.limit)
-
-        # Insertion order: requested PRs first in gh's order, then re-review-only
-        # PRs in theirs.
-        items = {pr["number"]: (pr, {"requested"}) for pr in requested}
-        if reviewed:
-            login = gh(args.repo, ["api", "user", "--jq", ".login"]).strip()
-            activity = fetch_activity(
-                args.repo, [pr["number"] for pr in reviewed], login)
-            for pr in reviewed:
-                reasons = rereview_reasons(activity[pr["number"]], login)
-                if reasons:
-                    items.setdefault(pr["number"], (pr, set()))[1].update(reasons)
-    except (RuntimeError, KeyError, TypeError) as error:
-        emit_error(f"{type(error).__name__}: {error}")
+        prs = list_prs(args.repo, args.limit)
+    except RuntimeError as error:
+        emit_error(str(error))
         return
 
-    result = [
+    items = [
         {
             "number": pr.get("number"),
             "title": pr.get("title", ""),
             "url": pr.get("url", ""),
             "base_branch": pr.get("baseRefName", ""),
-            "reasons": [r for r in REASON_ORDER if r in reasons],
         }
-        for pr, reasons in items.values()
-    ][:args.limit]
-    emit_success({"items": result})
+        for pr in prs
+    ]
+    emit_success({"items": items})
 
 
 if __name__ == "__main__":
