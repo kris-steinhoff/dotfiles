@@ -16,7 +16,7 @@ Reference for `scripts/post_review.py` and the anchoring rules a finding must sa
     { "path": "src/auth.py", "line": 88, "body": "[med] ..." }
   ],
   "thread_replies": [{ "in_reply_to": 987654, "body": "[med] Still open — the guard added at L88 doesn't cover ..." }],
-  "header": "_🤖 Posted on behalf of Kris Steinhoff_"
+  "header": "🤖 _Posted on behalf of Kris Steinhoff_"
 }
 ```
 
