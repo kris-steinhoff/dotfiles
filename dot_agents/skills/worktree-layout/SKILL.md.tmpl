@@ -1,0 +1,90 @@
+---
+name: worktree-layout
+description: The bare-repo worktree layout — a project directory whose repo lives in `.bare/` behind a `.git` file containing `gitdir: ./.bare`, with every checkout a flat worktree inside it and optional work streams (a second bare repo for a body of work spanning several branches, such as an epic), plus the naming, Herdr, and sandbox rules that make it work. Use only inside a directory laid out this way, or when asked to set one up. Not for ordinary clones, or for worktrees in any other arrangement.
+{{- with get . "custom" }}
+{{ . }}
+{{- end }}
+---
+
+# worktree-layout
+
+A way to lay out one project's checkouts so every branch gets its own worktree, nothing nests, and Herdr's sidebar groups the work the way you think about it. This skill holds the rules, and its script does the setup.
+
+A project opts in with a line in its own `AGENTS.md` saying it uses this layout and to load this skill before touching worktrees there. The same file carries what this skill can't know about the project: where the primary was cloned from and its remote, how it names branches and work streams, and any setup a new worktree needs, such as installing dependencies or hooks.
+
+## Shape
+
+```
+<project>/                     primary repo directory
+├── .bare/                     the primary bare repo
+├── .git                       file: "gitdir: ./.bare"
+├── AGENTS.md                  the project's own instructions
+├── main/                      optional worktree on the default branch
+├── <branch>/                  a worktree of the primary
+└── <stream>/                  a work stream repo directory
+    ├── .bare/                 the work stream's own bare repo
+    ├── .git                   file: "gitdir: ./.bare"
+    └── <branch>/              a worktree of the work stream repo
+```
+
+- **Each repo directory is backed by a bare repo.** The repo lives in `.bare/`, and the one-line `.git` file makes the directory act as its root. `git fetch`, `git log`, and `git worktree add` work from the directory itself, but it has no working tree.
+- **Every checkout is a worktree, flat in its repo directory,** named for its local branch. No checkout sits inside another, so none ever sees its neighbors as untracked files.
+- **A work stream is a second bare repo, not a worktree of the primary.** It holds one body of work that spans several branches, such as an epic and its stories, a milestone, or a feature built in parts. It is a local clone of the same remote. Herdr clusters workspaces by repo, so a work stream's worktrees group under its own row only if it is its own repo. A single branch needs only a worktree of the primary.
+- **Work stream directories sit directly in the primary, told apart from worktrees by name.** Git run inside a work stream directory resolves to the work stream's repo, so run git from the directory you mean.
+- **No collisions.** A worktree of the primary is never named like a work stream, `main` (unless it is on main), or anything starting with `.`.
+- **One level deep.** A work stream has worktrees, not work streams of its own.
+
+## Names
+
+The project chooses its names. The layout needs only that a worktree is named for its branch, that a work stream directory is named for the work stream, and that the two can't be mistaken for each other at a glance, since they sit side by side in the primary. Herdr labels are free text; a short human name for the work reads best in the sidebar.
+
+One scheme that works, for a project whose tracker links branches by a key prefix: a work stream directory is the lowercased key of the task that tracks the whole body of work alone (`abc-12`), and a branch is its task's key plus a short slug (`abc-34-settings-root`), with labels like `ABC-12 Settings` and `ABC-34 Settings root`. A bare key is then always a work stream and a key with a slug always a worktree, and the tracker links each branch to its task.
+
+## Making a repo directory
+
+`scripts/create-bare-repo` makes the primary and every work stream repo; only the source differs. The primary clones from an existing local checkout and a work stream from the primary's `.bare`, since a local clone hardlinks objects and takes almost no disk. Run it from outside `<dir>`, such as its parent directory (see Sandbox).
+
+```bash
+scripts/create-bare-repo --path <dir> --from <checkout|bare repo|url> [--origin <url>] [--label <text>] [--no-workspace]
+```
+
+It prints one line of JSON, `{ path, default_branch, origin, workspace_id, pane_id, created, pointer_at_cwd }`, and exits `0` on success, `2` when it needs judgment (`<dir>` is occupied or is a file, its `.git` isn't the pointer, or `--from` isn't a git repo; stdout is `{"status": "needs_judgment", "reason": ...}`), or `1` on a git or herdr failure, with diagnostics on stderr. `created` is `false` when it converged on an existing repo, and `workspace_id` and `pane_id` are `null` when no workspace was opened.
+
+What it does:
+
+1. Clones bare from `--from` into `<dir>/.bare` and writes the `.git` pointer.
+2. Points `origin` at `--origin`, defaulting to the source's own origin URL, or to the URL cloned. A local clone would otherwise leave it at the local path.
+3. Adds the fetch refspec `+refs/heads/*:refs/remotes/origin/*` and fetches. A bare clone has none, so until then there are no `origin/*` branches.
+4. Takes the default branch from origin, points the bare repo's `HEAD` at it, moves it to origin's tip, and deletes every other local branch. A bare clone copies the source's local branches in as its own, and they still exist in the source. The default branch is left with no upstream: nothing moves a bare repo's own branch forward, so with an upstream Herdr would show it falling behind every time origin moves. Read code on it from `origin/<default>`.
+5. Sets `branch.autoSetupMerge=simple`, `push.autoSetupRemote=true`, and `push.default=upstream`. Without them a branch cut from `origin/main` tracks `origin/main`, and a bare `git push` aims at main. With them a new branch has no upstream until its first push creates and tracks `origin/<branch>`.
+6. Opens `<dir>` as a Herdr parent workspace with `--label`, unless `--no-workspace` is passed or `HERDR_ENV` isn't `1`.
+
+Re-running converges, and finishes a build that failed partway, such as a fetch that failed on a bad origin. The pointer, origin (when `--origin` is given), refspec, fetch, and branch settings are safe to repeat and always run. Step 4 runs only on a clone the script made and hasn't finished, tracked in the bare repo's config as `create-bare-repo.state`, so a re-run never deletes branches or moves `HEAD` in an established repo, and a bare repo made some other way is never pruned. A workspace already open on `<dir>` is reused.
+
+Afterwards, run the project's own one-time setup, such as installing hooks. Hooks installed from any worktree land in `.bare/hooks` and every worktree of that repo shares them, so a new work stream gets its hooks from its first worktree.
+
+## Herdr
+
+Herdr's sidebar has one kind of object, the **workspace**. A **parent workspace** is on a repo's primary checkout, which here is the repo directory. A **linked-worktree workspace** is on a linked worktree. The sidebar clusters linked-worktree workspaces under their parent by repo; that cluster is display only and has no id.
+
+- Open each repo directory, primary or work stream, as its parent workspace.
+- Create worktrees from the parent workspace, with an explicit path inside the repo directory (`<dir>/<branch>`). Herdr refuses to create one from a linked-worktree workspace.
+- Herdr treats a directory as a repo only once its `.git` pointer is there. Without it, worktree actions fail with `not_git_worktree`.
+- A newly opened parent workspace has no repo metadata until its first worktree action. That's normal.
+- The repo directory's row shows a branch under its label: the bare repo's `HEAD`, not a checkout. Point `HEAD` at whichever branch should show there (`git symbolic-ref HEAD refs/heads/<branch>`); it can be a branch another worktree has checked out.
+- Herdr lists a repo's worktrees in the order their workspaces opened, and can't reorder them. Create several at once in the order they should appear, and ask before closing and reopening workspaces to re-sort, since that ends any agent in them.
+- A worktree made with plain `git worktree add` has no workspace until one is opened on its path.
+
+## Sandbox
+
+These are Claude Code sandbox behaviors the layout runs into.
+
+- **The pointer must exist before the session starts.** The sandbox protects `.git` in a session's own working directory: a `.git` file that appears there is deleted after the next command. Pointers one level down, and one that already existed when the session started, are left alone. So whoever creates a repo directory writes its pointer before any session starts in it. If a session has to write its own, it must restart before the file sticks, and until then runs git there with `GIT_DIR=$PWD/.bare`. The script reports that case as `pointer_at_cwd: true`.
+- **A worktree's git data lives outside it.** Commits, refs, and the index are in the repo's `.bare/`, and a session's sandbox writes only inside its own directory. So a sandboxed session in a worktree can't commit or fetch without write access to that `.bare/`. Claude Code reads project settings (`.claude/settings.json`, `settings.local.json`) only from the session's own directory, never a parent, so that access is per worktree. The sandbox allowlist is the user's to set: when a worktree lacks it, say so rather than working around it.
+- **Trust carries per repo.** Claude Code files a worktree's trust under its main repo, here the `.bare` directory, so only a repo's first worktree, and a new repo directory itself, shows the "trust this folder" prompt.
+- **Remote over HTTPS.** The sandbox's network proxy doesn't carry SSH, so `origin` uses an HTTPS URL, with credentials from `gh auth setup-git`. Pass an HTTPS `--origin` when the source's own origin is an SSH URL.
+- **A worktree that moves keeps absolute paths** in anything it built, such as a virtualenv, so rebuild those after `git worktree move`.
+
+## Teardown
+
+Only when the user asks. Removal is fail-closed: refuse, and give the reason, when a worktree has uncommitted work, when a repo has local commits or branches that aren't on the remote, or when a live agent is running there. For a work stream, check every local branch in its bare repo, because those branches exist nowhere else until pushed. Removing a work stream closes its workspace and its worktrees' workspaces, then removes the directory.
