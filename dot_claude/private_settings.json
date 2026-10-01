@@ -21,6 +21,7 @@
       }
     }
   },
+  "feedbackDrafts": "off",
   "hooks": {
     "ConfigChange": [
       {
