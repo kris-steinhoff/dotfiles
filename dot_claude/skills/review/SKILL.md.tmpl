@@ -1,1 +1,2 @@
-{{- includeTemplate "dot_agents/skills/review/SKILL.md.tmpl" . -}}
+{{- $custom := `argument-hint: "[intent and change scope]"` -}}
+{{- includeTemplate "dot_agents/skills/review/SKILL.md.tmpl" (merge (dict "custom" $custom) .) -}}

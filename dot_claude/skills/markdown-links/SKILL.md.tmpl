@@ -1,1 +1,2 @@
-{{- includeTemplate "dot_agents/skills/markdown-links/SKILL.md.tmpl" . -}}
+{{- $custom := `argument-hint: "[root-dir]"` -}}
+{{- includeTemplate "dot_agents/skills/markdown-links/SKILL.md.tmpl" (merge (dict "custom" $custom) .) -}}

@@ -1,1 +1,2 @@
-{{- includeTemplate "dot_agents/skills/learn-speed-run/SKILL.md.tmpl" . -}}
+{{- $custom := `argument-hint: "[topic]"` -}}
+{{- includeTemplate "dot_agents/skills/learn-speed-run/SKILL.md.tmpl" (merge (dict "custom" $custom) .) -}}

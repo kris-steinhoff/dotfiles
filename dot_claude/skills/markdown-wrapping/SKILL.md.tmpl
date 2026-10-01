@@ -1,1 +1,2 @@
-{{- includeTemplate "dot_agents/skills/markdown-wrapping/SKILL.md.tmpl" . -}}
+{{- $custom := `argument-hint: "<path>"` -}}
+{{- includeTemplate "dot_agents/skills/markdown-wrapping/SKILL.md.tmpl" (merge (dict "custom" $custom) .) -}}

@@ -1,1 +1,2 @@
-{{- includeTemplate "dot_agents/skills/drive-implementation/SKILL.md.tmpl" . -}}
+{{- $custom := `argument-hint: "<epic-or-story-key | plan-file>"` -}}
+{{- includeTemplate "dot_agents/skills/drive-implementation/SKILL.md.tmpl" (merge (dict "custom" $custom) .) -}}
