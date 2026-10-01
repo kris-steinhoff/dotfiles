@@ -25,7 +25,7 @@ import json, sys
 
 EDIT = {"Edit", "Write", "NotebookEdit"}
 DELEGATE = {"Agent", "Task"}
-DELEGATE_SKILLS = {"implement", "investigate", "comment", "review", "github-pr-review"}
+DELEGATE_SKILLS = {"implement", "investigate", "review", "github-pr-review"}
 
 run = 0
 try:

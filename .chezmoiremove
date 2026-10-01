@@ -100,3 +100,6 @@
 .agents/skills/commenter
 .claude/skills/commenter
 .gemini/config/plugins/kris-steinhoff/skills/commenter
+.agents/skills/comment
+.claude/skills/comment
+.gemini/config/plugins/kris-steinhoff/skills/comment
