@@ -11,7 +11,7 @@ handles name collisions itself, so no caller runs a check-then-retry loop:
      or another tool's checkout), auto-suffix (-2, -3, ...) to the next free name
      and create fresh.
   3. Else create fresh on the requested name (checking out an existing bare
-     branch if one is there, so fetch-pr-head -> create-worktree chains cleanly).
+     branch if one is there, so source preparation -> create-worktree chains cleanly).
 
 With --path, the caller picks where the checkout goes (a bare-backed container
 wants <container>/<branch>). A path is occupied if anything exists there or git
@@ -19,8 +19,8 @@ still has a worktree registered there. A branch collision suffixes branch and
 path together (foo at <dir>/foo becomes foo-2 at <dir>/foo-2). When only the
 path is occupied, only the path is suffixed and the branch is kept (pr-254 at
 <dir>/pr-254-2): suffixing the branch would cut a new one from the base and
-silently drop an existing branch's commits, such as a PR head fetch-pr-head
-just brought in. The path is checked before herdr runs because a failed
+silently drop an existing branch's prepared commits. The path is checked before
+herdr runs because a failed
 `git worktree add` onto an occupied path still leaves its new branch behind.
 Convergence stays keyed on the branch alone: our marked worktree on the branch
 is reused wherever it sits, and its real path is returned, since git cannot
@@ -50,8 +50,8 @@ The retry never guesses where a new branch starts. Without --base, herdr
 would branch from the parent checkout's HEAD rather than the caller's branch,
 so a new branch needs an explicit --base, and a checkout-relative one (HEAD,
 @, HEAD~1, @{u}) is refused too, since it would resolve in the parent
-checkout. Both are needs-judgment. An existing branch, such as one
-fetch-pr-head brought in, starts from nothing, so it needs no --base; the
+checkout. Both are needs-judgment. An existing branch, such as one a source
+workflow prepared, starts from nothing, so it needs no --base; the
 marker records whatever base the caller passed, or none. A parent workspace or
 primary checkout succeeds on the first call, exactly as before.
 

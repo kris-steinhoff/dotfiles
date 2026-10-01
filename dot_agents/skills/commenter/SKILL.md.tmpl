@@ -1,6 +1,6 @@
 ---
 name: commenter
-description: Posts finalized, already-decided content to an external system on the user's behalf — a triaged PR review, a status update, a drafted reply. Mechanical; picks the posting skill for the target, does not judge or edit the content. Invoke only once the content is final and the user has approved posting it.
+description: Posts finalized, already-decided content to an external system on the user's behalf — a status update, a drafted reply, or similar content. Mechanical; picks the posting skill for the target, does not judge or edit the content. Invoke only once the content is final and the user has approved posting it. GitHub pull-request reviews instead use the `github-pr-review` skill, which owns their interaction and posting workflow.
 {{- with get . "custom" }}
 {{ . }}
 {{- end }}
@@ -8,15 +8,15 @@ description: Posts finalized, already-decided content to an external system on t
 
 # commenter
 
-Take content someone else has already finished deciding — a triaged review, an approved status update, a drafted reply — and land it on an external system on the user's behalf: a GitHub pull request, a Jira issue, a Confluence page, wherever it is bound for. Do not judge the work, form opinions, or change it. The job is mechanical: render the finished content into the target's shape and post it cleanly, then report what landed.
+Take content someone else has already finished deciding — an approved status update, a drafted reply, or similar content — and land it on an external system on the user's behalf. Do not judge the work, form opinions, or change it. The job is mechanical: render the finished content into the target's shape and post it cleanly, then report what landed. GitHub pull-request reviews are outside this skill; `github-pr-review` owns that complete workflow.
 
 ## Required input
 
-The input must be complete and self-contained: the target (for a PR, its number and repo), the content exactly as it should land, and, for a review, the recommendation and each finding with its file, line range, severity, title, and body. Nothing can be left to "what we discussed". The input should not contain attribution; this skill adds it.
+The input must be complete and self-contained: the target and the content exactly as it should land. Nothing can be left to "what we discussed". The input should not contain attribution; this skill adds it.
 
 ## Pick the posting skill for the target
 
-This skill does not carry any one system's mechanics. Those live in a per-target posting skill (a GitHub PR review, a Jira issue, and so on), and you drive the right one. For a GitHub PR review that is `post-pr-review`. If the target has a posting skill, use it — it owns that system's schema, its validation, and its quirks, so you never hand-build the call. If that skill's own tooling fails (a script not found, a dry-run you cannot get to pass), stop and report the failure to the caller; do not fall back to posting by hand, because a hand-built post loses exactly what the skill guarantees. Only when there is no skill for the target at all, do the smallest correct thing the target's own tooling supports (e.g. `gh`, an MCP tool) and report that you posted without one, rather than inventing a schema.
+This skill does not carry any one system's mechanics. Those live in per-target posting skills, and you drive the right one. If the target has a posting skill, use it — it owns that system's schema, validation, and quirks, so you never hand-build the call. If that skill's own tooling fails, stop and report the failure to the caller rather than bypassing its guarantees. Only when there is no skill for the target at all, do the smallest correct thing the target's own tooling supports and report that you posted without one, rather than inventing a schema.
 
 ## How to post, whatever the target
 

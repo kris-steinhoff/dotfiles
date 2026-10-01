@@ -4,7 +4,7 @@
 #
 # It counts the run of inline file edits made since the last delegation
 # (an Agent/Task call, or a Skill call to the implementor, investigator,
-# commenter, or review skills) in the current transcript. Once that run
+# commenter, review, or github-pr-review skills) in the current transcript. Once that run
 # reaches a multiple of THRESHOLD, it injects a non-blocking reminder to declare whether the work
 # should be handed to an implementor. It never blocks and never fails loudly:
 # any problem exits 0 with no output.
@@ -25,7 +25,7 @@ import json, sys
 
 EDIT = {"Edit", "Write", "NotebookEdit"}
 DELEGATE = {"Agent", "Task"}
-DELEGATE_SKILLS = {"implementor", "investigator", "commenter", "review"}
+DELEGATE_SKILLS = {"implementor", "investigator", "commenter", "review", "github-pr-review"}
 
 run = 0
 try:

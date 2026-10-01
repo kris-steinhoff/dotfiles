@@ -43,8 +43,8 @@
 .claude/skills/herdr-worktree
 .gemini/config/plugins/kris-steinhoff/skills/herdr-worktree
 # The pi herdr-coordinator extension was superseded by the create-worktree,
-# fetch-pr-head, launch-agent-in-pane, and resolve-task dispatch primitive
-# skills. Without this it lingers on machines that already applied it.
+# launch-agent-in-pane, and resolve-task dispatch primitives plus the
+# github-pr-review workflow. Without this it lingers on machines that applied it.
 .pi/agent/extensions/herdr-coordinator
 # aws-profile-login was a standalone script that couldn't do its job (a
 # subprocess can't set AWS_PROFILE in the interactive shell); it's now only the
@@ -60,9 +60,8 @@
 # no stale [agents.pull-request-commenter] table needs removing here.)
 .claude/agents/pull-request-commenter.md
 .codex/pull-request-commenter.config.toml
-# The GitHub-PR poster mechanics moved out of the review skill into the new
-# post-pr-review skill; without these the moved files linger under the review
-# skill on machines that already applied it.
+# The GitHub-PR mechanics now live under github-pr-review; without these the
+# older copies linger under review on machines that already applied them.
 .agents/skills/review/reference.md
 .agents/skills/review/scripts
 # The implementor, investigator, reviewer, and commenter personas became skills
@@ -76,3 +75,16 @@
 .codex/investigator.config.toml
 .codex/reviewer.config.toml
 .codex/commenter.config.toml
+# GitHub PR discovery, exact-head checkout, review interaction, and posting now
+# live in one github-pr-review skill. Remove the three superseded public skills
+# from every harness so they cannot still be selected on machines that applied
+# an earlier version.
+.agents/skills/fetch-pr-head
+.claude/skills/fetch-pr-head
+.gemini/config/plugins/kris-steinhoff/skills/fetch-pr-head
+.agents/skills/list-review-requests
+.claude/skills/list-review-requests
+.gemini/config/plugins/kris-steinhoff/skills/list-review-requests
+.agents/skills/post-pr-review
+.claude/skills/post-pr-review
+.gemini/config/plugins/kris-steinhoff/skills/post-pr-review

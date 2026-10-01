@@ -26,4 +26,4 @@ Use the harness's structured question tool when it has one (AskUserQuestion in C
 
 Don't post messages to other people on the user's behalf: no chat or Slack messages, emails, Jira or Confluence comments, or GitHub issue and PR comments. When a message is called for, draft it in your reply and let the user send it.
 
-The one exception is a pull request comment or review. Hand the finished content to the `commenter` skill, which picks the posting skill for the target and opens every message with the user's attribution line, and never post to the PR yourself. This rule is about messages to people. Your ordinary work on the user's request, such as commits, pushes, and opening a PR with its description, follows the repo's own conventions.
+The one exception is a pull request review conducted through the `github-pr-review` skill, which owns its user confirmation, attribution, and posting. Never post a review or PR comment outside that workflow. This rule is about messages to people. Your ordinary work on the user's request, such as commits, pushes, and opening a PR with its description, follows the repo's own conventions.

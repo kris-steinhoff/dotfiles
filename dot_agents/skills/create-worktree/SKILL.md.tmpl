@@ -31,13 +31,13 @@ Collisions and re-runs are handled without a caller loop:
 
 - A worktree already on the exact branch **that carries our marker** is our own prior creation, so it is reused (`created: false`).
 - A worktree already on that branch that is **not** ours is a real collision, so the branch is auto-suffixed (`-2`, `-3`, ...) to the next free name and created fresh.
-- Otherwise it creates fresh on the requested branch, checking out an existing bare branch if one is there. This is what makes `fetch-pr-head` then `create-worktree` chain cleanly.
+- Otherwise it creates fresh on the requested branch, checking out an existing bare branch if one is there. This lets a source-preparation workflow create the branch before handing placement here.
 
 With `--path`, the path takes part in both rules:
 
 - Convergence stays keyed on the branch. Our own worktree on the branch is reused wherever it sits, and `path` reports where that is, even if it differs from the `--path` asked for (git can't check the branch out twice anyway).
 - A branch collision suffixes branch and path together, so `foo` at `<dir>/foo` becomes `foo-2` at `<dir>/foo-2`, taking the first suffix free for both.
-- When only the path is occupied, only the path is suffixed: `pr-254` stays `pr-254`, at `<dir>/pr-254-2`. Renaming the branch would cut a new one from the base and drop an existing branch's commits, such as a PR head `fetch-pr-head` just fetched. A re-run then converges on that worktree by its branch.
+- When only the path is occupied, only the path is suffixed: `pr-254` stays `pr-254`, at `<dir>/pr-254-2`. Renaming the branch would cut a new one from the base and drop an existing branch's prepared commits. A re-run then converges on that worktree by its branch.
 - A path is occupied if anything is there, an empty directory included, or if git still has a worktree registered there after its directory was deleted.
 
 ### Linked-worktree sources
@@ -45,7 +45,7 @@ With `--path`, the path takes part in both rules:
 Herdr creates worktrees only from a parent workspace. It refuses (`linked_worktree_source`) a **linked-worktree workspace**, one on a linked `git worktree` checkout, and also `--repo` or the current directory being a linked checkout. On that refusal the script finds the repo's open parent workspace and creates from it instead, without the caller having to name it. It never guesses where a new branch starts:
 
 - A branch that doesn't exist yet needs an explicit `--base`. Without one, the branch would start from the parent checkout's HEAD rather than the caller's branch, so the script stops with needs-judgment and names the parent workspace. A checkout-relative base (`HEAD`, `@`, `HEAD~1`, `@{u}`) is refused the same way, since it would resolve in the parent checkout.
-- A branch that already exists, such as one `fetch-pr-head` just fetched, starts from nothing, so it needs no `--base`. The marker records whatever base the caller passed, or none.
+- A branch that already exists, such as one a source workflow prepared, starts from nothing, so it needs no `--base`. The marker records whatever base the caller passed, or none.
 - With no parent workspace open for the repo, it stops with needs-judgment.
 
 From a parent workspace or a primary checkout, none of this applies and Herdr is called exactly as before.

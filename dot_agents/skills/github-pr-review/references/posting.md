@@ -1,6 +1,6 @@
-# post-pr-review — poster schema and anchor rules
+# GitHub PR review posting schema and anchor rules
 
-Reference for `scripts/post_review.py` and the anchoring rules a finding must satisfy to land inline. Loaded on demand; the posting flow and the input review's shape live in `SKILL.md`.
+Reference for `scripts/post_review.py` and the anchoring rules a finding must satisfy to land inline. Load it during the posting phase; the overall workflow and the input review's shape live in `SKILL.md`.
 
 ## Poster schema
 
@@ -10,19 +10,19 @@ Reference for `scripts/post_review.py` and the anchoring rules a finding must sa
 {
   "pr": 328,
   "event": "REQUEST_CHANGES",
-  "body": "**Recommendation: Request Changes**\n\n...",
+  "body": "**Review: Changes requested**\n\n...",
   "comments": [
-    { "path": "src/auth.py", "line": 42, "body": "[high] Token never expires. ..." },
-    { "path": "src/auth.py", "line": 88, "body": "[med] ..." }
+    { "path": "src/auth.py", "line": 42, "body": "[Blocker] Token never expires. ..." },
+    { "path": "src/auth.py", "line": 88, "body": "[Follow-up] ..." }
   ],
-  "thread_replies": [{ "in_reply_to": 987654, "body": "[med] Still open — the guard added at L88 doesn't cover ..." }],
+  "thread_replies": [{ "in_reply_to": 987654, "body": "[Follow-up] Still open — the guard added at L88 doesn't cover ..." }],
   "header": "🤖 _Posted on behalf of Kris Steinhoff_"
 }
 ```
 
 - `pr` — PR number. The repo is inferred from the working directory via `gh`.
-- `event` — one of `APPROVE`, `REQUEST_CHANGES`, `COMMENT`. Map it from the recommendation: Approve → `APPROVE`, Request Changes → `REQUEST_CHANGES`, otherwise → `COMMENT`.
-- `body` — the recommendation block, verbatim. Becomes the review's summary comment.
+- `event` — one of `APPROVE`, `REQUEST_CHANGES`, `COMMENT`. Use `REQUEST_CHANGES` when at least one included finding is a Blocker and `APPROVE` otherwise. Use `COMMENT` only when GitHub cannot accept either decision, such as a review of the authenticated user's own PR.
+- `body` — a short summary of the included findings and decision. Becomes the review's summary comment.
 - `comments` — inline comments, each anchored to a RIGHT-side `line`. A `{path, line, side}` range uses `side: "RIGHT"` implicitly.
 - `thread_replies` — replies on the threads of still-open prior findings (re-review only). Each `in_reply_to` is the id of one of my earlier review comments; the reply lands in that thread instead of a duplicate inline comment. Omit or `[]` on a first review.
 
