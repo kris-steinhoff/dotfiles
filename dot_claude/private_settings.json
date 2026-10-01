@@ -76,6 +76,7 @@
       ],
       "allowWrite": [
         "~/.cache/uv",
+        "~/.local/state/drive-implementation",
         "~/.local/share/uv/tools",
         "~/.npm/_cacache",
         "~/Library/Developer/Xcode/DerivedData",

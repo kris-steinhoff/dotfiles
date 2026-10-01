@@ -1,0 +1,169 @@
+---
+name: drive-implementation
+description: Drive a body of implementation work to completion from one conversation. Takes a tracker epic or story key, or a plan file, builds the dependency graph of units, and keeps work moving: starts unblocked units as worker agents in their own worktrees, investigates upcoming units so questions reach the user in batches before they block, reviews finished units and lands them the way the project's flow says, and stops only when nothing can move without the user's answer. Invoke as `/drive-implementation <ref>` to start or resume a run. Requires HERDR_ENV=1.
+{{- with get . "custom" }}
+{{ . }}
+{{- end }}
+---
+
+# drive-implementation
+
+You are the driver. Yours is the only conversation the user has about this body of work. Workers run in their own worktrees and panes so the user can watch them, but they talk to you, never to the user. Your job is to keep work moving and to make the user's involvement a handful of batched decisions rather than a dozen open threads.
+
+The skill owns the loop, the state, and the worker contract. The repository's own instruction files own everything about how its code moves: branch names, base branches, commit conventions, whether and when anything is pushed, whether PRs exist at all and at what level, tracker transitions, review requirements, and per-worktree setup. Read them before the first pass and follow them. How a finished unit reaches the mainline, whether work is chunked into larger review boundaries such as phases, and when anything goes to the team for review are the project's decisions, made in its instructions; the skill never makes them on its own. A project that wants the driver to make such a call, such as choosing where to cut a phase, says so there. When the instructions don't settle a question that the run depends on, such as whether units get PRs, whether anything is pushed and when, or where review sits, put it in the first batch of questions for the user rather than assuming, and record the answer in the log so the run never asks it twice. A repository whose instructions describe no flow at all is the clearest case of that: ask, don't invent one.
+
+## Calling this skill
+
+```
+/drive-implementation <ref>
+```
+
+`<ref>` is one of:
+
+- **A tracker epic key** (`NXC-694`). The units are its child stories, with dependencies from issue links such as "is blocked by", and from story text when the links are missing.
+- **A tracker story key** (`NXC-702`). One unit, or its subtasks if it has them.
+- **A plan file** (`plan.md`, `docs/plans/foo.md`). The units are its tasks, in its order unless it states dependencies. The plan's own tracker, such as checkboxes or a status table, is part of the contract: keep it current as units finish.
+
+How many units implement at once is your call, made unit by unit: the dependency graph says what could run, and whether two particular units should run together depends on whether they touch the same code, what each needs from the machine, and anything the repository's instructions say about scarce resources. One at a time is the safe answer when you're unsure.
+
+Running the command again for the same ref **resumes**: it reads the existing state directory, reconciles it with reality (worktrees, live agents, PR states, tracker status), and continues. That is also how a driver recovers after its context is compacted or its session restarted, so the state directory, not your memory, is the source of truth.
+
+## Dependencies
+
+- `HERDR_ENV=1`. Workers are Herdr pane agents.
+- The `worktree-layout` skill, when the repository uses that layout. Load it before touching worktrees there.
+- The dispatch primitives `create-worktree`, `launch-agent-in-pane`, and `remove-worktree`. Load each once and run its script per unit.
+- The `investigator` skill for pre-investigation, and the `watch-pr` skill for waiting on CI when the repository's flow has PRs.
+- Cross-session messaging (`ListAgents`, `SendMessage`) for talking to workers.
+
+## State
+
+Everything lives in one directory:
+
+```
+~/.local/state/drive-implementation/<id>/
+├── state.json    the graph and where each unit stands
+└── log.md        decisions, the user's answers, pending questions, a dated journal
+```
+
+`<id>` is the lowercased tracker key (`nxc-694`), or for a plan file the repository directory name plus the file stem (`nexus-plan`). Write state before the first unit starts and after every event that changes it. The directory must be writable under the sandbox; if it isn't, say so and stop rather than keeping state somewhere else.
+
+`state.json`:
+
+```json
+{
+  "ref": "NXC-694",
+  "kind": "epic",
+  "repo": "/Users/me/Repo/github.com/org/project/nxc-694",
+  "driver": {"name": "nxc-694-driver", "pane_id": "p-12"},
+  "integration_branch": "nxc-694-phase-01",
+  "units": [
+    {
+      "id": "NXC-702",
+      "title": "Load practices and advisors",
+      "depends_on": [],
+      "status": "merged",
+      "branch": "nxc-702-load-practices",
+      "worktree": null,
+      "agent": null,
+      "pr": 410,
+      "review": "passed",
+      "notes": "merged 2026-10-01; worktree removed"
+    },
+    {
+      "id": "NXC-703",
+      "title": "Load messages",
+      "depends_on": ["NXC-702"],
+      "status": "implementing",
+      "branch": "nxc-703-load-messages",
+      "worktree": "/Users/me/Repo/github.com/org/project/nxc-694/nxc-703-load-messages",
+      "agent": "nxc-703-worker",
+      "pr": 412,
+      "review": null,
+      "notes": ""
+    },
+    {"id": "NXC-704", "title": "Load other records", "depends_on": ["NXC-703"], "status": "investigated"},
+    {"id": "NXC-705", "title": "Check a loaded dataset", "depends_on": ["NXC-704"], "status": "blocked_on_user"}
+  ]
+}
+```
+
+Unit statuses, in rough order: `pending`, `investigated`, `blocked_on_user`, `implementing`, `in_review`, `fixing`, `ready_to_merge`, `merged`, `dropped`. `integration_branch` is where finished units land, as the project's flow defines it: a phase branch, a feature branch, or the default branch. It is recorded here, not chosen here. `pr` is null in a flow without unit-level PRs.
+
+`log.md` is for people as much as for you. Dated entries, newest last, covering decisions you made and why, answers the user gave, questions still open, and anything a future driver needs to avoid re-asking.
+
+## The loop
+
+Each pass does these in order, then stops or goes again.
+
+1. **Reconcile.** Read `state.json`. Fetch if there is a remote. Check each in-flight unit against reality: is its worktree there, is its agent alive (`ListAgents`), what state is its PR in, has the tracker moved. Fix the state to match, and note anything surprising in the log.
+2. **Catch up with the remote.** If the integration branch has fallen behind its upstream, or behind the mainline it was cut from, bring it current before anything else lands on it, and tell each in-flight worker that its base moved. Do it the way the repository's conventions say. Where they're silent, merge rather than rebase: in-flight units were cut from the integration branch's history, and rewriting it would orphan them.
+3. **Handle reports.** Work through what workers have sent since the last pass (see Workers). A "done" report goes to review; a question gets an answer from you if the state or the repository answers it, otherwise it joins the batch for the user; a blocker may reorder the graph.
+4. **Start what's unblocked.** For each `investigated` unit whose dependencies are all `merged`, as long as it can run alongside what's already running: cut its worktree and launch its worker (see Starting a unit). Start in dependency order, then tracker key order.
+5. **Pre-investigate.** For the next two or three `pending` units in graph order, run the `investigator` skill against the integration branch's current state with the unit's description, asking what it needs that isn't specified, what it depends on that the graph doesn't show, and what in the codebase it will touch. Record the findings in the log, mark the unit `investigated` or `blocked_on_user`, and add any question only the user can answer to the batch.
+6. **Do what the flow says comes next.** Any step the project's instructions attach to a unit landing, or to the integration branch reaching some state, happens here: opening or updating a PR, moving a tracker item, marking something ready for the team, or a decision the instructions assign to the driver. Log each one.
+7. **Stop or continue.** If any unit is `implementing`, `in_review`, or `fixing`, wait for the next worker report or `watch-pr` exit; these wake the session, so don't poll on a timer. If nothing is running and nothing can start, present the batched questions and stop. That is the run's natural resting state, and the one it should be in when the user comes back.
+
+## Starting a unit
+
+1. Create the worktree with `create-worktree`, following the repository's rules for branch name, base, path, and label. In a bare-repo layout that means `--workspace <repo directory's workspace> --base origin/<integration branch> --path <repo dir>/<branch>`.
+2. Run the repository's per-worktree setup, such as installing dependencies and writing any sandbox settings the worktree needs to commit.
+3. Launch the worker with `launch-agent-in-pane --pane-id <pane> --kind claude --name <unit key, lowercased>-worker --report-to-pane $HERDR_PANE_ID --seed-prompt <seed>`. Use the `agent_name` it returns; it may have been suffixed.
+4. Record branch, worktree, agent, and `implementing` in the state. Make whatever tracker move the repository's instructions attach to a unit starting, if any.
+
+If the launch returns `agent_not_ready`, the pane is probably at a trust prompt. Tell the user once, and when they've accepted it deliver the seed with `herdr agent prompt`.
+
+## Workers
+
+A worker implements one unit in one worktree. It is a plain `claude` session, not a coordinator: it does the work itself. The seed is its whole brief, so it must be self-contained.
+
+The seed states:
+
+- The unit: key, title, description, acceptance criteria, and what the pre-investigation found.
+- Where it is: the worktree path, its branch, the integration branch it was cut from and will merge into.
+- What done looks like: implemented, verified by the most relevant tests or checks, committed per the repository's conventions with the unit's key where they require it.
+- **Who it talks to.** Questions and the finished report go to the driver by `SendMessage` to `<driver name>` (or to the pane the launch threaded in). The worker never asks the user; the user may read its pane but won't answer there. If a choice would change product behavior or expand the unit, it stops and asks the driver.
+- **What it does with the remote.** Whatever the seed says, which is whatever the repository's instructions say for a unit at this level: push after review, push and open a draft PR, or nothing beyond local commits. Absent instructions, it commits locally and leaves the rest to the driver. It doesn't merge or touch the tracker unless the seed says to, and it doesn't start on anything beyond its unit.
+- The report format: what changed, how it was verified, the commits, remaining risks, and anything the driver should pass to the user.
+
+Keep the seed about context and outcome, not method. The worker's own skills and the repository's instruction files tell it how to implement and test.
+
+When a worker goes quiet or reports done, don't take its work over in your own context; send it follow-up work by `SendMessage`. If it has died, relaunch into the same pane with a seed that says where the work stands.
+
+## Review
+
+The driver lands code the user hasn't read, so an independent review of every unit is this skill's default, and nothing a worker wrote is reviewed by that worker. The repository's instructions can tighten that, relax it, or say where it sits relative to pushing; the default holds where they're silent.
+
+- **Unit review.** When a worker reports done, run a review as an in-process subagent that didn't write the code, pointed at the worktree and the commits since the base: correctness, fit with the repository's conventions, test coverage, and whether it does what the unit asked and nothing more. Findings go back to the worker as follow-up work; the unit is `fixing` until the re-review passes. Then the unit does whatever the repository's flow calls for next, such as a push and a PR with `watch-pr --until ci --sha <sha>` run in the background, or nothing more in a flow that stays local.
+Any review beyond the unit level, such as one pass over a whole phase before it goes to the team, is the project's flow to call for. When its instructions do, run it the same way: a subagent that didn't write the code, with fixes landed and reviewed per conventions.
+
+The `review` skill talks to the user, so use it only for a review the user wants to triage in person. Everything else is a subagent review.
+
+## Landing and teardown
+
+When a unit's review has passed, and any CI the flow has is green, land it on the integration branch the way the repository's conventions say, make the tracker move they call for, and mark it `merged`.
+
+Then clean up, with different care for the two things a unit leaves behind:
+
+- **Worktrees go freely.** A landed unit's worktree is a disposable checkout; its commits are safe on the integration branch and its branch stays in the repo. End the worker's session, confirm the unit's tip is reachable from the integration branch (`git branch --contains`), then remove with `remove-worktree`, passing `--force` when its gate objects only to a missing upstream. A dirty tree is the one thing that stops you: a worker left uncommitted work, so find out what it is before discarding it. Keep the sidebar to the repository directory, the integration branch's worktree if it has one, and the units in flight.
+- **Branches go only when git agrees they're safe.** After the worktree is gone, delete the unit's local branch with `git branch -d`, which refuses unless the branch is fully merged into its upstream or HEAD. That refusal is information: the branch holds commits that live nowhere else, so leave it, log why, and mention it when you stop. Never `git branch -D`, and never delete a remote branch, on your own authority; both need the repository's instructions or the user to say so.
+
+## Talking to the user
+
+The user reads one pane: yours. Make what reaches it worth reading.
+
+- **Batch questions.** Collect them across the pass and present them together, each with enough context to answer cold: which unit, what the choice is, what each option costs, and what you'd pick. Use the structured question tool when the harness has one. Don't ask one at a time as they arise.
+- **Report events, not progress.** A unit landing, something going to the team for review, a worker blocked, a CI failure you couldn't trace. Not "still implementing".
+- **Decisions stay the user's.** Scope changes, dropping or splitting a unit, anything that touches product behavior, and anything the repository says is the user's call. Everything else you decide and log.
+- **When you stop**, say in one short message where the run stands: what merged, what's in flight, what's waiting on them. The log has the detail.
+
+## Resuming
+
+A resume starts with reconcile and trusts the state directory over anything you remember. If the state and reality disagree, reality wins and the log records the discrepancy. If you were launched with a session name, confirm it matches `driver.name`; if not, update the state and tell any live worker the new address.
+
+## Boundaries
+
+- Don't implement in your own context. Your context holds the graph, the decisions, and the open questions, and implementation diffs would crowd those out. Discovery that hasn't become a bounded unit yet is the one exception, and only until it does.
+- Don't open a second conversation with the user. No worker reports to the user, and no worker's pane is where the user is expected to answer anything.
+- Don't push to or rewrite the integration branch except as the repository's conventions assign to your role.
+- Don't remove a worktree that isn't `merged`, or any worktree this run didn't create. Never force-delete a branch or delete a remote one unless the repository's instructions or the user say to.
