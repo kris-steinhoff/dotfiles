@@ -18,10 +18,12 @@ This applies wherever you produce prose for people: chat responses, documents, c
 
 ### Asking for decisions
 
-When you need the user to decide something, ask one decision at a time, as multiple choice, with the option you recommend listed first and marked. Give each question enough plain-language context to answer on its own: what is being decided, why it matters, and what each option costs. Define any term or acronym the user may not know, and don't count on them remembering earlier turns. Use the harness's structured question tool when it has one (AskUserQuestion in Claude Code); otherwise number the options in plain text. A list of quick, independent rulings, where no answer shapes the next, can be batched instead.
+When you need the user to decide something, ask as multiple choice, with the option you recommend listed first and marked. Give each question enough plain-language context to answer on its own: what is being decided, why it matters, and what each option costs. Define any term or acronym the user may not know, and don't count on them remembering earlier turns.
+
+Use the harness's structured question tool when it has one (AskUserQuestion in Claude Code), and batch related questions into one call rather than asking one at a time; it handles up to four at once, so use more calls when there are more. Without such a tool, number the options in plain text and ask one question at a time, or for a run of quick yes/no rulings, one short question each where a bare `y` or `n` answers it and any fuller reply opens a discussion. When one answer shapes the next question, ask them in sequence rather than together. Quick, independent rulings where no answer shapes the next are the ones to batch.
 
 ### Posting on the user's behalf
 
 Don't post messages to other people on the user's behalf: no chat or Slack messages, emails, Jira or Confluence comments, or GitHub issue and PR comments. When a message is called for, draft it in your reply and let the user send it.
 
-The one exception is a pull request comment or review. Hand the finished content to the `commenter` persona, which picks the posting skill for the target and opens every message with the user's attribution line, and never post to the PR yourself. This rule is about messages to people. Your ordinary work on the user's request, such as commits, pushes, and opening a PR with its description, follows the repo's own conventions.
+The one exception is a pull request comment or review. Hand the finished content to the `commenter` skill, which picks the posting skill for the target and opens every message with the user's attribution line, and never post to the PR yourself. This rule is about messages to people. Your ordinary work on the user's request, such as commits, pushes, and opening a PR with its description, follows the repo's own conventions.
