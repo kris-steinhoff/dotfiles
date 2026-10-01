@@ -1,6 +1,6 @@
 ---
 name: github-pr-review
-description: Reviews GitHub pull requests with a low-friction local workflow. Use with a PR number to inspect prior review context, run the shared review policy without Nits, triage each finding with the user, and post the approved review; use `ready` to idempotently dispatch every open non-draft PR awaiting my or my team's review into its own exact-head-branch Herdr worktree. Suitable for repeated `/loop` invocation.
+description: Reviews GitHub pull requests with a low-friction local workflow. Use with a PR number to inspect prior review context, run the shared review policy without Nits, triage each finding with the user, and post the approved review; use `ready` to idempotently dispatch every open non-draft PR awaiting my or my team's review into its own exact-head-branch Herdr worktree and remove the worktrees of PRs I have approved. Suitable for repeated `/loop` invocation.
 {{- with get . "custom" }}
 {{ . }}
 {{- end }}
@@ -21,7 +21,7 @@ This mode requires Herdr (`HERDR_ENV=1`). Read [references/queue.md](references/
 
 Each PR uses a local branch named exactly as GitHub's `headRefName`, because Claude uses that identity to link the checkout to its PR. Never substitute a numbered or suffixed branch. A conflicting unrelated local branch is skipped and reported without modification.
 
-The queue mode only dispatches or refreshes reviewers. It does not wait for them, collect their findings, triage, post, or remove worktrees.
+The queue mode removes finished review worktrees, then dispatches or refreshes reviewers. A worktree is removed once its pass is complete and I have approved the PR or it is merged or closed; one with my request for changes still in force stays. It does not wait for reviewers, collect their findings, triage, or post.
 
 ## A PR number: dispatch or conduct the review
 
@@ -73,4 +73,4 @@ When the workflow reaches a terminal decision—successfully posted, or the user
 - Do not request or report Nits.
 - Do not launch more than one active pass for the same PR head.
 - Do not update an active review worktree when the PR head changes; report it as stale and let a later `ready` run refresh it after the pass completes.
-- Do not remove review worktrees or close their Herdr workspaces unless the user separately asks.
+- Do not remove a review worktree except through `ready`'s cleanup step, or when the user separately asks.

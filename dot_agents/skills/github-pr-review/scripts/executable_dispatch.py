@@ -53,9 +53,13 @@ def checked(argv, cwd=None, label=None):
 
 def repo_root(path):
     proc = run(["git", "-C", path, "rev-parse", "--show-toplevel"])
-    if proc.returncode != 0:
-        judgment(f"{path!r} is not a git checkout")
-    return proc.stdout.strip()
+    if proc.returncode == 0:
+        return proc.stdout.strip()
+    # A bare-backed repo directory has no work tree, but git and gh both run from it.
+    bare = run(["git", "-C", path, "rev-parse", "--is-bare-repository"])
+    if bare.returncode == 0 and bare.stdout.strip() == "true":
+        return os.path.realpath(path)
+    judgment(f"{path!r} is not a git checkout")
 
 
 def now():
@@ -376,6 +380,110 @@ def command_mark(args):
     emit({"status": args.status, "pr_number": args.pr_number, "head_sha": current, "worktree": root})
 
 
+def my_decision(reviews, login):
+    """Return my latest APPROVED, CHANGES_REQUESTED, or DISMISSED review state, or None."""
+    decisive = [
+        review
+        for review in reviews
+        if (review.get("author") or {}).get("login") == login
+        and review.get("state") in ("APPROVED", "CHANGES_REQUESTED", "DISMISSED")
+    ]
+    decisive.sort(key=lambda review: review.get("submittedAt") or "")
+    return decisive[-1]["state"] if decisive else None
+
+
+def cleanup_verdict(repo, entry, state, queued, login):
+    number = state["pr_number"]
+    path = entry["path"]
+    if state.get("status") != "complete":
+        return "keep", "the review pass has not reached a terminal decision"
+    if number in queued:
+        return "keep", "review is requested again, so the next prepare refreshes it"
+    if os.path.realpath(os.getcwd()).startswith(os.path.realpath(path) + os.sep):
+        return "keep", "it is the current working directory"
+    if dirty(path):
+        return "keep", "the worktree has uncommitted changes"
+    head = checked(["git", "rev-parse", "HEAD"], cwd=path)
+    if state.get("head_sha") and head != state["head_sha"]:
+        return "keep", f"HEAD {head} is not the reviewed head {state['head_sha']}"
+    raw = gh_json(repo, "pr", "view", str(number), "--json", "state,reviews")
+    if raw.get("state") in ("MERGED", "CLOSED"):
+        return "remove", f"the PR is {raw['state'].lower()}"
+    decision = my_decision(raw.get("reviews") or [], login)
+    if decision == "APPROVED":
+        return "remove", "my latest review approves it"
+    if decision == "CHANGES_REQUESTED":
+        return "keep", "my request for changes is still active"
+    return "keep", "I have not approved it"
+
+
+def command_cleanup(args):
+    repo = repo_root(args.repo)
+    candidates = []
+    for entry in worktrees(repo):
+        marker = read_marker(entry["path"])
+        state = review_state(marker)
+        if marker.get("created_by") == MARKER_TAG and isinstance(state.get("pr_number"), int):
+            candidates.append((entry, state))
+    if not candidates:
+        emit({"items": []})
+    login = checked(["gh", "api", "user", "--jq", ".login"], cwd=repo, label="gh api user")
+    queued = {
+        item.get("number")
+        for item in gh_json(repo, "pr", "list", "--search", SEARCH, "--limit", "200", "--json", "number")
+    }
+    items = []
+    for entry, state in candidates:
+        action, reason = cleanup_verdict(repo, entry, state, queued, login)
+        items.append(
+            {
+                "action": action,
+                "reason": reason,
+                "pr_number": state["pr_number"],
+                "head_branch": entry.get("branch", ""),
+                "worktree": entry["path"],
+                "workspace_id": state.get("workspace_id"),
+                "agent_name": state.get("agent_name"),
+            }
+        )
+    emit({"items": items})
+
+
+def command_release(args):
+    repo = repo_root(args.repo)
+    number = args.pr_number
+    claim = claimed_branch(repo, number)
+    if not claim:
+        judgment(f"PR #{number} has no branch claimed by this helper", pr_number=number)
+    branch = claim.removeprefix("refs/heads/")
+    checkout = worktree_for_branch(repo, branch)
+    if checkout:
+        judgment(
+            f"branch {branch!r} is still checked out; remove its worktree first",
+            pr_number=number,
+            head_branch=branch,
+            worktree=checkout["path"],
+        )
+    head_ref = f"refs/github-pr-review/{number}/head"
+    tip = branch_sha(repo, branch)
+    fetched = run(["git", "rev-parse", "--verify", head_ref], cwd=repo).stdout.strip()
+    if tip:
+        # Delete only commits fetched from the PR; anything else exists nowhere but here.
+        on_pr = fetched and run(["git", "merge-base", "--is-ancestor", tip, fetched], cwd=repo).returncode == 0
+        if not on_pr:
+            judgment(
+                f"branch {branch!r} holds commits that are not on PR #{number}'s fetched head",
+                pr_number=number,
+                head_branch=branch,
+                local_head=tip,
+            )
+        checked(["git", "update-ref", "-d", claim, tip], cwd=repo, label=f"delete branch {branch}")
+    checked(["git", "symbolic-ref", "--delete", claim_ref(number)], cwd=repo, label="drop branch claim")
+    if fetched:
+        checked(["git", "update-ref", "-d", head_ref, fetched], cwd=repo, label="drop fetched PR head")
+    emit({"released": True, "pr_number": number, "head_branch": branch})
+
+
 def command_complete(args):
     args.status = "complete"
     args.pane_id = None
@@ -413,6 +521,15 @@ def parser():
     complete.add_argument("--pr-number", type=int, required=True)
     complete.add_argument("--head-sha", required=True)
     complete.set_defaults(func=command_complete)
+
+    cleanup = sub.add_parser("cleanup", help="classify completed review worktrees for removal")
+    cleanup.add_argument("--repo", default=os.getcwd())
+    cleanup.set_defaults(func=command_cleanup)
+
+    release = sub.add_parser("release", help="delete a removed review's local branch and refs")
+    release.add_argument("--pr-number", type=int, required=True)
+    release.add_argument("--repo", default=os.getcwd())
+    release.set_defaults(func=command_release)
     return root
 
 
