@@ -1,0 +1,17 @@
+#!/bin/bash
+# Link the local Herdr plugins chezmoi deploys under ~/.config/herdr/local-plugins.
+#
+# Herdr keeps its own registry of linked plugins and re-reads each manifest at
+# startup, so a plugin only needs linking once per machine, and again when its
+# manifest changes. chezmoi reruns this whenever the hash below changes. Script
+# edits need no relink; Herdr runs the deployed file on each event.
+#
+# signal-user manifest: {{ include "dot_config/herdr/local-plugins/signal-user/herdr-plugin.toml" | sha256sum }}
+
+command -v herdr >/dev/null 2>&1 || exit 0
+
+# `herdr plugin link` writes the registry directly when no server is running,
+# and relinking an already-linked plugin is harmless. A failure warns rather
+# than failing the whole apply.
+herdr plugin link "${HOME}/.config/herdr/local-plugins/signal-user" >/dev/null ||
+	echo "warning: could not link the signal-user Herdr plugin" >&2

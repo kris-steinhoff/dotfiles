@@ -1,0 +1,89 @@
+#!/bin/bash
+set -euo pipefail
+
+skill_dir="$(cd "$(dirname "$0")/.." && pwd)"
+script="$skill_dir/scripts/signal-user"
+[ -f "$script" ] || script="$skill_dir/scripts/executable_signal-user"
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+log="$tmp/herdr.log"
+
+cat >"$tmp/herdr" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+
+printf 'CALL %s %s\n' "$1" "$2" >>"$FAKE_HERDR_LOG"
+printf 'ARG %s\n' "$@" >>"$FAKE_HERDR_LOG"
+
+case "$1 $2" in
+"pane get")
+	if [ "$FAKE_HERDR_MODE" = alias ]; then
+		printf '%s\n' '{"result":{"pane":{"pane_id":"w1:p-live","workspace_id":"w1"}}}'
+	else
+		exit 1
+	fi
+	;;
+"pane list")
+	case "$FAKE_HERDR_MODE" in
+	unique-codex)
+		printf '%s\n' '{"result":{"panes":[{"pane_id":"w1:p-claude","agent":"claude"},{"pane_id":"w1:p-codex","agent":"codex"}]}}'
+		;;
+	ambiguous-codex)
+		printf '%s\n' '{"result":{"panes":[{"pane_id":"w1:p-codex-1","agent":"codex"},{"pane_id":"w1:p-codex-2","agent":"codex"}]}}'
+		;;
+	esac
+	;;
+"workspace get")
+	printf '%s\n' '{"result":{"workspace":{"tokens":{}}}}'
+	;;
+"workspace report-metadata")
+	printf '%s\n' '{"result":{}}'
+	;;
+*)
+	echo "unexpected fake Herdr call: $*" >&2
+	exit 2
+	;;
+esac
+EOF
+chmod +x "$tmp/herdr"
+
+run_signal() {
+	FAKE_HERDR_MODE="$1" \
+	FAKE_HERDR_LOG="$log" \
+	HERDR_BIN_PATH="$tmp/herdr" \
+	HERDR_ENV=1 \
+	HERDR_PANE_ID=w1:p-old \
+	HERDR_WORKSPACE_ID=w1 \
+	CODEX_SESSION_ID=test-session \
+		bash "$script" hand "test reason"
+}
+
+assert_log_contains() {
+	if ! grep -Fx -- "$1" "$log" >/dev/null; then
+		echo "missing from fake Herdr log: $1" >&2
+		cat "$log" >&2
+		exit 1
+	fi
+}
+
+: >"$log"
+run_signal alias >/dev/null
+assert_log_contains 'ARG signal-user:w1:p-live'
+assert_log_contains 'ARG signal_pane=w1:p-live'
+
+: >"$log"
+run_signal unique-codex >/dev/null
+assert_log_contains 'ARG signal-user:w1:p-codex'
+assert_log_contains 'ARG signal_pane=w1:p-codex'
+
+: >"$log"
+if run_signal ambiguous-codex >/dev/null 2>&1; then
+	echo "ambiguous Codex panes should fail" >&2
+	exit 1
+fi
+if grep -Fx -- 'CALL workspace report-metadata' "$log" >/dev/null; then
+	echo "ambiguous Codex panes should not report metadata" >&2
+	exit 1
+fi
+
+echo "signal-user tests passed"

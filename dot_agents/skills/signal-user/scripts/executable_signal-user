@@ -1,0 +1,216 @@
+#!/bin/bash
+# Show the user why this agent stopped, as a signal on its Herdr workspace:
+#
+#   ✋  hand   the agent is waiting on the user (an answer, a decision)
+#   🏁  ready  the agent finished something for the user to look at (a PR, a
+#              draft, a preview), but nothing is blocked on them
+#   ⏳  wait   the agent is waiting on something else (a build, a deploy, a
+#              review, another agent), so the user can look away
+#
+# The signal is a pair of workspace metadata tokens: `signal`, the text the
+# sidebar shows (wired up in ~/.config/herdr/config.toml), and `signal_pane`,
+# the pane that raised it. The two kinds end differently, so they clear
+# differently:
+#
+# - A ✋ or 🏁 ends when the user replies. The signal-user Herdr plugin clears
+#   it when the raising pane's agent starts working again.
+# - A ⏳ ends when the thing waited on finishes, which can be several turns
+#   later; the user may chat with the agent meanwhile. So the plugin leaves it
+#   alone. `wait <reason> -- <command>` ties it to a command instead: it raises
+#   the ⏳, runs the command, and clears the ⏳ when the command exits, however
+#   it exits. A wait with no command behind it is cleared with `clear`.
+#
+# The plugin also clears either kind when the raising pane closes, and a
+# 24-hour TTL (the longest Herdr allows) backs everything up.
+#
+# A workspace shows one signal. A signal never replaces another agent's more
+# urgent one (✋ over 🏁 over ⏳), because hiding a request for the user behind
+# something that asks less of them is the overwrite that costs something. An
+# agent's own signal is always replaced; its newest one is its current state.
+#
+# Outside a Herdr pane this signals nothing, but a wrapped command still runs,
+# so an agent can follow its instructions without checking where it is.
+#
+# Exit codes:
+#   hand, wait, clear: 0 done or skipped, with one JSON line on stdout; 1 herdr
+#     failed or the workspace could not be resolved; 2 bad usage.
+#   wait -- <command>: the command's own exit code. Its stdout is left to the
+#     command; this script's JSON line goes to stderr.
+set -euo pipefail
+
+HAND="✋"
+READY="🏁"
+WAIT="⏳"
+TTL_MS=86400000
+
+usage() {
+	cat <<'EOF'
+Usage: signal-user hand [<reason>]                ✋ waiting on the user
+       signal-user ready [<reason>]               🏁 finished, for the user to look at
+       signal-user wait [<reason>] -- <command>   ⏳ while <command> runs
+       signal-user wait [<reason>]                ⏳ until `clear`
+       signal-user clear                          take this agent's signal down
+EOF
+}
+
+case "${1:-}" in
+hand | set) cmd=hand && shift ;; # `set` is the original name for `hand`
+ready | wait | clear) cmd="$1" && shift ;;
+-h | --help) usage && exit 0 ;;
+*) usage >&2 && exit 2 ;;
+esac
+
+# Split `wait <reason words> -- <command...>`.
+reason_words=()
+command=()
+while [ $# -gt 0 ]; do
+	if [ "$1" = "--" ]; then
+		shift
+		command=("$@")
+		break
+	fi
+	reason_words+=("$1")
+	shift
+done
+reason="${reason_words[*]:-}"
+if [ "$cmd" != wait ] && [ ${#command[@]} -gt 0 ]; then
+	usage >&2 && exit 2
+fi
+
+report() { # report <json>: stdout, or stderr when the command owns stdout
+	if [ ${#command[@]} -gt 0 ]; then
+		printf '%s\n' "$1" >&2
+	else
+		printf '%s\n' "$1"
+	fi
+}
+
+if [ "${HERDR_ENV:-}" != 1 ] || [ -z "${HERDR_PANE_ID:-}" ]; then
+	report '{"status":"skipped","reason":"not running in a Herdr pane"}'
+	[ ${#command[@]} -eq 0 ] || exec "${command[@]}"
+	exit 0
+fi
+
+HERDR="${HERDR_BIN_PATH:-herdr}"
+pane="$HERDR_PANE_ID"
+
+# Ask Herdr for the canonical live pane ID rather than retaining the inherited
+# ID, which becomes an alias after a pane moves. Codex app-server tool commands
+# can instead inherit an ID for a pane that no longer exists. In that case the
+# inherited workspace is a safe fallback only when it has exactly one Codex
+# agent; guessing among several would create a signal its owner cannot clear.
+pane_info="$("$HERDR" pane get "$pane" 2>/dev/null)" || pane_info=""
+live_pane="$(jq -r '.result.pane.pane_id // empty' <<<"$pane_info")"
+ws="$(jq -r '.result.pane.workspace_id // empty' <<<"$pane_info")"
+if [ -n "$live_pane" ] && [ -n "$ws" ]; then
+	pane="$live_pane"
+elif [ -n "${CODEX_SESSION_ID:-${CODEX_THREAD_ID:-}}" ] && [ -n "${HERDR_WORKSPACE_ID:-}" ]; then
+	ws="$HERDR_WORKSPACE_ID"
+	matches="$("$HERDR" pane list --workspace "$ws" 2>/dev/null | jq -c '[.result.panes[]? | select(.agent == "codex")]')" || matches="[]"
+	if [ "$(jq 'length' <<<"$matches")" = 1 ]; then
+		pane="$(jq -r '.[0].pane_id // empty' <<<"$matches")"
+	else
+		pane=""
+	fi
+fi
+if [ -z "$pane" ] || [ -z "$ws" ]; then
+	echo "signal-user: could not resolve one live pane for inherited pane $HERDR_PANE_ID" >&2
+	exit 1
+fi
+
+source_id="signal-user:$pane"
+
+tokens() { "$HERDR" workspace get "$ws" | jq -c '.result.workspace.tokens // {}'; }
+
+clear_signal() {
+	"$HERDR" workspace report-metadata "$ws" --source "$source_id" \
+		--clear-token signal --clear-token signal_pane --clear-token signal_skip >/dev/null
+}
+
+current="$(tokens)"
+owner="$(jq -r '.signal_pane // empty' <<<"$current")"
+showing="$(jq -r '.signal // empty' <<<"$current")"
+
+if [ "$cmd" = clear ]; then
+	# Leave another agent's signal alone; it is still waiting.
+	if [ -n "$owner" ] && [ "$owner" != "$pane" ]; then
+		report "$(jq -nc --arg ws "$ws" --arg o "$owner" '{status: "not_owner", workspace_id: $ws, owner: $o}')"
+		exit 0
+	fi
+	clear_signal
+	report "$(jq -nc --arg ws "$ws" '{status: "cleared", workspace_id: $ws}')"
+	exit 0
+fi
+
+case "$cmd" in
+hand) emoji="$HAND" ;;
+ready) emoji="$READY" ;;
+wait) emoji="$WAIT" ;;
+esac
+value="$emoji${reason:+ $reason}"
+
+raised=0
+urgency() { # urgency <signal text>: higher asks more of the user
+	case "$1" in
+	"$HAND"*) echo 3 ;;
+	"$READY"*) echo 2 ;;
+	"$WAIT"*) echo 1 ;;
+	*) echo 0 ;;
+	esac
+}
+
+if [ -n "$owner" ] && [ "$owner" != "$pane" ] && [ "$(urgency "$showing")" -gt "$(urgency "$value")" ]; then
+	report "$(jq -nc --arg ws "$ws" --arg s "$showing" '{status: "kept", workspace_id: $ws, signal: $s}')"
+else
+	"$HERDR" workspace report-metadata "$ws" --source "$source_id" \
+		--token "signal=$value" --token "signal_pane=$pane" \
+		--clear-token signal_skip --ttl-ms "$TTL_MS" >/dev/null
+	raised=1
+	report "$(jq -nc --arg ws "$ws" --arg v "$value" '{status: "raised", workspace_id: $ws, signal: $v}')"
+fi
+
+[ ${#command[@]} -gt 0 ] || exit 0
+
+# Clear the ⏳ when the command ends, but only if it is still the one showing:
+# any signal raised since then has replaced it and is not ours to end.
+#
+# If that replacement is this agent's own ✋ or 🏁, the command ending is about
+# to wake the agent (its harness reports the finished background job), and the
+# plugin would read that resume as the user's reply and clear the signal. So
+# leave a `signal_skip` note telling the plugin to let this pane's next resume
+# pass. Only when the agent is idle, because an agent already working gets no
+# wakeup and the note would instead swallow the user's real reply; and with a
+# one-minute TTL, so a wakeup that never comes can't hide a later reply either.
+SKIP_TTL_MS=60000
+finish() {
+	[ "$raised" = 1 ] || return 0
+	raised=0
+	local now showing_now
+	now="$(tokens 2>/dev/null)" || return 0
+	[ "$(jq -r '.signal_pane // empty' <<<"$now")" = "$pane" ] || return 0
+	showing_now="$(jq -r '.signal // empty' <<<"$now")"
+	if [ "$showing_now" = "$value" ]; then
+		clear_signal 2>/dev/null || true
+	elif [[ "$showing_now" == "$HAND"* || "$showing_now" == "$READY"* ]]; then
+		local status
+		status="$("$HERDR" agent get "$pane" 2>/dev/null | jq -r '.result.agent.agent_status // empty')" || return 0
+		if [ -n "$status" ] && [ "$status" != working ]; then
+			"$HERDR" workspace report-metadata "$ws" --source "$source_id" \
+				--token "signal_skip=$pane" --ttl-ms "$SKIP_TTL_MS" >/dev/null 2>&1 || true
+		fi
+	fi
+}
+trap finish EXIT
+
+# Run the command as a child and wait on it, so a signal sent to this script
+# interrupts the wait, reaches the command, and still runs `finish`. Stdin is
+# passed through explicitly, since a background child would otherwise get
+# /dev/null.
+"${command[@]}" <&0 &
+child=$!
+trap 'kill -TERM "$child" 2>/dev/null; exit 143' TERM
+trap 'kill -INT "$child" 2>/dev/null; exit 130' INT
+trap 'kill -HUP "$child" 2>/dev/null; exit 129' HUP
+rc=0
+wait "$child" || rc=$?
+exit "$rc"

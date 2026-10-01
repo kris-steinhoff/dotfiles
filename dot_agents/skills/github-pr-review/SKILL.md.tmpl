@@ -38,6 +38,15 @@ Invoke the shared `review` skill once with a self-contained brief containing:
 
 The shared reviewer returns Blockers and Follow-ups without editing, interaction, a verdict, or posting. Preserve its classifications unless discussion with the user supplies new technical evidence.
 
+## Signals
+
+Reviewers run in their own panes, often several at once, and the user moves between them from the Herdr sidebar. Use the `signal-user` skill so the sidebar shows which review needs them, as your last step each time you stop for the user:
+
+- **✋ before each stop for the user**: when the review is ready to triage (`#254 ready to triage`), before each finding question, before the posting confirmation (`#254 confirm post`), and when the head moved and a new pass is needed. The user's answer clears it.
+- **🏁 when the review is posted**, so the user can see at a glance which reviews are done (`#254 posted`).
+
+The `ready` queue mode itself signals nothing; it dispatches and stops.
+
 ## Triage with the user
 
 Begin with a short PR summary so the user is oriented. Open it with the same identity table every time, so the PR is recognizable at a glance across reviews:

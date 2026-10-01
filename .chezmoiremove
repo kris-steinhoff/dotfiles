@@ -103,3 +103,7 @@
 .agents/skills/comment
 .claude/skills/comment
 .gemini/config/plugins/kris-steinhoff/skills/comment
+# toggle-agent-flag.sh became toggle-flag.sh when the ⚑ flag moved from an
+# agent rename (Herdr now accepts only [a-z0-9_-] agent names) to a workspace
+# token.
+.config/herdr/toggle-agent-flag.sh
