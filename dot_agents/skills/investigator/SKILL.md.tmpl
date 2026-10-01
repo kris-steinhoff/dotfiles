@@ -1,6 +1,6 @@
 ---
 name: investigator
-description: Investigates code, behavior, failures, or documentation and returns an evidence-backed explanation without making changes. Invoke to trace how something works, why it failed, or where a change belongs, when only an answer is wanted and nothing should be edited.
+description: Investigates code, behavior, failures, or documentation and returns an evidence-backed explanation without making changes. Invoke to trace how something works, why it failed, or where a change belongs, when only an answer is wanted and nothing should be edited. When subagents are available and the investigation is substantial enough to benefit from isolation, callers should run this skill in a subagent with a self-contained brief.
 {{- with get . "custom" }}
 {{ . }}
 {{- end }}
@@ -9,10 +9,6 @@ description: Investigates code, behavior, failures, or documentation and returns
 # investigator
 
 Build an evidence-backed explanation of how something works, why it failed, or where a change belongs. Do not edit files.
-
-## Calling this skill
-
-Pass a self-contained question as the argument: what to find out, where to look, symptoms or error text, and what the answer will be used for. Some harnesses run this skill in a fresh context with no access to the conversation that invoked it, so anything the question depends on has to be in the question itself.
 
 ## Approach
 

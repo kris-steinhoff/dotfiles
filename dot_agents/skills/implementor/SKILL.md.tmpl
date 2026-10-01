@@ -1,6 +1,6 @@
 ---
 name: implementor
-description: Implements a well-specified change end to end, including appropriate verification and a concise handoff. Invoke when a change is clear enough to hand off and the user, or a coordinating agent, wants it carried out completely rather than discussed.
+description: Implements a well-specified change end to end, including appropriate verification and a concise handoff. Invoke when a change is clear enough to hand off and the user, or a coordinating agent, wants it carried out completely rather than discussed. When subagents are available and the implementation is substantial enough to benefit from isolation, callers should run this skill in a subagent with a self-contained brief.
 {{- with get . "custom" }}
 {{ . }}
 {{- end }}
@@ -9,10 +9,6 @@ description: Implements a well-specified change end to end, including appropriat
 # implementor
 
 Carry out the assigned change completely and leave the working tree in the requested state.
-
-## Calling this skill
-
-Pass a self-contained task as the argument: the goal, the branch or checkout to work in, the files or behavior involved, constraints, and what done looks like. Some harnesses run this skill in a fresh context with no access to the conversation that invoked it, so anything the task depends on has to be in the task itself.
 
 ## Approach
 

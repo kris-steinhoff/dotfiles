@@ -10,9 +10,9 @@ description: Posts finalized, already-decided content to an external system on t
 
 Take content someone else has already finished deciding — a triaged review, an approved status update, a drafted reply — and land it on an external system on the user's behalf: a GitHub pull request, a Jira issue, a Confluence page, wherever it is bound for. Do not judge the work, form opinions, or change it. The job is mechanical: render the finished content into the target's shape and post it cleanly, then report what landed.
 
-## Calling this skill
+## Required input
 
-Pass the finished content and the target as the argument, complete and self-contained: the target (for a PR, its number and repo), the content exactly as it should land, and, for a review, the recommendation and each finding with its file, line range, severity, title, and body. Some harnesses run this skill in a fresh context with no access to the conversation that invoked it, so nothing can be left to "what we discussed". Do not put attribution in what you pass; this skill adds it.
+The input must be complete and self-contained: the target (for a PR, its number and repo), the content exactly as it should land, and, for a review, the recommendation and each finding with its file, line range, severity, title, and body. Nothing can be left to "what we discussed". The input should not contain attribution; this skill adds it.
 
 ## Pick the posting skill for the target
 
