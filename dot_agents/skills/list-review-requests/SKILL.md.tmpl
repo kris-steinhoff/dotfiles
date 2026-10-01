@@ -29,7 +29,7 @@ is:open -is:draft review-requested:@me -author:@me
 - `review-requested:@me` is deliberately the union of directly-requested and team-requested PRs — GitHub folds both into that qualifier, so the queue covers both. Do not split it.
 - `-is:draft` drops drafts; `-author:@me` drops my own PRs.
 
-Enumeration is dumb on purpose. It carries no first-review / re-review tag and probes no prior findings — the reviewer works that out itself, later.
+Enumeration is dumb on purpose. It carries no first-review / re-review tag and probes no prior findings — the review works that out itself, later.
 
 Current-repo scope is v1: the queue is whatever repo you invoke from. There is no cross-repo aggregation yet.
 

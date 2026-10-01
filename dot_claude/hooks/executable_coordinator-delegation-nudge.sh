@@ -3,8 +3,9 @@
 # frontmatter, so it fires only while coordinator is the active agent).
 #
 # It counts the run of inline file edits made since the last delegation
-# (Agent/Task) in the current transcript. Once that run reaches a multiple of
-# THRESHOLD, it injects a non-blocking reminder to declare whether the work
+# (an Agent/Task call, or a Skill call to the implementor, investigator,
+# commenter, or review skills) in the current transcript. Once that run
+# reaches a multiple of THRESHOLD, it injects a non-blocking reminder to declare whether the work
 # should be handed to an implementor. It never blocks and never fails loudly:
 # any problem exits 0 with no output.
 
@@ -24,6 +25,7 @@ import json, sys
 
 EDIT = {"Edit", "Write", "NotebookEdit"}
 DELEGATE = {"Agent", "Task"}
+DELEGATE_SKILLS = {"implementor", "investigator", "commenter", "review"}
 
 run = 0
 try:
@@ -47,6 +49,11 @@ try:
                 name = b.get("name")
                 if name in DELEGATE:
                     run = 0
+                elif name == "Skill":
+                    skill = str((b.get("input") or {}).get("skill", ""))
+                    # Plugin skills arrive as "plugin:name"; match the bare name.
+                    if skill.split(":")[-1] in DELEGATE_SKILLS:
+                        run = 0
                 elif name in EDIT:
                     run += 1
 except Exception:

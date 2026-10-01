@@ -65,3 +65,14 @@
 # skill on machines that already applied it.
 .agents/skills/review/reference.md
 .agents/skills/review/scripts
+# The implementor, investigator, reviewer, and commenter personas became skills
+# (the review persona folded into the review skill). Without these the old
+# Claude agent files and Codex profiles linger on machines that applied them.
+.claude/agents/implementor.md
+.claude/agents/investigator.md
+.claude/agents/reviewer.md
+.claude/agents/commenter.md
+.codex/implementor.config.toml
+.codex/investigator.config.toml
+.codex/reviewer.config.toml
+.codex/commenter.config.toml

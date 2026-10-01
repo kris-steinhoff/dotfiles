@@ -15,7 +15,7 @@ not a silent override.
 
 Otherwise, the agent name starts from a base — `--name` when given, else the
 persona when `--persona` is given (so the pane label reads as its job, e.g.
-`reviewer`), else the kind (e.g. `claude`) — and auto-suffixes (-2, -3, ...) past any live agent already holding
+`coordinator`), else the kind (e.g. `claude`) — and auto-suffixes (-2, -3, ...) past any live agent already holding
 that name, keeping it inside Herdr's [a-z][a-z0-9_-]{0,31} rule.
 
 With `--name`, the final suffixed name is also handed to the agent itself where
@@ -213,7 +213,7 @@ def main():
     parser.add_argument("--pane-id", required=True, help="pane at an interactive shell prompt")
     parser.add_argument("--kind", required=True, choices=KINDS, help="agent kind")
     parser.add_argument("--model", help="model hint, e.g. opus")
-    parser.add_argument("--persona", help="persona to launch, e.g. reviewer (claude/codex only)")
+    parser.add_argument("--persona", help="persona to launch, e.g. coordinator (claude/codex only)")
     parser.add_argument("--name", help="agent name base, e.g. nxc-162 (claude: also its session name)")
     parser.add_argument("--seed-prompt", help="prompt to deliver after launch")
     parser.add_argument("--report-to-pane", help="pane the launched agent should report back to")
