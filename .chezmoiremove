@@ -88,3 +88,15 @@
 .agents/skills/post-pr-review
 .claude/skills/post-pr-review
 .gemini/config/plugins/kris-steinhoff/skills/post-pr-review
+# The implementor, investigator, and commenter skills were renamed to the verb
+# forms implement, investigate, and comment. Without these the old names linger
+# in every harness on machines that already applied them.
+.agents/skills/implementor
+.claude/skills/implementor
+.gemini/config/plugins/kris-steinhoff/skills/implementor
+.agents/skills/investigator
+.claude/skills/investigator
+.gemini/config/plugins/kris-steinhoff/skills/investigator
+.agents/skills/commenter
+.claude/skills/commenter
+.gemini/config/plugins/kris-steinhoff/skills/commenter

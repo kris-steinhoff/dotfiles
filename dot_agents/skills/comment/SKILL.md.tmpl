@@ -1,12 +1,12 @@
 ---
-name: commenter
+name: comment
 description: Posts finalized, already-decided content to an external system on the user's behalf — a status update, a drafted reply, or similar content. Mechanical; picks the posting skill for the target, does not judge or edit the content. Invoke only once the content is final and the user has approved posting it. GitHub pull-request reviews instead use the `github-pr-review` skill, which owns their interaction and posting workflow.
 {{- with get . "custom" }}
 {{ . }}
 {{- end }}
 ---
 
-# commenter
+# comment
 
 Take content someone else has already finished deciding — an approved status update, a drafted reply, or similar content — and land it on an external system on the user's behalf. Do not judge the work, form opinions, or change it. The job is mechanical: render the finished content into the target's shape and post it cleanly, then report what landed. GitHub pull-request reviews are outside this skill; `github-pr-review` owns that complete workflow.
 

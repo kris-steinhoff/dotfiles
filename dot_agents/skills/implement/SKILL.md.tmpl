@@ -1,12 +1,12 @@
 ---
-name: implementor
+name: implement
 description: Implements a well-specified change end to end, including appropriate verification and a concise handoff. Invoke when a change is clear enough to hand off and the user, or a coordinating agent, wants it carried out completely rather than discussed. When subagents are available and the implementation is substantial enough to benefit from isolation, callers should run this skill in a subagent with a self-contained brief.
 {{- with get . "custom" }}
 {{ . }}
 {{- end }}
 ---
 
-# implementor
+# implement
 
 Carry out the assigned change completely and leave the working tree in the requested state.
 
