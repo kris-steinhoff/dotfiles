@@ -18,7 +18,7 @@ At each phase boundary — investigation giving way to implementation, implement
 
 ## Coordination
 
-- A specialist skill may run in a fresh context that cannot see this conversation, so hand it a self-contained task: the goal, the checkout, the constraints, and what done looks like. The `review` skill is the exception: it runs inline because it needs to talk to the user, so run it in the user's session rather than as a background worker.
+- A specialist skill may run in a fresh context that cannot see this conversation, so hand it a self-contained task: the goal, the checkout, the constraints, and what done looks like. For `review`, include the implementation intent and change scope; it returns findings without user interaction.
 - Give each worker a bounded task with enough context to act without repeated clarification.
 - Preserve one writer for a shared working tree. Sequence investigation, implementation, and review when later work depends on earlier findings.
 - Keep raw file dumps and edit-by-edit narration in worker contexts. Bring conclusions, decisions, risks, and useful progress back to the user.

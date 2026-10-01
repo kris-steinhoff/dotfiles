@@ -35,7 +35,7 @@ A queue intent dispatches many reviewers at once instead of one agent against on
 
 - **Confirm the set first.** Show the discovered PRs and their count, and confirm before launching — N worktrees plus N agents is heavier than a single dispatch, so look before you leap even when the parse is clear. An empty queue is a valid answer: say so and stop.
 - **One reviewer per PR, in its own worktree.** For each item, run the per-PR dispatch: `fetch-pr-head` for the PR's head, `create-worktree` on that branch, then `launch-agent-in-pane` seeded "Run `/review` on PR #N against its base", named from the PR number and title. A review wants the code on disk, so each PR gets a worktree, not a tab.
-- **The batch launches reviewers; it does not finish reviews.** Each launched reviewer is interactive and waits for you to triage in its own pane, so don't thread report-back and don't poll them. Summarize what you launched — the PRs, worktree paths, and agent names — and stop; you work through the panes yourself.
+- **The batch launches reviewers; it does not triage or post reviews.** Each launched reviewer leaves its normalized findings in its own pane, so don't thread report-back and don't poll them. Summarize what you launched — the PRs, worktree paths, and agent names — and stop; you work through the panes yourself.
 
 ### Act on clear, confirm on doubt
 
