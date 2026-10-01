@@ -1,5 +1,4 @@
 {{- $custom := `context: fork
-disallowed-tools: Write, Edit, NotebookEdit
 background: false
 model: haiku` -}}
 {{- includeTemplate "dot_agents/skills/commenter/SKILL.md.tmpl" (merge (dict "custom" $custom) .) -}}

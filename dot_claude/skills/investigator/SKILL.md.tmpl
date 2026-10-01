@@ -1,6 +1,5 @@
 {{- $custom := `context: fork
 agent: general-purpose
-disallowed-tools: Write, Edit, NotebookEdit
 background: false
 model: sonnet` -}}
 {{- includeTemplate "dot_agents/skills/investigator/SKILL.md.tmpl" (merge (dict "custom" $custom) .) -}}
