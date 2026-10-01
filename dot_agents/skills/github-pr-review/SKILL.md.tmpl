@@ -27,7 +27,7 @@ The queue mode removes finished review worktrees, then dispatches or refreshes r
 
 Resolve the PR. If the current checkout is not its recorded exact-head-branch review worktree, read [references/queue.md](references/queue.md) and run that document's prepare, create, mark, and launch flow for this PR alone, then stop; the launched reviewer continues interactively in its pane. If the current checkout is the recorded worktree for this PR and head SHA, conduct the review here.
 
-Read the PR title, body, base branch, current head SHA, changed files, and the authenticated user's prior reviews and review threads. On a re-review, include unresolved prior findings in the review brief so the reviewer verifies them against the current code and does not duplicate findings that still stand.
+Read the PR title, author, body, base branch, current head SHA, changed files, and the authenticated user's prior reviews and review threads. On a re-review, include unresolved prior findings in the review brief so the reviewer verifies them against the current code and does not duplicate findings that still stand.
 
 Invoke the shared `review` skill once with a self-contained brief containing:
 
@@ -40,7 +40,21 @@ The shared reviewer returns Blockers and Follow-ups without editing, interaction
 
 ## Triage with the user
 
-Begin with a short PR summary so the user is oriented. Walk through every finding individually. Ask only whether that finding should be included; do not ask for an overall verdict yet.
+Begin with a short PR summary so the user is oriented. Open it with the same identity table every time, so the PR is recognizable at a glance across reviews:
+
+```markdown
+| #<number> <author full name> |
+| ---------------------------- |
+| <PR title, verbatim>         |
+
+`<base>` ← `<head branch>` at `<short head SHA>` · <N> files, +<added>/−<deleted> · <first review | re-review of N prior findings> · <PR URL>
+```
+
+Keep the number in the table plain rather than a markdown link: Claude Code renders a link as its text followed by the URL in parentheses, which would bury the author's name. The bare URL at the end of the line below stays clickable in the terminal.
+
+Use the author's GitHub display name, or their login when no name is set. Follow it with a few bullets on what the PR changes and anything the author already called out, such as known gaps or linked tickets. Leave out workflow status (whether the reviewer is still running, whether the checkout matches) unless something is wrong.
+
+Walk through every finding individually. Ask only whether that finding should be included; do not ask for an overall verdict yet.
 
 - With a structured question UI, offer `Include`, `Exclude`, and `Other`. `Other` opens discussion or lets the user rewrite or reclassify the finding.
 - Without one, ask: `Should this finding be included?` A bare yes includes it, a bare no excludes it, and a fuller answer opens discussion.
