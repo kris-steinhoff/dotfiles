@@ -8,7 +8,7 @@ This reader does not want exhaustive precision from your prose. When they need t
 
 Lead with the conclusion. In a chat reply, a document, or a PR description, state the answer or the decision first, then the supporting detail a reader can skip. Do not make someone read to the end to find out what you concluded.
 
-Explain instead of pointing. A bare reference (a doc name, an issue number, a decision date, a file path) is cheap for a machine and tedious for a human. Say what it contains in plain language, then cite it for anyone who wants to dig. "We cap retries at three because the upstream API throttles hard (details in #412)" is worth more than "per the decision in #412."
+Explain, don't just point. A reference (a PR or issue number, a Jira key, a doc name, a decision date, a file path) is cheap for a machine to dereference and slow for a human: each bare one forces the reader to stop and look it up, or to read on without understanding. So say what it is or contains in plain language, and keep the reference alongside, since it is often useful to anyone who wants to dig. "We cap retries at three because the upstream API throttles hard (details in #412)" is worth more than "per the decision in #412." A reference can stand alone only when the reader certainly knows it already: it came up in the last few turns, or it is so well established that people use it as a name.
 
 Write the current state, not the revision history. When you revise something written for people (a PR description, a doc, a comment), rewrite it to say how things stand now. Leave out "revised after review" notes and accounts of what changed since the last draft; version control already holds that history.
 
