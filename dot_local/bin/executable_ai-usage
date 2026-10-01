@@ -243,6 +243,9 @@ class Window:
     used_dollars: float | None = None
     limit_dollars: float | None = None
     active: bool = True
+    # Show the share left rather than used, matching how the provider's own
+    # usage page reads. `percent` and severity still measure usage.
+    show_remaining: bool = False
 
     @property
     def is_dollar(self) -> bool:
@@ -368,6 +371,7 @@ def build_chatgpt_windows(data: dict) -> list[Window]:
                 label=label + suffix,
                 percent=limit["used_percent"],
                 resets_at=chatgpt_window_reset(limit),
+                show_remaining=True,
             )
         )
     for limit in data.get("additional_rate_limits") or limits.get("additional_rate_limits") or []:
@@ -378,6 +382,7 @@ def build_chatgpt_windows(data: dict) -> list[Window]:
                 label=str(limit.get("limit_name") or "Additional allowance"),
                 percent=limit["used_percent"],
                 resets_at=chatgpt_window_reset(limit),
+                show_remaining=True,
             )
         )
     return windows
@@ -408,10 +413,11 @@ def severity_color(w: Window) -> str:
 
 def bar(w: Window, width: int) -> Text:
     color = severity_color(w)
-    filled = round(w.pct / 100 * width)
+    shown = 100.0 - w.pct if w.show_remaining else w.pct
+    filled = round(shown / 100 * width)
     filled = max(0, min(width, filled))
-    # Show at least a sliver once any usage exists.
-    if filled == 0 and w.pct > 0:
+    # Show at least a sliver while any of the shown share remains.
+    if filled == 0 and shown > 0:
         filled = 1
     t = Text()
     t.append("█" * filled, style=color)
@@ -425,6 +431,8 @@ def amount_text(w: Window) -> Text:
         used = w.used_dollars or 0.0
         limit = w.limit_dollars or 0.0
         return Text(f"${used:,.2f} / ${limit:,.2f}", style=color)
+    if w.show_remaining:
+        return Text(f"{100.0 - w.pct:.0f}% left", style=f"bold {color}")
     return Text(f"{w.pct:.0f}%", style=f"bold {color}")
 
 
