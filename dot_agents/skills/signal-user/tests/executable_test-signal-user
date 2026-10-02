@@ -84,7 +84,7 @@ chmod +x "$tmp/herdr"
 # run_signal <cwd> [<VAR=value>...] [-- <signal-user args>]: run the script with
 # the fake Herdr, leaving stdout in $out and returning its exit code.
 run_signal() {
-	local dir="$1" vars=() args=(hand "test reason")
+	local dir="$1" vars=() args=(ask "test reason")
 	shift
 	while [ $# -gt 0 ] && [ "$1" != -- ]; do
 		vars+=("$1")

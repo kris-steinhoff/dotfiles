@@ -14,12 +14,12 @@ Signals are kept for workflows where they pay off, so the user can trust each on
 
 The signals:
 
-- **🛑 hand**: stuck until the user answers. Look here first.
+- **🛑 ask**: stuck until the user answers. Look here first.
 - **✓ ready**: finished something for the user to look at. Nothing is blocked; look when you can.
 - **… wait**: waiting on something else that will wake the agent. Look away.
 
 ```bash
-scripts/signal-user hand "<what you need, in a few words>"
+scripts/signal-user ask "<what you need, in a few words>"
 scripts/signal-user ready "<what to look at>"
 scripts/signal-user wait "<what you're waiting on>" -- <command> [args...]
 scripts/signal-user wait "<what you're waiting on>"

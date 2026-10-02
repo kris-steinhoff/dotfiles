@@ -1,7 +1,7 @@
 #!/bin/bash
 # Show the user why this agent stopped, as a signal on its Herdr workspace:
 #
-#   🛑  hand   the agent is waiting on the user (an answer, a decision)
+#   🛑  ask    the agent is waiting on the user (an answer, a decision)
 #   ✓  ready  the agent finished something for the user to look at (a PR, a
 #              draft, a preview), but nothing is blocked on them
 #   …  wait   the agent is waiting on something else (a build, a deploy, a
@@ -32,7 +32,7 @@
 # so an agent can follow its instructions without checking where it is.
 #
 # Exit codes:
-#   hand, wait, clear: 0 done or skipped, with one JSON line on stdout; 1 failed,
+#   ask, wait, clear: 0 done or skipped, with one JSON line on stdout; 1 failed,
 #     also with one JSON line, whose status says why:
 #       herdr_denied       the Herdr socket was refused, as a sandbox does; the
 #                          same command run with local-socket permission works
@@ -45,14 +45,14 @@
 #     command does not run, so retrying the same line runs it once.
 set -euo pipefail
 
-HAND="🛑"
+ASK="🛑"
 READY="✓"
 WAIT="…"
 TTL_MS=86400000
 
 usage() {
 	cat <<'EOF'
-Usage: signal-user hand [<reason>]                🛑 waiting on the user
+Usage: signal-user ask [<reason>]                 🛑 waiting on the user
        signal-user ready [<reason>]               ✓ finished, for the user to look at
        signal-user wait [<reason>] -- <command>   … while <command> runs
        signal-user wait [<reason>]                … until `clear`
@@ -61,7 +61,7 @@ EOF
 }
 
 case "${1:-}" in
-hand | set) cmd=hand && shift ;; # `set` is the original name for `hand`
+ask | hand | set) cmd=ask && shift ;; # `hand` and `set` are earlier names for `ask`
 ready | wait | clear) cmd="$1" && shift ;;
 -h | --help) usage && exit 0 ;;
 *) usage >&2 && exit 2 ;;
@@ -226,7 +226,7 @@ if [ "$cmd" = clear ]; then
 fi
 
 case "$cmd" in
-hand) glyph="$HAND" ;;
+ask) glyph="$ASK" ;;
 ready) glyph="$READY" ;;
 wait) glyph="$WAIT" ;;
 esac
@@ -235,7 +235,7 @@ value="$glyph${reason:+ $reason}"
 raised=0
 urgency() { # urgency <signal text>: higher asks more of the user
 	case "$1" in
-	"$HAND"*) echo 3 ;;
+	"$ASK"*) echo 3 ;;
 	"$READY"*) echo 2 ;;
 	"$WAIT"*) echo 1 ;;
 	*) echo 0 ;;
@@ -275,7 +275,7 @@ finish() {
 	showing_now="$(jq -r '.signal // empty' <<<"$now")"
 	if [ "$showing_now" = "$value" ]; then
 		clear_signal || true
-	elif [[ "$showing_now" == "$HAND"* || "$showing_now" == "$READY"* ]]; then
+	elif [[ "$showing_now" == "$ASK"* || "$showing_now" == "$READY"* ]]; then
 		local status
 		status="$("$HERDR" agent get "$pane" 2>/dev/null | jq -r '.result.agent.agent_status // empty')" || return 0
 		if [ -n "$status" ] && [ "$status" != working ]; then
