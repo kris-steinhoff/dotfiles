@@ -2,9 +2,9 @@
 # Show the user why this agent stopped, as a signal on its Herdr workspace:
 #
 #   ✋  hand   the agent is waiting on the user (an answer, a decision)
-#   🏁  ready  the agent finished something for the user to look at (a PR, a
+#   ✓  ready  the agent finished something for the user to look at (a PR, a
 #              draft, a preview), but nothing is blocked on them
-#   ⏳  wait   the agent is waiting on something else (a build, a deploy, a
+#   …  wait   the agent is waiting on something else (a build, a deploy, a
 #              review, another agent), so the user can look away
 #
 # The signal is a pair of workspace metadata tokens: `signal`, the text the
@@ -12,19 +12,19 @@
 # the pane that raised it. The two kinds end differently, so they clear
 # differently:
 #
-# - A ✋ or 🏁 ends when the user replies. The signal-user Herdr plugin clears
+# - A ✋ or ✓ ends when the user replies. The signal-user Herdr plugin clears
 #   it when the raising pane's agent starts working again.
-# - A ⏳ ends when the thing waited on finishes, which can be several turns
+# - A `…` ends when the thing waited on finishes, which can be several turns
 #   later; the user may chat with the agent meanwhile. So the plugin leaves it
 #   alone. `wait <reason> -- <command>` ties it to a command instead: it raises
-#   the ⏳, runs the command, and clears the ⏳ when the command exits, however
+#   the `…`, runs the command, and clears the `…` when the command exits, however
 #   it exits. A wait with no command behind it is cleared with `clear`.
 #
 # The plugin also clears either kind when the raising pane closes, and a
 # 24-hour TTL (the longest Herdr allows) backs everything up.
 #
 # A workspace shows one signal. A signal never replaces another agent's more
-# urgent one (✋ over 🏁 over ⏳), because hiding a request for the user behind
+# urgent one (✋ over ✓ over `…`), because hiding a request for the user behind
 # something that asks less of them is the overwrite that costs something. An
 # agent's own signal is always replaced; its newest one is its current state.
 #
@@ -46,16 +46,16 @@
 set -euo pipefail
 
 HAND="✋"
-READY="🏁"
-WAIT="⏳"
+READY="✓"
+WAIT="…"
 TTL_MS=86400000
 
 usage() {
 	cat <<'EOF'
 Usage: signal-user hand [<reason>]                ✋ waiting on the user
-       signal-user ready [<reason>]               🏁 finished, for the user to look at
-       signal-user wait [<reason>] -- <command>   ⏳ while <command> runs
-       signal-user wait [<reason>]                ⏳ until `clear`
+       signal-user ready [<reason>]               ✓ finished, for the user to look at
+       signal-user wait [<reason>] -- <command>   … while <command> runs
+       signal-user wait [<reason>]                … until `clear`
        signal-user clear                          take this agent's signal down
 EOF
 }
@@ -226,11 +226,11 @@ if [ "$cmd" = clear ]; then
 fi
 
 case "$cmd" in
-hand) emoji="$HAND" ;;
-ready) emoji="$READY" ;;
-wait) emoji="$WAIT" ;;
+hand) glyph="$HAND" ;;
+ready) glyph="$READY" ;;
+wait) glyph="$WAIT" ;;
 esac
-value="$emoji${reason:+ $reason}"
+value="$glyph${reason:+ $reason}"
 
 raised=0
 urgency() { # urgency <signal text>: higher asks more of the user
@@ -254,10 +254,10 @@ fi
 
 [ ${#command[@]} -gt 0 ] || exit 0
 
-# Clear the ⏳ when the command ends, but only if it is still the one showing:
+# Clear the `…` when the command ends, but only if it is still the one showing:
 # any signal raised since then has replaced it and is not ours to end.
 #
-# If that replacement is this agent's own ✋ or 🏁, the command ending is about
+# If that replacement is this agent's own ✋ or ✓, the command ending is about
 # to wake the agent (its harness reports the finished background job), and the
 # plugin would read that resume as the user's reply and clear the signal. So
 # leave a `signal_skip` note telling the plugin to let this pane's next resume

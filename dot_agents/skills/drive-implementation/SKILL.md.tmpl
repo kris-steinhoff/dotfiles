@@ -163,8 +163,8 @@ The user reads one pane: yours. Make what reaches it worth reading.
 The user runs this alongside other work and checks back from the Herdr sidebar, so end every pass with the `signal-user` signal that matches where the run stands, as your last step before the turn ends. Each one replaces the last, so the sidebar always shows the run's current state; don't clear one yourself.
 
 - **✋ when the run needs the user**: batched questions to answer, a trust prompt to accept, a decision only they can make. Name it in a few words, such as `3 questions on NXC-694`.
-- **⏳ when the run is waiting on its own work**: workers implementing, reviews running, CI on a unit's PR. Raise it with no command behind it, since the wait is on several things at once, such as `2 units in flight`.
-- **🏁 when the run is finished** and has a result for the user to look at: every unit landed, or a phase ready for the team. Say what, such as `NXC-694 landed`.
+- **… when the run is waiting on its own work**: workers implementing, reviews running, CI on a unit's PR. Raise it with no command behind it, since the wait is on several things at once, such as `2 units in flight`.
+- **✓ when the run is finished** and has a result for the user to look at: every unit landed, or a phase ready for the team. Say what, such as `NXC-694 landed`.
 
 Workers never signal; they talk only to you, and their panes aren't where the user answers anything.
 

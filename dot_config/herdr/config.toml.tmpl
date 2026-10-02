@@ -10,12 +10,15 @@ agent_panel_sort = "priority"
 [ui.sidebar.spaces]
 row_gap = 1
 # $signal is a workspace metadata token an agent sets with the signal-user
-# skill to say why it stopped ("✋ pick a migration strategy", "🏁 PR #254",
-# "⏳ CI"). It gets its own line because a reason inline with the name
+# skill to say why it stopped ("✋ pick a migration strategy", "✓ PR #254",
+# "… CI"). It gets its own line because a reason inline with the name
 # truncates and buries the name, and keeps the token's default color so it
-# suits any signal; the emoji carries the meaning. $flag is the manual "⚑"
-# that prefix+u toggles, kept on the same line but in its own token so neither
-# replaces the other. The row disappears when both are unset.
+# suits any signal; the glyph carries the meaning. Only ✋ is an emoji, which
+# renders in full color whatever the token color, so it stands out; ✓ and … are
+# text glyphs and draw dim, so the signals that don't need the user recede.
+# $flag is the manual "⚑" that prefix+u toggles, kept on the same line but in
+# its own token so neither replaces the other. The row disappears when both
+# are unset.
 rows = [
   ["state_icon", "workspace"],
   ["$flag", "$signal"],
@@ -48,8 +51,8 @@ next_tab = ""
 # prefix+u toggles a "⚑" flag on the focused workspace. herdr has no way to
 # re-raise the sidebar attention dot once you've viewed a done agent, so this
 # gives a persistent, manual "come back to this" marker instead. prefix+U
-# dismisses an agent's ✋ or 🏁, for one dealt with without replying to the
-# agent (a PR approved on GitHub); it leaves a ⏳ alone. Separate keys, because
+# dismisses an agent's ✋ or ✓, for one dealt with without replying to the
+# agent (a PR approved on GitHub); it leaves a `…` alone. Separate keys, because
 # one key that did both cleared signals when you meant to flag.
 # Absolute paths (templated) so they resolve whether herdr runs the command
 # through a shell or execs it directly.
@@ -63,4 +66,4 @@ description = "toggle ⚑ flag"
 key = "prefix+shift+u"
 type = "shell"
 command = "{{ .chezmoi.homeDir }}/.config/herdr/dismiss-signal.sh"
-description = "dismiss ✋/🏁"
+description = "dismiss ✋/✓"
