@@ -82,6 +82,15 @@ NAME_FLAGS = {
     "claude": "-n",
 }
 
+# Arguments a kind always gets. An interactive Codex otherwise runs its tool
+# commands and hooks in a shared app-server daemon, which carries the
+# environment of whichever pane first started it, so every Codex session would
+# report that pane's HERDR_PANE_ID instead of its own. --no-daemon keeps the
+# app server inside this pane's process.
+KIND_ARGS = {
+    "codex": ["--no-daemon"],
+}
+
 # Herdr's agent-name rule.
 AGENT_NAME = re.compile(r"[a-z][a-z0-9_-]{0,31}")
 
@@ -255,7 +264,11 @@ def main():
 
         name = unique_agent_name(args.name or args.persona or args.kind)
         start = ["agent", "start", name, "--kind", args.kind, "--pane", args.pane_id]
-        extra = model_args(args.kind, args.model) + persona_args(args.kind, args.persona)
+        extra = (
+            KIND_ARGS.get(args.kind, [])
+            + model_args(args.kind, args.model)
+            + persona_args(args.kind, args.persona)
+        )
         if args.name:
             extra += name_args(args.kind, name)
         if extra:
