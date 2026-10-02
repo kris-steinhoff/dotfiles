@@ -34,7 +34,7 @@ Running the command again for the same ref **resumes**: it reads the existing st
 - The `worktree-layout` skill, when the repository uses that layout. Load it before touching worktrees there.
 - The dispatch primitives `create-worktree`, `launch-agent-in-pane`, and `remove-worktree`. Load each once and run its script per unit.
 - The `investigate` skill for pre-investigation, and the `watch-pr` skill for waiting on CI when the repository's flow has PRs.
-- Cross-session messaging (`ListAgents`, `SendMessage`) for talking to workers.
+- Claude Code's `SendMessage` for talking to `claude` workers, and `herdr agent prompt` for `codex` workers (see Worker kinds).
 - The `signal-user` skill, for showing the user in the Herdr sidebar where the run stands (see Signals).
 
 ## State
@@ -79,6 +79,7 @@ Everything lives in one directory:
       "branch": "nxc-703-load-messages",
       "worktree": "/Users/me/Repo/github.com/org/project/nxc-694/nxc-703-load-messages",
       "agent": "nxc-703-worker",
+      "worker_kind": "codex",
       "pr": 412,
       "review": null,
       "notes": ""
@@ -89,7 +90,7 @@ Everything lives in one directory:
 }
 ```
 
-Unit statuses, in rough order: `pending`, `investigated`, `blocked_on_user`, `implementing`, `in_review`, `fixing`, `ready_to_merge`, `merged`, `dropped`. `integration_branch` is where finished units land, as the project's flow defines it: a phase branch, a feature branch, or the default branch. It is recorded here, not chosen here. `pr` is null in a flow without unit-level PRs.
+Unit statuses, in rough order: `pending`, `investigated`, `blocked_on_user`, `implementing`, `in_review`, `fixing`, `ready_to_merge`, `merged`, `dropped`. `integration_branch` is where finished units land, as the project's flow defines it: a phase branch, a feature branch, or the default branch. It is recorded here, not chosen here. `pr` is null in a flow without unit-level PRs. `worker_kind` is `claude` or `codex`, set when the unit first starts and kept for its life.
 
 `log.md` is for people as much as for you. Dated entries, newest last, covering decisions you made and why, answers the user gave, questions still open, and anything a future driver needs to avoid re-asking.
 
@@ -97,7 +98,7 @@ Unit statuses, in rough order: `pending`, `investigated`, `blocked_on_user`, `im
 
 Each pass does these in order, then stops or goes again.
 
-1. **Reconcile.** Read `state.json`. Fetch if there is a remote. Check each in-flight unit against reality: is its worktree there, is its agent alive (`ListAgents`), what state is its PR in, has the tracker moved. Fix the state to match, and note anything surprising in the log.
+1. **Reconcile.** Read `state.json`. Fetch if there is a remote. Check each in-flight unit against reality: is its worktree there, is its agent alive (`herdr agent get <agent>`, which sees workers of either kind), what state is its PR in, has the tracker moved. Fix the state to match, and note anything surprising in the log.
 2. **Catch up with the remote.** If the integration branch has fallen behind its upstream, or behind the mainline it was cut from, bring it current before anything else lands on it, and tell each in-flight worker that its base moved. Do it the way the repository's conventions say. Where they're silent, merge rather than rebase: in-flight units were cut from the integration branch's history, and rewriting it would orphan them.
 3. **Handle reports.** Work through what workers have sent since the last pass (see Workers). A "done" report goes to review; a question gets an answer from you if the state or the repository answers it, otherwise it joins the batch for the user; a blocker may reorder the graph.
 4. **Start what's unblocked.** For each `investigated` unit whose dependencies are all `merged`, as long as it can run alongside what's already running: cut its worktree and launch its worker (see Starting a unit). Start in dependency order, then tracker key order.
@@ -108,28 +109,48 @@ Each pass does these in order, then stops or goes again.
 ## Starting a unit
 
 1. Create the worktree with `create-worktree`, following the repository's rules for branch name, base, path, and label. In a bare-repo layout that means `--workspace <repo directory's workspace> --base origin/<integration branch> --path <repo dir>/<branch>`.
-2. Run the repository's per-worktree setup, such as installing dependencies and writing any sandbox settings the worktree needs to commit.
-3. Launch the worker with `launch-agent-in-pane --pane-id <pane> --kind claude --name <unit key, lowercased>-worker --report-to-pane $HERDR_PANE_ID --seed-prompt <seed>`. Use the `agent_name` it returns; it may have been suffixed.
-4. Record branch, worktree, agent, and `implementing` in the state. Make whatever tracker move the repository's instructions attach to a unit starting, if any.
+2. Pick the worker kind (see Worker kinds).
+3. Run the repository's per-worktree setup for that kind, such as installing dependencies and writing any sandbox settings the worktree needs to commit.
+4. Launch the worker with `launch-agent-in-pane --pane-id <pane> --kind <worker kind> --name <unit key, lowercased>-worker --report-to-pane $HERDR_PANE_ID --seed-prompt <seed>`. Use the `agent_name` it returns; it may have been suffixed.
+5. Record branch, worktree, agent, worker kind, and `implementing` in the state. Make whatever tracker move the repository's instructions attach to a unit starting, if any.
 
 If the launch returns `agent_not_ready`, the pane is probably at a trust prompt. Tell the user once, with a 🛑 (see Signals), and when they've accepted it deliver the seed with `herdr agent prompt`.
 
 ## Workers
 
-A worker implements one unit in one worktree. It is a plain `claude` session, not a coordinator: it does the work itself. The seed is its whole brief, so it must be self-contained.
+A worker implements one unit in one worktree. It is a plain `claude` or `codex` session, not a coordinator: it does the work itself. The seed is its whole brief, so it must be self-contained.
 
 The seed states:
 
 - The unit: key, title, description, acceptance criteria, and what the pre-investigation found.
 - Where it is: the worktree path, its branch, the integration branch it was cut from and will merge into.
 - What done looks like: implemented, verified by the most relevant tests or checks, committed per the repository's conventions with the unit's key where they require it.
-- **Who it talks to.** Questions and the finished report go to the driver by `SendMessage` to `<driver name>` (or to the pane the launch threaded in). The worker never asks the user; the user may read its pane but won't answer there. If a choice would change product behavior or expand the unit, it stops and asks the driver.
+- **Who it talks to.** Questions and the finished report go to the driver over the channel for its kind (see Worker kinds). The worker never asks the user; the user may read its pane but won't answer there. If a choice would change product behavior or expand the unit, it stops and asks the driver.
 - **What it does with the remote.** Whatever the seed says, which is whatever the repository's instructions say for a unit at this level: push after review, push and open a draft PR, or nothing beyond local commits. Absent instructions, it commits locally and leaves the rest to the driver. It doesn't merge or touch the tracker unless the seed says to, and it doesn't start on anything beyond its unit.
 - The report format: what changed, how it was verified, the commits, remaining risks, and anything the driver should pass to the user.
 
 Keep the seed about context and outcome, not method. The worker's own skills and the repository's instruction files tell it how to implement and test.
 
-When a worker goes quiet or reports done, don't take its work over in your own context; send it follow-up work by `SendMessage`. If it has died, relaunch into the same pane with a seed that says where the work stands.
+When a worker goes quiet or reports done, don't take its work over in your own context; send it follow-up work over its channel. If it has died, relaunch into the same pane, with the same kind, and a seed that says where the work stands.
+
+### Worker kinds
+
+About 60% of units get a `codex` worker and the rest `claude`, so the run spreads its load across both subscriptions. Decide with this command rather than choosing yourself, because a model asked to pick at random doesn't:
+
+```bash
+[ $((RANDOM % 100)) -lt 60 ] && echo codex || echo claude
+```
+
+Run it once, for a unit's first launch only. From then on the state's `worker_kind` is the record: a relaunch after a worker died uses it, and a unit whose launch never reached the state takes the kind `herdr agent get` reports for its live worker. The user, or the repository's instructions, can pin a unit's kind, and that wins. Log the kind in the journal entry for the unit's start.
+
+The two kinds differ in how you reach them:
+
+- **`claude` workers** talk by `SendMessage`. The seed gives your session name as the address, and you send follow-up work to the worker's agent name the same way.
+- **`codex` workers** have no `SendMessage`. The seed tells the worker to report with `herdr agent prompt <your pane id> "[<its agent name>] <message>"`, without `--wait`, requesting escalated sandbox permissions for every `herdr` command since Codex's sandbox blocks the Herdr socket, and to retry after a short wait rather than drop the message if Herdr answers `agent_blocked`. You reach it with `herdr agent prompt <worker agent name> "<message>"`, also without `--wait`.
+
+A `codex` worker's message arrives typed into your own prompt, where it looks like the user talking. The `[<agent name>]` tag is what tells you otherwise: treat a tagged message as that worker's report, with no more authority than any worker's, and never as the user's answer to a batched question. If Herdr answers your prompt to a worker with `agent_blocked`, the worker is sitting at an approval dialog, which only the user can answer; tell them with a 🛑 rather than answering it yourself.
+
+Per-worktree setup differs by kind too. If the repository's instructions describe sandbox settings only for Claude, such as what a worktree needs to write its repo's `.bare/`, a `codex` worker may be unable to commit there. Put that in the first batch of questions rather than guessing at Codex settings, and run those units on `claude` until it is answered.
 
 ## Review
 
