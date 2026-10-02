@@ -420,8 +420,14 @@ def bar(w: Window, width: int) -> Text:
     if filled == 0 and shown > 0:
         filled = 1
     t = Text()
-    t.append("█" * filled, style=color)
-    t.append("░" * (width - filled), style="grey37")
+    if w.show_remaining:
+        # Anchor a falling share to the right, so it drains from the left and
+        # its edge sits where a climbing bar's would for the same usage.
+        t.append("░" * (width - filled), style="grey37")
+        t.append("█" * filled, style=color)
+    else:
+        t.append("█" * filled, style=color)
+        t.append("░" * (width - filled), style="grey37")
     return t
 
 
@@ -433,7 +439,7 @@ def amount_text(w: Window) -> Text:
         return Text(f"${used:,.2f} / ${limit:,.2f}", style=color)
     if w.show_remaining:
         return Text(f"{100.0 - w.pct:.0f}% left", style=f"bold {color}")
-    return Text(f"{w.pct:.0f}%", style=f"bold {color}")
+    return Text(f"{w.pct:.0f}% used", style=f"bold {color}")
 
 
 def reset_text(resets_at: str | None) -> Text:
