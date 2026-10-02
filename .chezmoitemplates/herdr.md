@@ -31,7 +31,7 @@ A worktree puts a branch on its own checkout without disturbing the current one.
 
 ### GitHub PR review queues
 
-A queue intent such as "review every PR waiting on my team" invokes `github-pr review ready`. That workflow discovers the open non-draft requests, gives each PR an exact-head-branch worktree and interactive Claude reviewer, and converges when called repeatedly. `review ready` is itself the confirmation to launch the queue, so do not add a second batch confirmation. The skill leaves every reviewer in its own pane for the user and never polls it. Its one teardown is its own: a later `review ready` pass removes a review worktree after its pass is complete and the PR is approved, merged, or closed, and keeps one whose request for changes is still in force.
+A queue intent such as "review every PR waiting on my team" invokes `github-pr review ready`. That workflow discovers the open non-draft requests, gives each PR an exact-head-branch worktree and interactive Claude reviewer, and converges when called repeatedly. `review ready` is itself the confirmation to launch the queue, so do not add a second batch confirmation. The skill leaves every reviewer in its own pane for the user and never polls it. Its one teardown is its own: a later `review ready` pass removes a review worktree once its pass is complete, whatever the outcome, and a new review request brings the PR back in a fresh worktree.
 
 ### Act on clear, confirm on doubt
 

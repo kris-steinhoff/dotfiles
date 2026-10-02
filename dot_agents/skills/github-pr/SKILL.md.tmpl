@@ -1,6 +1,6 @@
 ---
 name: github-pr
-description: Works GitHub pull requests from either side, posting only what the user confirms. `review <n>` reviews a PR — prior review context, the shared review policy without Nits, triage of each finding with the user, the approved review posted, and threads of verified fixes resolved on re-review. `review ready` idempotently dispatches every open non-draft PR awaiting my or my team's review into its own exact-head-branch Herdr worktree and removes the worktrees of PRs I have approved; suitable for repeated `/loop` invocation. `respond <n>` replies as the PR's author to unanswered review comments, each reply drafted for the user to approve. Use for any comment, reply, or review posted to a GitHub PR on the user's behalf.
+description: Works GitHub pull requests from either side, posting only what the user confirms. `review <n>` reviews a PR — prior review context, the shared review policy without Nits, triage of each finding with the user, the approved review posted, and threads of verified fixes resolved on re-review. `review ready` idempotently dispatches every open non-draft PR awaiting my or my team's review into its own exact-head-branch Herdr worktree and removes the worktrees of finished reviews; suitable for repeated `/loop` invocation. `respond <n>` replies as the PR's author to unanswered review comments, each reply drafted for the user to approve. Use for any comment, reply, or review posted to a GitHub PR on the user's behalf.
 {{- with get . "custom" }}
 {{ . }}
 {{- end }}
@@ -24,7 +24,7 @@ This mode requires Herdr (`HERDR_ENV=1`). Read [references/queue.md](references/
 
 Each PR uses a local branch named exactly as GitHub's `headRefName`, because Claude uses that identity to link the checkout to its PR. Never substitute a numbered or suffixed branch. A conflicting unrelated local branch is skipped and reported without modification.
 
-The queue mode removes finished review worktrees, then dispatches or refreshes reviewers. A worktree is removed once its pass is complete and I have approved the PR or it is merged or closed; one with my request for changes still in force stays. It does not wait for reviewers, collect their findings, triage, or post.
+The queue mode removes finished review worktrees, then dispatches or refreshes reviewers. A worktree is removed once its pass is complete, whatever the review's outcome; if the PR needs another look, a new review request brings it back in a fresh worktree. It does not wait for reviewers, collect their findings, triage, or post.
 
 ## `review <n>`: dispatch or conduct the review
 

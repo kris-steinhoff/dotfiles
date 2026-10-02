@@ -380,19 +380,7 @@ def command_mark(args):
     emit({"status": args.status, "pr_number": args.pr_number, "head_sha": current, "worktree": root})
 
 
-def my_decision(reviews, login):
-    """Return my latest APPROVED, CHANGES_REQUESTED, or DISMISSED review state, or None."""
-    decisive = [
-        review
-        for review in reviews
-        if (review.get("author") or {}).get("login") == login
-        and review.get("state") in ("APPROVED", "CHANGES_REQUESTED", "DISMISSED")
-    ]
-    decisive.sort(key=lambda review: review.get("submittedAt") or "")
-    return decisive[-1]["state"] if decisive else None
-
-
-def cleanup_verdict(repo, entry, state, queued, login):
+def cleanup_verdict(entry, state, queued):
     number = state["pr_number"]
     path = entry["path"]
     if state.get("status") != "complete":
@@ -406,15 +394,7 @@ def cleanup_verdict(repo, entry, state, queued, login):
     head = checked(["git", "rev-parse", "HEAD"], cwd=path)
     if state.get("head_sha") and head != state["head_sha"]:
         return "keep", f"HEAD {head} is not the reviewed head {state['head_sha']}"
-    raw = gh_json(repo, "pr", "view", str(number), "--json", "state,reviews")
-    if raw.get("state") in ("MERGED", "CLOSED"):
-        return "remove", f"the PR is {raw['state'].lower()}"
-    decision = my_decision(raw.get("reviews") or [], login)
-    if decision == "APPROVED":
-        return "remove", "my latest review approves it"
-    if decision == "CHANGES_REQUESTED":
-        return "keep", "my request for changes is still active"
-    return "keep", "I have not approved it"
+    return "remove", "the review pass is complete"
 
 
 def command_cleanup(args):
@@ -427,14 +407,13 @@ def command_cleanup(args):
             candidates.append((entry, state))
     if not candidates:
         emit({"items": []})
-    login = checked(["gh", "api", "user", "--jq", ".login"], cwd=repo, label="gh api user")
     queued = {
         item.get("number")
         for item in gh_json(repo, "pr", "list", "--search", SEARCH, "--limit", "200", "--json", "number")
     }
     items = []
     for entry, state in candidates:
-        action, reason = cleanup_verdict(repo, entry, state, queued, login)
+        action, reason = cleanup_verdict(entry, state, queued)
         items.append(
             {
                 "action": action,
