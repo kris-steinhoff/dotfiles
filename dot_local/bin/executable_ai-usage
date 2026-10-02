@@ -11,23 +11,30 @@ renders whichever limit windows each account reports.
 
 On a terminal it refreshes in place until interrupted. `--once` prints a
 single snapshot and exits.
+
+Every fetch goes through a shared cache in ~/.local/state/ai-usage/, so any
+number of callers can run as often as they like: a caller fetches only when
+the last attempt is older than its `--interval`, or a 429's backoff has lifted.
 """
 
 from __future__ import annotations
 
 import argparse
+import contextlib
+import fcntl
 import json
 import math
 import os
 import select
 import subprocess
 import sys
+import tempfile
 import termios
 import time
 import tty
 import urllib.error
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
@@ -48,6 +55,7 @@ KEYCHAIN_SERVICE = "Claude Code-credentials"  # macOS Keychain entry name
 # `/api/codex/usage` spelling is for the newer internal deployment.
 CHATGPT_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage"
 CODEX_AUTH_PATH = Path.home() / ".codex" / "auth.json"
+STATE_DIR = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "state") / "ai-usage"
 
 BAR_WIDTH = 26
 
@@ -658,79 +666,6 @@ def wait_for_key(fd: int | None, timeout: float) -> str:
     return ""
 
 
-def run_claude_live(interval: int) -> None:
-    """Poll every `interval` seconds and redraw once a second so the retry countdown ticks and the flash clears."""
-    data: dict | None = None
-    oauth: dict | None = None
-    updated_at: datetime | None = None
-    last_success: float | None = None
-    error: UsageError | None = None
-    last_attempt = 0.0
-    retry_until: float | None = None  # monotonic deadline while backing off a 429
-
-    # Silence keystroke echo while the Live view owns the screen. Echoed
-    # characters shove Rich's render region and leave stacked, ghosted panels.
-    # cbreak drops ECHO and line-buffering but keeps ISIG, so Ctrl-C still quits.
-    fd = sys.stdin.fileno() if sys.stdin.isatty() else None
-    saved_attrs = termios.tcgetattr(fd) if fd is not None else None
-    if fd is not None:
-        tty.setcbreak(fd)
-
-    try:
-        with Live(console=console, auto_refresh=False, screen=False) as live:
-            try:
-                while True:
-                    now = time.monotonic()
-                    backing_off = retry_until is not None and now < retry_until
-                    if not backing_off and (data is None or now - last_attempt >= interval):
-                        last_attempt = now
-                        try:
-                            oauth = load_oauth()
-                            data = fetch_usage(oauth["accessToken"])
-                            updated_at = datetime.now()
-                            last_success = time.monotonic()
-                            error = None
-                            retry_until = None
-                        except UsageError as e:
-                            error = e
-                            if e.status == 429:
-                                # Clamp 0.0/None to the default so a bogus Retry-After
-                                # near zero doesn't turn into a hammering loop.
-                                backoff = e.retry_after if e.retry_after else DEFAULT_BACKOFF
-                                retry_until = time.monotonic() + backoff + RETRY_BUFFER
-                                # Make the retry due the instant the backoff lifts, rather
-                                # than an extra `interval` later.
-                                last_attempt = 0.0
-                        now = time.monotonic()
-                        backing_off = retry_until is not None and now < retry_until
-
-                    fresh_age = (time.monotonic() - last_success) if last_success is not None else None
-                    retry_remaining = (
-                        (retry_until - now)
-                        if (error is not None and retry_until is not None and now < retry_until)
-                        else None
-                    )
-                    if data is not None and oauth is not None:
-                        footer = Group(*error_lines(error, retry_remaining)) if error is not None else None
-                        live.update(
-                            build_panel(data, oauth, footer, updated_at=updated_at, fresh_age=fresh_age),
-                            refresh=True,
-                        )
-                    else:
-                        live.update(error_panel(error, retry_remaining), refresh=True)  # type: ignore[arg-type]
-                    action = wait_for_key(fd, 1.0)
-                    if action == "quit":
-                        break
-                    if action == "refresh":
-                        last_attempt = 0.0  # force a fetch on the next iteration
-            except KeyboardInterrupt:
-                pass
-    finally:
-        if fd is not None and saved_attrs is not None:
-            termios.tcflush(fd, termios.TCIFLUSH)  # drop keys typed during the run
-            termios.tcsetattr(fd, termios.TCSADRAIN, saved_attrs)
-
-
 SERVICE_TITLES = {"claude": "Claude Usage", "chatgpt": "ChatGPT Usage"}
 
 
@@ -742,19 +677,156 @@ def fetch_service(service: str) -> tuple[dict, dict]:
     return oauth, fetch_chatgpt_usage(oauth)
 
 
+# --------------------------------------------------------------------------- #
+# Shared cache
+# --------------------------------------------------------------------------- #
+@dataclass
+class Cached:
+    """One service's cache entry, shared by every caller on the machine.
+
+    Times are wall-clock epoch seconds so separate processes agree on them.
+    A failed attempt keeps the last good payload and records its error, so
+    every caller backs off from it rather than each retrying on its own.
+    """
+
+    account: dict  # non-secret account details (Claude's plan); never tokens
+    data: dict | None = None
+    fetched_at: float | None = None  # last successful fetch
+    attempted_at: float | None = None  # last fetch, successful or not
+    error: UsageError | None = None
+    retry_at: float | None = None  # no fetch before this, after a 429
+
+
+def cache_path(service: str) -> Path:
+    return STATE_DIR / f"{service}.json"
+
+
+def read_cache(service: str) -> Cached:
+    try:
+        raw = json.loads(cache_path(service).read_text())
+    except (OSError, json.JSONDecodeError):
+        raw = None
+    if not isinstance(raw, dict):
+        return Cached(account={})
+    err = raw.get("error")
+    return Cached(
+        account=raw.get("account") or {},
+        data=raw.get("data"),
+        fetched_at=raw.get("fetched_at"),
+        attempted_at=raw.get("attempted_at"),
+        error=UsageError(
+            err.get("message", "Unknown error."),
+            err.get("hint"),
+            status=err.get("status"),
+            credentials_missing=bool(err.get("credentials_missing")),
+        ) if isinstance(err, dict) else None,
+        retry_at=raw.get("retry_at"),
+    )
+
+
+def write_cache(service: str, entry: Cached) -> None:
+    """Replace the entry atomically, so a concurrent reader never sees half a file."""
+    err = entry.error
+    payload = {
+        "fetched_at": entry.fetched_at,
+        "attempted_at": entry.attempted_at,
+        "retry_at": entry.retry_at,
+        "account": entry.account,
+        "error": None if err is None else {
+            "message": err.message,
+            "hint": err.hint,
+            "status": err.status,
+            "credentials_missing": err.credentials_missing,
+        },
+        "data": entry.data,
+    }
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=STATE_DIR, prefix=f".{service}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(payload, f)
+        os.replace(tmp, cache_path(service))
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise
+
+
+@contextlib.contextmanager
+def service_lock(service: str):
+    """Hold an exclusive per-service lock; without a writable state dir, run unlocked."""
+    try:
+        STATE_DIR.mkdir(parents=True, exist_ok=True)
+        f = open(STATE_DIR / f"{service}.lock", "a")
+    except OSError:
+        yield
+        return
+    with f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        yield
+
+
+def fetch_due(entry: Cached, max_age: float, now: float, force: bool) -> bool:
+    # A 429's backoff binds even a forced refresh, since forcing through it
+    # only draws another 429. Once it lifts, the retry is due straight away.
+    if entry.retry_at is not None:
+        return now >= entry.retry_at
+    if force:
+        return True
+    return entry.attempted_at is None or now - entry.attempted_at >= max_age
+
+
+def load_service(service: str, max_age: float, force: bool = False) -> Cached:
+    """Return the service's cached usage, fetching first if it is due."""
+    requested = time.time()
+    entry = read_cache(service)
+    if not fetch_due(entry, max_age, requested, force):
+        return entry
+    with service_lock(service):
+        entry = read_cache(service)
+        # Another caller may have fetched while this one waited on the lock;
+        # its result is as new as this caller asked for, forced or not.
+        if (entry.attempted_at or 0) >= requested or not fetch_due(entry, max_age, time.time(), force):
+            return entry
+        now = time.time()
+        try:
+            oauth, data = fetch_service(service)
+        except UsageError as e:
+            retry_at = None
+            if e.status == 429:
+                # Clamp 0.0/None to the default so a bogus Retry-After near
+                # zero doesn't turn into a hammering loop.
+                retry_at = time.time() + (e.retry_after or DEFAULT_BACKOFF) + RETRY_BUFFER
+            entry = replace(entry, attempted_at=now, error=e, retry_at=retry_at)
+        else:
+            account = {"subscriptionType": oauth.get("subscriptionType")} if service == "claude" else {}
+            entry = Cached(account=account, data=data, fetched_at=now, attempted_at=now)
+        # An unwritable state dir costs only the sharing, not this caller's result.
+        with contextlib.suppress(OSError):
+            write_cache(service, entry)
+        return entry
+
+
+# --------------------------------------------------------------------------- #
+# Views
+# --------------------------------------------------------------------------- #
 def service_panel(
     service: str,
-    oauth: dict,
+    account: dict,
     data: dict,
     updated_at: datetime | None,
     fresh_age: float | None,
     label_width: int | None = None,
+    footer: Text | Group | None = None,
 ) -> Panel:
     if service == "claude":
-        return build_panel(data, oauth, updated_at=updated_at, fresh_age=fresh_age, label_width=label_width)
+        return build_panel(
+            data, account, footer, updated_at=updated_at, fresh_age=fresh_age, label_width=label_width,
+        )
     plan = (data.get("plan_type") or "ChatGPT").replace("_", " ")
     return build_panel(
         data,
+        footer=footer,
         updated_at=updated_at,
         fresh_age=fresh_age,
         label_width=label_width,
@@ -764,91 +836,71 @@ def service_panel(
     )
 
 
-def build_dashboard(
-    services: list[str],
-    snapshots: dict[str, tuple[dict, dict]],
-    errors: dict[str, UsageError],
-    updated_at: datetime | None,
-    fresh_age: float | None,
-) -> Group:
-    panels: list[Panel] = []
+def build_dashboard(services: list[str], entries: dict[str, Cached], now: float) -> Group:
     labels = [
         window.label
         for service in services
-        if service in snapshots
-        for window in (
-            build_windows(snapshots[service][1])
-            if service == "claude"
-            else build_chatgpt_windows(snapshots[service][1])
-        )
+        if entries[service].data is not None
+        for window in (build_windows if service == "claude" else build_chatgpt_windows)(entries[service].data)
     ]
     label_width = max((Text(label).cell_len for label in labels), default=None)
+    panels: list[Panel] = []
     for service in services:
-        if service in snapshots:
-            oauth, data = snapshots[service]
-            footer = Group(*error_lines(errors[service], None)) if service in errors else None
-            panel = service_panel(service, oauth, data, updated_at, fresh_age, label_width)
-            if footer is not None:
-                panel = build_panel(
-                    data,
-                    oauth if service == "claude" else None,
-                    footer=footer,
-                    updated_at=updated_at,
-                    fresh_age=fresh_age,
-                    label_width=label_width,
-                    title=SERVICE_TITLES[service],
-                    account=(account_subtitle(oauth) if service == "claude" else Text((data.get("plan_type") or "ChatGPT").replace("_", " "), style="magenta")),
-                    window_builder=build_windows if service == "claude" else build_chatgpt_windows,
-                )
-            panels.append(panel)
-        else:
-            panels.append(error_panel(errors[service], title=SERVICE_TITLES[service]))
+        entry = entries[service]
+        retry_remaining = (
+            entry.retry_at - now
+            if entry.error is not None and entry.retry_at is not None and now < entry.retry_at
+            else None
+        )
+        if entry.data is None:
+            error = entry.error or UsageError("No usage fetched yet.")
+            panels.append(error_panel(error, retry_remaining, title=SERVICE_TITLES[service]))
+            continue
+        footer = Group(*error_lines(entry.error, retry_remaining)) if entry.error is not None else None
+        updated_at = datetime.fromtimestamp(entry.fetched_at) if entry.fetched_at is not None else None
+        fresh_age = now - entry.fetched_at if entry.fetched_at is not None else None
+        panels.append(service_panel(service, entry.account, entry.data, updated_at, fresh_age, label_width, footer))
     return Group(*panels)
 
 
+def visible(services: list[str], entries: dict[str, Cached]) -> list[str]:
+    """Hide a service the user is not signed in to, rather than show it as an error."""
+    return [
+        service for service in services
+        if not (entries[service].error is not None and entries[service].error.credentials_missing)
+    ]
+
+
 def run_live(services: list[str], interval: int) -> None:
-    """Poll every selected service, keeping last-known values on an error."""
-    snapshots: dict[str, tuple[dict, dict]] = {}
-    errors: dict[str, UsageError] = {}
-    updated_at: datetime | None = None
-    last_success: float | None = None
-    last_attempt: float | None = None
+    """Redraw once a second from the shared cache, fetching whenever an entry is due.
+
+    Reading the cache every tick also picks up refreshes made by other callers.
+    """
+    force = False
     fd = sys.stdin.fileno() if sys.stdin.isatty() else None
     saved_attrs = termios.tcgetattr(fd) if fd is not None else None
+    # Silence keystroke echo while the Live view owns the screen. Echoed
+    # characters shove Rich's render region and leave stacked, ghosted panels.
+    # cbreak drops ECHO and line-buffering but keeps ISIG, so Ctrl-C still quits.
     if fd is not None:
         tty.setcbreak(fd)
     try:
         with Live(console=console, auto_refresh=False, screen=False) as live:
             try:
                 while True:
-                    now = time.monotonic()
-                    if last_attempt is None or now - last_attempt >= interval:
-                        last_attempt = now
-                        for service in services:
-                            try:
-                                snapshots[service] = fetch_service(service)
-                                errors.pop(service, None)
-                            except UsageError as e:
-                                errors[service] = e
-                        if snapshots:
-                            updated_at = datetime.now()
-                            last_success = time.monotonic()
-                    fresh_age = time.monotonic() - last_success if last_success is not None else None
-                    visible_services = [
-                        service for service in services
-                        if not (service in errors and errors[service].credentials_missing)
-                    ]
-                    live.update(build_dashboard(visible_services, snapshots, errors, updated_at, fresh_age), refresh=True)
+                    entries = {service: load_service(service, interval, force) for service in services}
+                    force = False
+                    live.update(build_dashboard(visible(services, entries), entries, time.time()), refresh=True)
                     action = wait_for_key(fd, 1.0)
                     if action == "quit":
                         break
                     if action == "refresh":
-                        last_attempt = None
+                        force = True
             except KeyboardInterrupt:
                 pass
     finally:
         if fd is not None and saved_attrs is not None:
-            termios.tcflush(fd, termios.TCIFLUSH)
+            termios.tcflush(fd, termios.TCIFLUSH)  # drop keys typed during the run
             termios.tcsetattr(fd, termios.TCSADRAIN, saved_attrs)
 
 
@@ -862,16 +914,8 @@ def die(*lines: str) -> None:
     sys.exit(1)
 
 
-def snapshots(services: list[str]) -> tuple[dict[str, tuple[dict, dict]], dict[str, UsageError]]:
-    """Fetch every selected service, allowing a healthy one to still render."""
-    values: dict[str, tuple[dict, dict]] = {}
-    errors: dict[str, UsageError] = {}
-    for service in services:
-        try:
-            values[service] = fetch_service(service)
-        except UsageError as e:
-            errors[service] = e
-    return values, errors
+def die_on(service: str, error: UsageError) -> None:
+    die(f"{SERVICE_TITLES[service]}: {error.message}", *([error.hint] if error.hint else []))
 
 
 def main() -> None:
@@ -884,38 +928,37 @@ def main() -> None:
     parser.add_argument("--once", action="store_true", help="print a single snapshot instead of the live view")
     parser.add_argument(
         "-n", "--interval", type=int, default=300, metavar="SECONDS",
-        help="live refresh interval in seconds (default: 300 / 5 minutes, minimum: 5)",
+        help="fetch only when the shared cache is older than this many seconds "
+             "(default: 300 / 5 minutes, minimum: 5)",
     )
     args = parser.parse_args()
     services = args.service or ["claude", "chatgpt"]
+    interval = max(5, args.interval)
 
     if args.json:
-        values, errors = snapshots(services)
-        fatal_errors = {service: error for service, error in errors.items() if not error.credentials_missing}
-        if fatal_errors:
-            for service, error in fatal_errors.items():
-                die(f"{SERVICE_TITLES[service]}: {error.message}", *([error.hint] if error.hint else []))
-        json.dump({service: data for service, (_, data) in values.items()}, sys.stdout, indent=2)
+        entries = {service: load_service(service, interval) for service in services}
+        for service, entry in entries.items():
+            if entry.error is None or entry.error.credentials_missing:
+                continue
+            if entry.data is None:
+                die_on(service, entry.error)
+            # Stale data still prints, so a consumer keeps working; say why it is stale.
+            err_console.print(f"[yellow]warning:[/yellow] {SERVICE_TITLES[service]}: {entry.error.message}; showing cached data")
+        json.dump({service: e.data for service, e in entries.items() if e.data is not None}, sys.stdout, indent=2)
         sys.stdout.write("\n")
         return
 
     # The live view needs a terminal; anything else prints once and exits.
     if args.once or not sys.stdout.isatty():
-        values, errors = snapshots(services)
-        if not values:
-            fatal_errors = {service: error for service, error in errors.items() if not error.credentials_missing}
-            if fatal_errors:
-                service, error = next(iter(fatal_errors.items()))
-                die(f"{SERVICE_TITLES[service]}: {error.message}", *([error.hint] if error.hint else []))
+        entries = {service: load_service(service, interval) for service in services}
+        if all(entry.data is None for entry in entries.values()):
+            for service, entry in entries.items():
+                if entry.error is not None and not entry.error.credentials_missing:
+                    die_on(service, entry.error)
             return
-        visible_services = [
-            service for service in services
-            if not (service in errors and errors[service].credentials_missing)
-        ]
-        console.print(build_dashboard(visible_services, values, errors, datetime.now(), 0.0))
+        console.print(build_dashboard(visible(services, entries), entries, time.time()))
         return
 
-    interval = max(5, args.interval)
     run_live(services, interval)
 
 
