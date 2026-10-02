@@ -28,6 +28,16 @@ scripts/signal-user clear
 
 Each prints one JSON line. Outside a Herdr pane they print `{"status":"skipped",...}` and signal nothing (a wrapped command still runs), so there is no need to check first.
 
+## When it fails
+
+A failure exits 1 with one JSON line whose `status` says what went wrong. Act on the status, not on a guess about panes:
+
+- **`herdr_denied`**: the Herdr socket was refused, which is what a sandbox does to a command that may not reach local sockets. Rerun the same signal command with permission to reach them (your harness's escalation for local socket access) before looking into anything else. The failure says nothing about panes; Herdr was never asked.
+- **`herdr_unavailable`**: Herdr could not answer for some other reason, such as a stopped server. `detail` holds Herdr's own message and `error_code` its code when it gave one. Tell the user rather than working around it.
+- **`unresolved`**: Herdr answered, but no single pane could be identified as yours. `reason` says why, and `candidates` lists the panes when several matched. Don't pick one yourself, because a signal under another agent's pane is one you cannot clear. Tell the user the signal did not go up.
+
+A wrapped command does not run when the signal fails, so rerunning the whole `wait ... --` line runs it once.
+
 ## Picking the signal
 
 Signal as the last thing before ending your turn, or before opening a question prompt, so nothing you do afterward reads as you having resumed.

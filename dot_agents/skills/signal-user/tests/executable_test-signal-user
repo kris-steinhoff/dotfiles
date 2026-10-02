@@ -4,86 +4,201 @@ set -euo pipefail
 skill_dir="$(cd "$(dirname "$0")/.." && pwd)"
 script="$skill_dir/scripts/signal-user"
 [ -f "$script" ] || script="$skill_dir/scripts/executable_signal-user"
-tmp="$(mktemp -d)"
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/test-signal-user.XXXXXX")"
 trap 'rm -rf "$tmp"' EXIT
 log="$tmp/herdr.log"
+out="$tmp/out"
+root="$(cd "$tmp" && pwd -P)/repo"
+mkdir -p "$root/review/sub" "$root/other"
 
-cat >"$tmp/herdr" <<'EOF'
+# A fake Herdr. Each query's behavior is set by its own variable, and the
+# failures copy the real CLI's: errors on stderr with exit 1, a server error as
+# JSON, a refused socket as Rust's raw I/O error.
+cat >"$tmp/herdr" <<'EOF_HERDR'
 #!/bin/bash
 set -euo pipefail
 
 printf 'CALL %s %s\n' "$1" "$2" >>"$FAKE_HERDR_LOG"
 printf 'ARG %s\n' "$@" >>"$FAKE_HERDR_LOG"
 
+denied() {
+	echo 'Error: Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" }' >&2
+	exit 1
+}
+down() {
+	printf '{"id":"cli:x","error":{"code":"server_not_running","message":"no herdr server is running at %s"}}\n' "$HERDR_SOCKET_PATH" >&2
+	exit 1
+}
+agent() { # agent <pane> <workspace> <cwd>
+	printf '{"agent":"codex","pane_id":"%s","workspace_id":"%s","cwd":"%s"}' "$1" "$2" "$3"
+}
+
 case "$1 $2" in
 "pane get")
-	if [ "$FAKE_HERDR_MODE" = alias ]; then
-		printf '%s\n' '{"result":{"pane":{"pane_id":"w1:p-live","workspace_id":"w1"}}}'
-	else
+	case "$FAKE_PANE" in
+	alias) echo '{"result":{"pane":{"pane_id":"w1:p-live","workspace_id":"w1","agent":"claude"}}}' ;;
+	codex) echo '{"result":{"pane":{"pane_id":"w1:p-codex","workspace_id":"w1","agent":"codex"}}}' ;;
+	shell) echo '{"result":{"pane":{"pane_id":"w9:p-shell","workspace_id":"w9"}}}' ;;
+	gone)
+		echo '{"error":{"code":"pane_not_found","message":"pane w9:p-old not found"},"id":"cli:pane:get"}' >&2
 		exit 1
-	fi
+		;;
+	garbled) echo 'not json' ;;
+	denied) denied ;;
+	down) down ;;
+	esac
 	;;
-"pane list")
-	case "$FAKE_HERDR_MODE" in
-	unique-codex)
-		printf '%s\n' '{"result":{"panes":[{"pane_id":"w1:p-claude","agent":"claude"},{"pane_id":"w1:p-codex","agent":"codex"}]}}'
+"agent list")
+	case "$FAKE_AGENTS" in
+	split)
+		printf '{"result":{"agents":[%s,%s,{"agent":"claude","pane_id":"w4:p-claude","workspace_id":"w4","cwd":"%s"}]}}\n' \
+			"$(agent w2:p-review w2 "$FAKE_ROOT/review")" "$(agent w3:p-other w3 "$FAKE_ROOT/other")" "$FAKE_ROOT/review/sub"
 		;;
-	ambiguous-codex)
-		printf '%s\n' '{"result":{"panes":[{"pane_id":"w1:p-codex-1","agent":"codex"},{"pane_id":"w1:p-codex-2","agent":"codex"}]}}'
+	nested)
+		printf '{"result":{"agents":[%s,%s]}}\n' \
+			"$(agent w5:p-parent w5 "$FAKE_ROOT")" "$(agent w2:p-review w2 "$FAKE_ROOT/review")"
 		;;
+	shared)
+		printf '{"result":{"agents":[%s,%s]}}\n' \
+			"$(agent w2:p-review-1 w2 "$FAKE_ROOT/review")" "$(agent w3:p-review-2 w3 "$FAKE_ROOT/review")"
+		;;
+	denied) denied ;;
+	*) exit 2 ;;
 	esac
 	;;
 "workspace get")
-	printf '%s\n' '{"result":{"workspace":{"tokens":{}}}}'
+	echo '{"result":{"workspace":{"tokens":{}}}}'
 	;;
 "workspace report-metadata")
-	printf '%s\n' '{"result":{}}'
+	[ "${FAKE_REPORT:-ok}" = ok ] || denied
+	: # the real CLI prints nothing on a successful write
 	;;
 *)
 	echo "unexpected fake Herdr call: $*" >&2
 	exit 2
 	;;
 esac
-EOF
+EOF_HERDR
 chmod +x "$tmp/herdr"
 
+# run_signal <cwd> [<VAR=value>...] [-- <signal-user args>]: run the script with
+# the fake Herdr, leaving stdout in $out and returning its exit code.
 run_signal() {
-	FAKE_HERDR_MODE="$1" \
-	FAKE_HERDR_LOG="$log" \
-	HERDR_BIN_PATH="$tmp/herdr" \
-	HERDR_ENV=1 \
-	HERDR_PANE_ID=w1:p-old \
-	HERDR_WORKSPACE_ID=w1 \
-	CODEX_SESSION_ID=test-session \
-		bash "$script" hand "test reason"
+	local dir="$1" vars=() args=(hand "test reason")
+	shift
+	while [ $# -gt 0 ] && [ "$1" != -- ]; do
+		vars+=("$1")
+		shift
+	done
+	[ $# -eq 0 ] || { shift && args=("$@"); }
+	: >"$log"
+	(cd "$dir" && env \
+		FAKE_HERDR_LOG="$log" \
+		FAKE_ROOT="$root" \
+		HERDR_BIN_PATH="$tmp/herdr" \
+		HERDR_ENV=1 \
+		HERDR_PANE_ID=w9:p-old \
+		HERDR_WORKSPACE_ID=w9 \
+		HERDR_SOCKET_PATH=/fake/herdr.sock \
+		"${vars[@]}" \
+		bash "$script" "${args[@]}") >"$out" 2>"$tmp/err"
+}
+
+die() {
+	echo "FAIL: $1" >&2
+	echo "--- stdout" >&2 && cat "$out" >&2
+	echo "--- stderr" >&2 && cat "$tmp/err" >&2
+	echo "--- herdr log" >&2 && cat "$log" >&2
+	exit 1
 }
 
 assert_log_contains() {
-	if ! grep -Fx -- "$1" "$log" >/dev/null; then
-		echo "missing from fake Herdr log: $1" >&2
-		cat "$log" >&2
-		exit 1
-	fi
+	grep -Fx -- "$1" "$log" >/dev/null || die "missing from fake Herdr log: $1"
 }
 
-: >"$log"
-run_signal alias >/dev/null
-assert_log_contains 'ARG signal-user:w1:p-live'
+# assert_out <jq filter>: the script printed exactly one JSON line matching it.
+assert_out() {
+	[ "$(wc -l <"$out" | tr -d ' ')" = 1 ] || die "expected one JSON line"
+	jq -e "$1" "$out" >/dev/null || die "output does not match: $1"
+}
+
+# expect_failure <description> <run_signal args...>: exits 1, raises nothing.
+expect_failure() {
+	local what="$1"
+	shift
+	if run_signal "$@"; then
+		die "$what should fail"
+	elif [ $? != 1 ]; then
+		die "$what should exit 1"
+	fi
+	! grep -Fx -- 'CALL workspace report-metadata' "$log" >/dev/null ||
+		[ "${FAKE_REPORT_EXPECTED:-}" = 1 ] || die "$what should not report metadata"
+}
+
+# --- Resolution
+
+# A moved pane's inherited ID resolves to its canonical one.
+run_signal "$root" FAKE_PANE=alias || die "alias should succeed"
 assert_log_contains 'ARG signal_pane=w1:p-live'
+assert_out '.status == "raised" and .workspace_id == "w1"'
 
-: >"$log"
-run_signal unique-codex >/dev/null
-assert_log_contains 'ARG signal-user:w1:p-codex'
+# A Codex agent whose inherited pane hosts Codex keeps that pane.
+run_signal "$root" FAKE_PANE=codex CODEX_THREAD_ID=t || die "own Codex pane should succeed"
 assert_log_contains 'ARG signal_pane=w1:p-codex'
+! grep -Fx -- 'CALL agent list' "$log" >/dev/null || die "a pane hosting Codex should not be looked up by cwd"
 
-: >"$log"
-if run_signal ambiguous-codex >/dev/null 2>&1; then
-	echo "ambiguous Codex panes should fail" >&2
-	exit 1
-fi
-if grep -Fx -- 'CALL workspace report-metadata' "$log" >/dev/null; then
-	echo "ambiguous Codex panes should not report metadata" >&2
-	exit 1
-fi
+# A shared daemon's inherited pane is a live shell elsewhere: find the agent by
+# cwd, including from a subdirectory, and signal its own workspace.
+run_signal "$root/review/sub" FAKE_PANE=shell FAKE_AGENTS=split CODEX_THREAD_ID=t || die "foreign pane should resolve"
+assert_log_contains 'ARG signal_pane=w2:p-review'
+assert_out '.workspace_id == "w2"'
+
+# The same when the inherited pane no longer exists.
+run_signal "$root/review" FAKE_PANE=gone FAKE_AGENTS=split CODEX_SESSION_ID=t || die "gone pane should resolve"
+assert_log_contains 'ARG signal_pane=w2:p-review'
+
+# A Codex agent in an enclosing directory loses to the closer one.
+run_signal "$root/review" FAKE_PANE=shell FAKE_AGENTS=nested CODEX_THREAD_ID=t || die "nested should resolve"
+assert_log_contains 'ARG signal_pane=w2:p-review'
+
+# --- Herdr answered, but not with one pane: unresolved
+
+expect_failure "two Codex agents in one cwd" "$root/review" FAKE_PANE=shell FAKE_AGENTS=shared CODEX_THREAD_ID=t
+assert_out '.status == "unresolved" and .inherited_pane == "w9:p-old" and (.candidates | map(.pane_id)) == ["w2:p-review-1", "w3:p-review-2"]'
+
+expect_failure "no Codex agent above the cwd" "$root" FAKE_PANE=shell FAKE_AGENTS=split CODEX_THREAD_ID=t
+assert_out '.status == "unresolved" and (has("candidates") | not)'
+
+expect_failure "a closed pane outside Codex" "$root" FAKE_PANE=gone
+assert_out '.status == "unresolved"'
+
+# --- Herdr could not answer: never reported as unresolved
+
+expect_failure "a refused socket on pane get" "$root" FAKE_PANE=denied
+assert_out '.status == "herdr_denied" and .query == "pane get" and .socket == "/fake/herdr.sock"
+	and (.detail | test("PermissionDenied")) and (.hint | test("rerun this same command"))'
+
+expect_failure "a refused socket on agent list" "$root" FAKE_PANE=shell FAKE_AGENTS=denied CODEX_THREAD_ID=t
+assert_out '.status == "herdr_denied" and .query == "agent list"'
+
+expect_failure "a stopped server" "$root" FAKE_PANE=down CODEX_THREAD_ID=t
+assert_out '.status == "herdr_unavailable" and .error_code == "server_not_running" and (has("hint") | not)'
+! grep -Fx -- 'CALL agent list' "$log" >/dev/null || die "a failed pane get should not fall through to agent list"
+
+expect_failure "output that isn't JSON" "$root" FAKE_PANE=garbled
+assert_out '.status == "herdr_unavailable" and (.detail | test("unexpected output"))'
+
+FAKE_REPORT_EXPECTED=1 expect_failure "a refused raise" "$root" FAKE_PANE=alias FAKE_REPORT=denied
+assert_out '.status == "herdr_denied" and .query == "workspace report-metadata"'
+
+expect_failure "a refused clear" "$root" FAKE_PANE=denied -- clear
+assert_out '.status == "herdr_denied"'
+
+# A failed wait reports on stderr and does not run its command, so retrying the
+# same line runs it once.
+expect_failure "a refused wait" "$root" FAKE_PANE=denied -- wait "x" -- touch "$tmp/ran"
+[ ! -e "$tmp/ran" ] || die "a failed wait should not run its command"
+[ ! -s "$out" ] || die "a wait's JSON belongs on stderr"
+jq -e '.status == "herdr_denied"' "$tmp/err" >/dev/null || die "a failed wait should report JSON on stderr"
 
 echo "signal-user tests passed"

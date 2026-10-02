@@ -32,10 +32,17 @@
 # so an agent can follow its instructions without checking where it is.
 #
 # Exit codes:
-#   hand, wait, clear: 0 done or skipped, with one JSON line on stdout; 1 herdr
-#     failed or the workspace could not be resolved; 2 bad usage.
+#   hand, wait, clear: 0 done or skipped, with one JSON line on stdout; 1 failed,
+#     also with one JSON line, whose status says why:
+#       herdr_denied       the Herdr socket was refused, as a sandbox does; the
+#                          same command run with local-socket permission works
+#       herdr_unavailable  Herdr could not answer (server down, an error code,
+#                          output that isn't JSON)
+#       unresolved         Herdr answered, but no single pane is this agent
+#     2 bad usage.
 #   wait -- <command>: the command's own exit code. Its stdout is left to the
-#     command; this script's JSON line goes to stderr.
+#     command; this script's JSON line goes to stderr. If the signal fails, the
+#     command does not run, so retrying the same line runs it once.
 set -euo pipefail
 
 HAND="✋"
@@ -94,40 +101,116 @@ fi
 HERDR="${HERDR_BIN_PATH:-herdr}"
 pane="$HERDR_PANE_ID"
 
+fail() { # fail <json>: report a failure and stop, before any wrapped command runs
+	report "$1"
+	exit 1
+}
+
+# herdr_q <args...>: run a Herdr query, leaving its JSON (or nothing, for a
+# write) in $herdr_out. On failure it returns nonzero with Herdr's own message
+# in $herdr_detail and, when the server answered with one, its error code in
+# $herdr_code.
+herdr_q() {
+	local errf rc=0
+	errf="$(mktemp "${TMPDIR:-/tmp}/signal-user.XXXXXX" 2>/dev/null)" || errf=""
+	herdr_out="$("$HERDR" "$@" 2>"${errf:-/dev/null}")" || rc=$?
+	herdr_detail=""
+	if [ -n "$errf" ]; then
+		herdr_detail="$(cat "$errf")"
+		rm -f "$errf"
+	fi
+	if [ "$rc" = 0 ] && [ -n "$herdr_out" ] && ! jq -e . >/dev/null 2>&1 <<<"$herdr_out"; then
+		rc=1
+		herdr_detail="unexpected output: $herdr_out"
+	fi
+	herdr_code="$(jq -r '.error.code // empty' 2>/dev/null <<<"$herdr_detail")" || herdr_code=""
+	return "$rc"
+}
+
+# herdr_failed <query>: report why Herdr could not answer, and stop. A refused
+# socket is told apart from every other failure because its fix is the
+# caller's (rerun with permission), not anything about panes or Herdr.
+herdr_failed() {
+	local status=herdr_unavailable hint=""
+	if grep -Eqi 'PermissionDenied|permission denied|operation not permitted' <<<"$herdr_detail"; then
+		status=herdr_denied
+		hint="the Herdr socket was refused, as a sandbox does; rerun this same command with permission to reach local sockets before looking into pane state"
+	fi
+	fail "$(jq -nc --arg s "$status" --arg q "$1" --arg d "$herdr_detail" --arg c "$herdr_code" \
+		--arg sock "${HERDR_SOCKET_PATH:-}" --arg h "$hint" '
+		{status: $s, query: $q, detail: $d}
+		+ (if $c != "" then {error_code: $c} else {} end)
+		+ (if $sock != "" then {socket: $sock} else {} end)
+		+ (if $h != "" then {hint: $h} else {} end)')"
+}
+
+# unresolved <reason> [<candidates>]: Herdr answered, but not with one pane.
+unresolved() {
+	fail "$(jq -nc --arg p "$HERDR_PANE_ID" --arg r "$1" --argjson c "${2:-[]}" '
+		{status: "unresolved", inherited_pane: $p, reason: $r}
+		+ (if ($c | length) > 0 then {candidates: $c} else {} end)')"
+}
+
 # Ask Herdr for the canonical live pane ID rather than retaining the inherited
-# ID, which becomes an alias after a pane moves. Codex app-server tool commands
-# can instead inherit an ID for a pane that no longer exists. In that case the
-# inherited workspace is a safe fallback only when it has exactly one Codex
-# agent; guessing among several would create a signal its owner cannot clear.
-pane_info="$("$HERDR" pane get "$pane" 2>/dev/null)" || pane_info=""
+# ID, which becomes an alias after a pane moves.
+#
+# Under Codex the inherited ID can belong to another pane entirely. An
+# interactive Codex runs its tool commands in a shared app-server daemon, which
+# carries the environment of whichever pane first started it, so every session
+# on that daemon inherits that one pane (or a pane since closed). The inherited
+# pane is trusted only when it hosts a Codex agent itself; otherwise the agent
+# is found by its working directory: the Codex pane whose cwd most closely
+# contains this command's. More than one there fails rather than guessing,
+# since a signal under the wrong pane is one its owner cannot clear.
+#
+# Only Herdr's own "no such pane" is an answer here. Any other failure means
+# Herdr was not asked at all, so it is reported as that, never as ambiguity.
+pane_info=""
+if herdr_q pane get "$pane"; then
+	pane_info="$herdr_out"
+elif [ "$herdr_code" != pane_not_found ]; then
+	herdr_failed "pane get"
+fi
 live_pane="$(jq -r '.result.pane.pane_id // empty' <<<"$pane_info")"
 ws="$(jq -r '.result.pane.workspace_id // empty' <<<"$pane_info")"
-if [ -n "$live_pane" ] && [ -n "$ws" ]; then
+live_agent="$(jq -r '.result.pane.agent // empty' <<<"$pane_info")"
+if [ -n "${CODEX_THREAD_ID:-${CODEX_SESSION_ID:-}}" ] && [ "$live_agent" != codex ]; then
+	herdr_q agent list || herdr_failed "agent list"
+	cwd="$(pwd -P)"
+	matches="$(jq -c --arg cwd "$cwd" '
+		[.result.agents[]? | select(.agent == "codex" and (.cwd // "") != "")
+			| select(.cwd as $c | $cwd == $c or ($cwd | startswith($c + "/")))]
+		| (map(.cwd | length) | max) as $deepest
+		| map(select((.cwd | length) == $deepest))
+		| map({pane_id, workspace_id, name, cwd} | with_entries(select(.value != null)))' <<<"$herdr_out")"
+	case "$(jq 'length' <<<"$matches")" in
+	0) unresolved "no Codex agent in Herdr runs in $cwd or a directory above it" ;;
+	1) ;;
+	*) unresolved "several Codex agents run in $(jq -r '.[0].cwd' <<<"$matches"), so this one cannot be told apart" "$matches" ;;
+	esac
+	pane="$(jq -r '.[0].pane_id // empty' <<<"$matches")"
+	ws="$(jq -r '.[0].workspace_id // empty' <<<"$matches")"
+	[ -n "$ws" ] || unresolved "Herdr lists Codex agent $pane without a workspace"
+elif [ -n "$live_pane" ] && [ -n "$ws" ]; then
 	pane="$live_pane"
-elif [ -n "${CODEX_SESSION_ID:-${CODEX_THREAD_ID:-}}" ] && [ -n "${HERDR_WORKSPACE_ID:-}" ]; then
-	ws="$HERDR_WORKSPACE_ID"
-	matches="$("$HERDR" pane list --workspace "$ws" 2>/dev/null | jq -c '[.result.panes[]? | select(.agent == "codex")]')" || matches="[]"
-	if [ "$(jq 'length' <<<"$matches")" = 1 ]; then
-		pane="$(jq -r '.[0].pane_id // empty' <<<"$matches")"
-	else
-		pane=""
-	fi
-fi
-if [ -z "$pane" ] || [ -z "$ws" ]; then
-	echo "signal-user: could not resolve one live pane for inherited pane $HERDR_PANE_ID" >&2
-	exit 1
+else
+	unresolved "Herdr has no pane $HERDR_PANE_ID"
 fi
 
 source_id="signal-user:$pane"
 
-tokens() { "$HERDR" workspace get "$ws" | jq -c '.result.workspace.tokens // {}'; }
-
-clear_signal() {
-	"$HERDR" workspace report-metadata "$ws" --source "$source_id" \
-		--clear-token signal --clear-token signal_pane --clear-token signal_skip >/dev/null
+tokens() { # tokens: the workspace's metadata tokens, into $tokens_json
+	herdr_q workspace get "$ws" || return 1
+	tokens_json="$(jq -c '.result.workspace.tokens // {}' <<<"$herdr_out")"
 }
 
-current="$(tokens)"
+clear_signal() {
+	herdr_q workspace report-metadata "$ws" --source "$source_id" \
+		--clear-token signal --clear-token signal_pane --clear-token signal_skip
+}
+
+tokens || herdr_failed "workspace get"
+current="$tokens_json"
 owner="$(jq -r '.signal_pane // empty' <<<"$current")"
 showing="$(jq -r '.signal // empty' <<<"$current")"
 
@@ -137,7 +220,7 @@ if [ "$cmd" = clear ]; then
 		report "$(jq -nc --arg ws "$ws" --arg o "$owner" '{status: "not_owner", workspace_id: $ws, owner: $o}')"
 		exit 0
 	fi
-	clear_signal
+	clear_signal || herdr_failed "workspace report-metadata"
 	report "$(jq -nc --arg ws "$ws" '{status: "cleared", workspace_id: $ws}')"
 	exit 0
 fi
@@ -162,9 +245,9 @@ urgency() { # urgency <signal text>: higher asks more of the user
 if [ -n "$owner" ] && [ "$owner" != "$pane" ] && [ "$(urgency "$showing")" -gt "$(urgency "$value")" ]; then
 	report "$(jq -nc --arg ws "$ws" --arg s "$showing" '{status: "kept", workspace_id: $ws, signal: $s}')"
 else
-	"$HERDR" workspace report-metadata "$ws" --source "$source_id" \
+	herdr_q workspace report-metadata "$ws" --source "$source_id" \
 		--token "signal=$value" --token "signal_pane=$pane" \
-		--clear-token signal_skip --ttl-ms "$TTL_MS" >/dev/null
+		--clear-token signal_skip --ttl-ms "$TTL_MS" || herdr_failed "workspace report-metadata"
 	raised=1
 	report "$(jq -nc --arg ws "$ws" --arg v "$value" '{status: "raised", workspace_id: $ws, signal: $v}')"
 fi
@@ -186,11 +269,12 @@ finish() {
 	[ "$raised" = 1 ] || return 0
 	raised=0
 	local now showing_now
-	now="$(tokens 2>/dev/null)" || return 0
+	tokens || return 0
+	now="$tokens_json"
 	[ "$(jq -r '.signal_pane // empty' <<<"$now")" = "$pane" ] || return 0
 	showing_now="$(jq -r '.signal // empty' <<<"$now")"
 	if [ "$showing_now" = "$value" ]; then
-		clear_signal 2>/dev/null || true
+		clear_signal || true
 	elif [[ "$showing_now" == "$HAND"* || "$showing_now" == "$READY"* ]]; then
 		local status
 		status="$("$HERDR" agent get "$pane" 2>/dev/null | jq -r '.result.agent.agent_status // empty')" || return 0

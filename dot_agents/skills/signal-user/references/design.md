@@ -12,9 +12,15 @@ When a wrapped wait finishes after the same agent has replaced its ⏳ with ✋ 
 
 ## Ownership and precedence
 
-The signaling script asks Herdr to canonicalize the inherited pane ID before recording ownership. Codex app-server tool commands can inherit a pane ID that no longer resolves; when that happens, the script uses the only live Codex pane in the inherited workspace and fails on ambiguity.
+The signaling script asks Herdr to canonicalize the inherited pane ID before recording ownership.
+
+Under Codex the inherited ID cannot be taken at its word. An interactive Codex runs tool commands in a shared app-server daemon by default, and that daemon carries the `HERDR_*` environment of whichever pane first started it, so every session on it inherits that pane, which may be a live shell in another workspace or a pane since closed. `launch-agent-in-pane` starts Codex with `--no-daemon` so the variables stay true, but a hand-launched Codex still shares the daemon. So the script trusts an inherited pane under Codex only when Herdr says it hosts a Codex agent. Otherwise it picks the Codex agent whose working directory most closely contains the command's own, and fails if two share it. It matches by directory rather than by Codex session ID because Herdr's own Codex integration records the session through the same inherited variables and so attaches it to the wrong pane.
 
 One signal is visible per workspace. An agent can always replace its own signal with its current state. Another pane can replace a signal only with one of equal or greater urgency: ✋, then 🏁, then ⏳. The manual ⚑ flag is a separate workspace token, so neither mechanism erases the other.
+
+## Failures
+
+A Herdr query can fail before it reaches Herdr, so the script never treats a failed query as an answer. Only Herdr's own `pane_not_found` counts as one, meaning the inherited pane is gone; every other failure stops with `herdr_denied` or `herdr_unavailable` and Herdr's message, and `unresolved` is kept for a query that succeeded without naming one pane. The split exists because a sandboxed Codex had its socket refused, and the script, which discarded Herdr's stderr, reported that as an unresolvable pane. The agent then spent its turn inspecting pane state, where every query was refused for the same reason, before retrying with permission. A refused socket is recognized by its `PermissionDenied` text, the raw I/O error the CLI prints when the connection itself is denied, and is reported apart from other failures because its fix belongs to the caller rather than to Herdr or the panes.
 
 ## Integration
 
