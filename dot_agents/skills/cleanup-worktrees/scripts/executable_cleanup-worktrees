@@ -1,0 +1,343 @@
+#!/usr/bin/env python3
+"""Remove a repo's worktrees that are safe to remove, then their merged branches.
+
+A worktree is safe to remove when losing the checkout loses nothing and stops
+nothing: its tree is clean (no uncommitted or untracked changes), no live agent
+occupies its Herdr workspace, and it is not where the caller is working. A live
+agent the caller has confirmed is finished (--done-agent, a name or pane id)
+does not hold its worktree, unless it is working right now; removing the
+worktree closes its workspace, which ends that agent. Its
+commits do not have to be pushed or merged, because the branch outlives the
+checkout: after removal the branch is deleted with `git branch -d`, which
+refuses one that is not fully merged, and that refusal is reported, not
+treated as an error. Nothing here ever force-deletes a branch.
+
+With no --worktree it sweeps every linked worktree in the repo; with one or
+more, it considers only those. Some worktrees are always kept:
+
+  - the primary checkout, and a bare repo's own entry
+  - a locked worktree (`git worktree lock`)
+  - the checkout of the repo's HEAD branch or origin's default branch, since in
+    a bare-backed layout `git branch -d` would otherwise delete the very branch
+    the bare repo's HEAD names
+
+A worktree with an open Herdr workspace is removed with `herdr worktree remove
+--force`, which also closes the workspace; one with no workspace is removed
+with `git worktree remove`, or pruned when its directory is already gone.
+
+Requires HERDR_ENV=1: without Herdr it cannot see live agents, so it refuses
+rather than guess.
+
+Output (stdout, JSON): {"items": [...]}, one per worktree considered, each
+  {path, branch, workspace_id, action, reason, agents, branch_action, branch_reason}
+action is removed | would_remove | kept | failed; branch_action is
+deleted | kept | null (no branch, the worktree stayed, or --dry-run). agents
+lists the live agents ({target, name, pane_id, status}) only on an item kept
+for nothing but them, so the caller can ask whether they are done.
+
+Exit codes (shared across the Herdr dispatch primitives):
+  0  success, including items kept or failed; read each item's action.
+  2  needs judgment: not inside Herdr, or a --worktree that is not a worktree
+     of this repo. stdout is {"status": "needs_judgment", "reason": ...}.
+  1  real error (the repo or its worktree list could not be read). Diagnostics
+     go to stderr.
+
+All subprocesses are invoked as argv lists, never a shell string.
+"""
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+
+
+class CleanupError(Exception):
+    """A subprocess failed or returned something unparsable."""
+
+
+def run(argv, cwd=None):
+    return subprocess.run(argv, capture_output=True, text=True, cwd=cwd)
+
+
+def emit(obj, code=0):
+    print(json.dumps(obj))
+    sys.exit(code)
+
+
+def emit_judgment(reason, **partial):
+    emit({"status": "needs_judgment", "reason": reason, **partial}, 2)
+
+
+def emit_error(message):
+    print(f"cleanup-worktrees: {message}", file=sys.stderr)
+    sys.exit(1)
+
+
+def first_line(text):
+    return next((line for line in text.splitlines() if line.strip()), "").strip()
+
+
+def git(git_dir, *args):
+    return run(["git", f"--git-dir={git_dir}", *args])
+
+
+def git_checked(git_dir, *args):
+    proc = git(git_dir, *args)
+    if proc.returncode != 0:
+        raise CleanupError(f"git {' '.join(args)} failed: {first_line(proc.stderr)}")
+    return proc.stdout
+
+
+def common_dir(repo):
+    proc = run(["git", "-C", repo, "rev-parse", "--path-format=absolute", "--git-common-dir"])
+    if proc.returncode != 0:
+        raise CleanupError(f"{repo!r} is not a git repository: {first_line(proc.stderr)}")
+    return proc.stdout.strip()
+
+
+# --- enumeration ------------------------------------------------------------
+
+def git_worktrees(git_dir):
+    """Every worktree git knows, first entry being the primary checkout (or the
+    bare repo itself)."""
+    out = git_checked(git_dir, "worktree", "list", "--porcelain")
+    entries = []
+    for block in out.split("\n\n"):
+        lines = block.splitlines()
+        if not lines or not lines[0].startswith("worktree "):
+            continue
+        entry = {"path": lines[0][len("worktree "):], "branch": None}
+        for line in lines[1:]:
+            key, _, value = line.partition(" ")
+            if key == "branch":
+                entry["branch"] = value.removeprefix("refs/heads/")
+            elif key in ("bare", "locked", "prunable"):
+                entry[key] = True
+        entries.append(entry)
+    return entries
+
+
+def herdr_json(args):
+    proc = run(["herdr", *args])
+    if proc.returncode != 0:
+        raise CleanupError(
+            f"herdr {' '.join(args)} failed ({proc.returncode}): "
+            f"{first_line(proc.stderr) or first_line(proc.stdout)}"
+        )
+    try:
+        return json.loads(proc.stdout).get("result", {})
+    except json.JSONDecodeError:
+        raise CleanupError(f"herdr {' '.join(args)} returned non-JSON: {proc.stdout[:200]}")
+
+
+def collect_dicts(obj, out=None):
+    """Every dict node anywhere in a parsed JSON value, read defensively (herdr's
+    subcommands don't agree on field placement or naming)."""
+    if out is None:
+        out = []
+    if isinstance(obj, dict):
+        out.append(obj)
+        for value in obj.values():
+            collect_dicts(value, out)
+    elif isinstance(obj, list):
+        for item in obj:
+            collect_dicts(item, out)
+    return out
+
+
+def open_workspaces(repo):
+    """{realpath: open_workspace_id} for the repo's worktrees open in Herdr."""
+    result = herdr_json(["worktree", "list", "--cwd", repo])
+    entries = result.get("worktrees") if isinstance(result, dict) else result
+    workspaces = {}
+    for entry in entries or []:
+        if isinstance(entry, dict) and entry.get("path") and entry.get("open_workspace_id"):
+            workspaces[os.path.realpath(entry["path"])] = entry["open_workspace_id"]
+    return workspaces
+
+
+def protected_branches(git_dir):
+    """The repo's HEAD branch and origin's default branch."""
+    protected = set()
+    head = git(git_dir, "symbolic-ref", "--quiet", "--short", "HEAD").stdout.strip()
+    if head:
+        protected.add(head)
+    origin = git(git_dir, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD").stdout.strip()
+    if origin:
+        protected.add(origin.removeprefix("origin/"))
+    return protected
+
+
+# --- safety -----------------------------------------------------------------
+
+def dirty(path):
+    proc = run(["git", "-C", path, "status", "--porcelain"])
+    if proc.returncode != 0:
+        raise CleanupError(f"git status failed in {path}: {first_line(proc.stderr)}")
+    return bool(proc.stdout.strip())
+
+
+def live_agents():
+    """Every live agent Herdr knows, as {target, name, pane_id, status, workspace_id}."""
+    result = herdr_json(["agent", "list"])
+    agents = result.get("agents") if isinstance(result, dict) else result
+    out = []
+    for agent in agents or []:
+        if not isinstance(agent, dict) or not agent.get("pane_id"):
+            continue
+        pane_id = agent["pane_id"]
+        out.append({
+            "target": agent.get("name") or pane_id,
+            "name": agent.get("name"),
+            "pane_id": pane_id,
+            "status": agent.get("agent_status"),
+            "workspace_id": agent.get("workspace_id") or pane_id.partition(":")[0],
+        })
+    return out
+
+
+def inside(path, other):
+    path, other = os.path.realpath(path), os.path.realpath(other)
+    return path == other or path.startswith(other + os.sep)
+
+
+def keep_reason(entry, workspace_id, protected, agents, done):
+    """(reason, blocking agents): why this worktree must stay, or (None, None)
+    when it is safe to remove. Blocking agents are returned only when they are
+    all that holds a clean worktree. `agents` is None when the lookup failed."""
+    path = entry["path"]
+    if entry.get("locked"):
+        return "the worktree is locked", None
+    if entry["branch"] in protected:
+        return f"it is the checkout of the repo's HEAD or default branch {entry['branch']!r}", None
+    if inside(os.getcwd(), path):
+        return "it is the current working directory", None
+    if workspace_id and workspace_id == os.environ.get("HERDR_WORKSPACE_ID"):
+        return "it is the caller's own workspace", None
+    if not entry.get("prunable"):  # a prunable entry's directory is gone, with nothing to lose
+        try:
+            if dirty(path):
+                return "the worktree has uncommitted or untracked changes", None
+        except CleanupError as error:
+            return f"could not check the tree: {error}", None
+    if not workspace_id:
+        return None, None
+    if agents is None:
+        return "could not check for live agents", None
+    here = [agent for agent in agents if agent["workspace_id"] == workspace_id]
+    if any(agent["status"] == "working" for agent in here):
+        busy = [agent for agent in here if agent["status"] == "working"]
+        return "an agent in its workspace is working", busy
+    blocking = [agent for agent in here if not ({agent["target"], agent["pane_id"]} & done)]
+    if blocking:
+        return "live agents occupy its workspace", blocking
+    return None, None
+
+
+# --- removal ----------------------------------------------------------------
+
+def remove(git_dir, entry, workspace_id):
+    """None on success, else the failure reason."""
+    if workspace_id:
+        proc = run(["herdr", "worktree", "remove", "--workspace", workspace_id, "--force"])
+    elif entry.get("prunable"):
+        proc = git(git_dir, "worktree", "prune")
+    else:
+        proc = git(git_dir, "worktree", "remove", entry["path"])
+    if proc.returncode == 0:
+        return None
+    return first_line(proc.stderr) or first_line(proc.stdout) or f"exit {proc.returncode}"
+
+
+def delete_branch(git_dir, branch):
+    """(branch_action, branch_reason) after `git branch -d`."""
+    proc = git(git_dir, "branch", "-d", branch)
+    if proc.returncode == 0:
+        return "deleted", None
+    reason = first_line(proc.stderr).removeprefix("error: ")
+    return "kept", reason or "git branch -d refused"
+
+
+def resolve_targets(targets, candidates, workspaces):
+    """The candidate entries named by --worktree (a path or a workspace_id)."""
+    by_workspace = {workspace: path for path, workspace in workspaces.items()}
+    by_path = {os.path.realpath(entry["path"]): entry for entry in candidates}
+    chosen = []
+    for target in targets:
+        real = by_workspace.get(target) or os.path.realpath(target)
+        entry = by_path.get(real)
+        if entry is None:
+            emit_judgment(f"{target!r} is not a linked worktree of this repo", worktree=target)
+        if entry not in chosen:
+            chosen.append(entry)
+    return chosen
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Remove safe worktrees, then their merged branches.")
+    parser.add_argument("--repo", default=os.getcwd(),
+                        help="any checkout or repo directory of the repo (default: cwd)")
+    parser.add_argument("--worktree", action="append", default=[],
+                        help="a path or Herdr workspace_id to consider; repeatable (default: all)")
+    parser.add_argument("--done-agent", action="append", default=[],
+                        help="a live agent (name or pane id) confirmed finished; repeatable")
+    parser.add_argument("--dry-run", action="store_true", help="report what would be removed")
+    args = parser.parse_args()
+
+    if os.environ.get("HERDR_ENV") != "1":
+        emit_judgment("not running inside a Herdr session (HERDR_ENV != 1)")
+
+    try:
+        git_dir = common_dir(args.repo)
+        entries = git_worktrees(git_dir)
+        workspaces = open_workspaces(args.repo)
+    except CleanupError as error:
+        emit_error(str(error))
+
+    # The first entry is the primary checkout, or the bare repo itself.
+    candidates = [entry for entry in entries[1:] if not entry.get("bare")]
+    if args.worktree:
+        candidates = resolve_targets(args.worktree, candidates, workspaces)
+    protected = protected_branches(git_dir)
+    try:
+        agents = live_agents()
+    except CleanupError:
+        agents = None  # fail closed: every worktree with a workspace is kept
+    done = set(args.done_agent)
+
+    items = []
+    for entry in candidates:
+        workspace_id = workspaces.get(os.path.realpath(entry["path"]))
+        item = {
+            "path": entry["path"],
+            "branch": entry["branch"],
+            "workspace_id": workspace_id,
+            "agents": None,
+            "branch_action": None,
+            "branch_reason": None,
+        }
+        reason, blocking = keep_reason(entry, workspace_id, protected, agents, done)
+        confirmed = workspace_id and any(a["workspace_id"] == workspace_id for a in agents or [])
+        safe_reason = "clean, and its agents confirmed done" if confirmed else "clean, with no live agent"
+        if reason:
+            if blocking:
+                blocking = [{k: a[k] for k in ("target", "name", "pane_id", "status")} for a in blocking]
+            item.update(action="kept", reason=reason, agents=blocking)
+        elif args.dry_run:
+            item.update(action="would_remove", reason=safe_reason)
+        else:
+            failure = remove(git_dir, entry, workspace_id)
+            if failure:
+                item.update(action="failed", reason=failure)
+            else:
+                item.update(action="removed", reason=safe_reason)
+                if entry["branch"]:
+                    item["branch_action"], item["branch_reason"] = delete_branch(git_dir, entry["branch"])
+        items.append(item)
+
+    emit({"items": items})
+
+
+if __name__ == "__main__":
+    main()

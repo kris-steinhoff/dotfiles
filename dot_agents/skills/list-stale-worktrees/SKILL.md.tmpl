@@ -27,7 +27,7 @@ A list of `inspect-worktree`-shaped records, each with `ours` and `stale`:
 - `stale` — the worktree has been idle at least `--stale-after` minutes and has no live agent.
 - The other fields carry `inspect-worktree`'s meanings. One worktree's degraded per-entry data (e.g. a flaky `gh` call) never fails the run — that entry's fields degrade gracefully and the survey continues.
 
-It only reports. Removing is `remove-worktree`'s job, and only for what the user asks to tear down.
+It only reports. Removing is `cleanup-worktrees`'s job (or `remove-worktree`'s, for one worktree), and only for what the user asks to tear down.
 
 ## Exit codes
 

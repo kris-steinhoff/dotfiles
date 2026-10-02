@@ -32,7 +32,7 @@ Running the command again for the same ref **resumes**: it reads the existing st
 
 - `HERDR_ENV=1`. Implementers are Herdr pane agents.
 - The `worktree-layout` skill, when the repository uses that layout. Load it before touching worktrees there.
-- The dispatch primitives `choose-agent`, `create-worktree`, `launch-agent-in-pane`, and `remove-worktree`. Load each once and run its script per unit.
+- The dispatch primitives `choose-agent`, `create-worktree`, and `launch-agent-in-pane`, and the `cleanup-worktrees` skill. Load each once and run its script per unit.
 - The `investigate` skill for pre-investigation, and the `watch-pr` skill for waiting on CI and reviews when the repository's flow has PRs.
 - The `github-pr` skill's `respond` mode, for replying to reviews on the run's PRs.
 - Claude Code's `SendMessage` for talking to `claude` implementers, and `herdr agent prompt` for every other kind (see Implementer kinds).
@@ -166,10 +166,18 @@ The `review` skill talks to the user, so use it only for a review the user wants
 
 When a unit's review has passed, and any CI the flow has is green, land it on the integration branch the way the repository's conventions say, make the tracker move they call for, and mark it `merged`.
 
-Then clean up, with different care for the two things a unit leaves behind:
+Then clean up. Confirm the unit's tip is reachable from the integration branch (`git branch --contains`), and run the `cleanup-worktrees` script for that one worktree, naming its implementer as done, since its report already told you so:
 
-- **Worktrees go freely.** A landed unit's worktree is a disposable checkout; its commits are safe on the integration branch and its branch stays in the repo. End the implementer's session, confirm the unit's tip is reachable from the integration branch (`git branch --contains`), then remove with `remove-worktree`, passing `--force` when its gate objects only to a missing upstream. A dirty tree is the one thing that stops you: an implementer left uncommitted work, so find out what it is before discarding it. Keep the sidebar to the repository directory, the integration branch's worktree if it has one, and the units in flight.
-- **Branches go only when git agrees they're safe.** After the worktree is gone, delete the unit's local branch with `git branch -d`, which refuses unless the branch is fully merged into its upstream or HEAD. That refusal is information: the branch holds commits that live nowhere else, so leave it, log why, and mention it when you stop. Never `git branch -D`, and never delete a remote branch, on your own authority; both need the repository's instructions or the user to say so.
+```bash
+scripts/cleanup-worktrees --worktree <unit worktree> --done-agent <implementer>
+```
+
+It removes the worktree and its workspace, which ends the implementer, then deletes the unit's branch with `git branch -d`. Always pass `--worktree`: a sweep would also reach worktrees this run didn't create.
+
+- **A dirty tree keeps the worktree.** The implementer left uncommitted work, so find out what it is before anything discards it.
+- **A kept branch is information.** `git branch -d` refuses a branch that isn't fully merged into its upstream or HEAD, so it holds commits that live nowhere else; leave it, log why, and mention it when you stop. Never `git branch -D`, and never delete a remote branch, on your own authority; both need the repository's instructions or the user to say so.
+
+Keep the sidebar to the repository directory, the integration branch's worktree if it has one, and the units in flight.
 
 ## Talking to the user
 
