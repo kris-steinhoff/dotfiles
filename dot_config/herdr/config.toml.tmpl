@@ -25,8 +25,10 @@ rows = [
   ["branch", "git_status"],
 ]
 
+# Off: with many agents in flight, the finished and needs-input chimes were
+# constant. Popups and the sidebar still show agent state.
 [ui.sound]
-enabled = true
+enabled = false
 
 [ui.toast]
 delivery = "terminal"
