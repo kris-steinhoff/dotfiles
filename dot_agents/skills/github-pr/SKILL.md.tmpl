@@ -1,0 +1,122 @@
+---
+name: github-pr
+description: Works GitHub pull requests from either side, posting only what the user confirms. `review <n>` reviews a PR — prior review context, the shared review policy without Nits, triage of each finding with the user, the approved review posted, and threads of verified fixes resolved on re-review. `review ready` idempotently dispatches every open non-draft PR awaiting my or my team's review into its own exact-head-branch Herdr worktree and removes the worktrees of PRs I have approved; suitable for repeated `/loop` invocation. `respond <n>` replies as the PR's author to unanswered review comments, each reply drafted for the user to approve. Use for any comment, reply, or review posted to a GitHub PR on the user's behalf.
+{{- with get . "custom" }}
+{{ . }}
+{{- end }}
+---
+
+# github-pr
+
+Own every GitHub PR conversation posted on the user's behalf, from either side. The modes:
+
+- `review ready` discovers review requests and dispatches one interactive reviewer per PR.
+- `review <n>` dispatches that PR when necessary; inside its recorded worktree, it conducts the review, triages findings with the user, and posts only after confirmation.
+- `respond <n>` drafts the author's replies to the PR's unanswered review comments, walks the user through each, and posts only after confirmation.
+
+A bare `<n>`, or no mode at all, does not pick one. Ask whether to review or respond, suggesting `respond` when the authenticated user is the PR's author and `review` otherwise.
+
+This skill may be invoked directly, by any agent, or repeatedly with `/loop 5m /github-pr review ready` in a Claude session that remains open. Both GitHub scripts below, and the schema of everything posted, are in [references/posting.md](references/posting.md); read it before reading a PR's threads or posting.
+
+## `review ready`: dispatch the queue
+
+This mode requires Herdr (`HERDR_ENV=1`). Read [references/queue.md](references/queue.md), then run the queue and dispatch flow there. Do not ask the user to confirm the discovered set: `review ready` is explicit authorization to launch the requested review queue, including when a loop invoked it.
+
+Each PR uses a local branch named exactly as GitHub's `headRefName`, because Claude uses that identity to link the checkout to its PR. Never substitute a numbered or suffixed branch. A conflicting unrelated local branch is skipped and reported without modification.
+
+The queue mode removes finished review worktrees, then dispatches or refreshes reviewers. A worktree is removed once its pass is complete and I have approved the PR or it is merged or closed; one with my request for changes still in force stays. It does not wait for reviewers, collect their findings, triage, or post.
+
+## `review <n>`: dispatch or conduct the review
+
+Resolve the PR. If the current checkout is not its recorded exact-head-branch review worktree, read [references/queue.md](references/queue.md) and run that document's prepare, create, mark, and launch flow for this PR alone, then stop; the launched reviewer continues interactively in its pane. If the current checkout is the recorded worktree for this PR and head SHA, conduct the review here.
+
+Read the PR title, author, body, base branch, current head SHA, and changed files, and run `scripts/feedback.py <n>` for my prior reviews and the threads I started. On a re-review, include unresolved prior findings in the review brief so the reviewer verifies them against the current code and does not duplicate findings that still stand.
+
+Invoke the shared `review` skill once with a self-contained brief containing:
+
+- the PR's stated intent and base branch
+- the change scope (`<base>...HEAD` in this checkout)
+- relevant unresolved prior findings and their thread comment IDs
+- an explicit instruction not to report Nits
+
+The shared reviewer returns Blockers and Follow-ups without editing, interaction, a verdict, or posting. Preserve its classifications unless discussion with the user supplies new technical evidence.
+
+On a re-review, each prior finding the reviewer verifies as fixed is a thread to resolve: resolving is how the reviewer confirms a fix holds. A prior finding that still stands gets a reply on its thread instead of a new inline comment.
+
+Triage follows [Triage with the user](#triage-with-the-user), with the review's findings as its items. Then derive the GitHub event from the included findings: any Blocker means `REQUEST_CHANGES`; otherwise use `APPROVE`. A Follow-up never changes the event by itself. If no findings remain, the review is an approval. The final confirmation shows the event, the summary, the included findings, and the threads to be resolved.
+
+Render the confirmed review into a batch with one inline comment per included finding where possible, replies on the threads of still-open prior findings, and `resolve` for the verified fixes. Prefix each finding body with `[Blocker]` or `[Follow-up]`.
+
+When the workflow reaches a terminal decision (successfully posted, or the user explicitly decides to finish without posting), record the pass complete with `scripts/dispatch.py complete`. Leave it active if posting failed or the user has not finished triage, so a changed PR head is deferred rather than replacing the checkout underneath an unfinished review.
+
+## `respond <n>`: reply as the author
+
+Run this inline, in the session that invokes it; it dispatches nothing. Work from a checkout of the PR's head when one exists, so answers rest on the code as it stands. If the authenticated user is not the PR's author, say so and ask before going on.
+
+Run `scripts/feedback.py <n>` and take every `unanswered` inline thread, whoever started it, and every review summary body and conversation comment that is not my own. Whether a summary or comment was already answered is a judgment the API can't make: list those after `my_latest` as needing replies, and the older ones separately as possibly answered, so triage settles them rather than a timestamp. Bot reviewers are included; say which items are a bot's, so the user can skip them quickly.
+
+Draft one reply for each item, grounded in evidence rather than intent:
+
+- **Fixed**: name the commit that fixes it and what changed, such as `Fixed in 4f1c2e9: the token now expires after an hour.` The commit must already be on the PR; cite it only after reading its diff against the comment.
+- **Declined**: the reason, stated plainly and without arguing.
+- **Answered**: for a question, the answer from the code.
+- **Deferred**: what will happen instead, such as a follow-up ticket, when the caller or the user has said so.
+
+When nothing settles an item (no commit addresses it and no one has said whether it will be fixed), don't invent a stance. Show the user the comment, mark the reply undecided, and let triage settle it.
+
+Triage follows [Triage with the user](#triage-with-the-user), with the drafts as its items: show each reviewer's comment and its draft reply, and `Other` edits the reply. The final confirmation shows every reply that will post and where it lands.
+
+Render the confirmed replies into a batch with no review: `thread_replies` for inline threads, and at most one `issue_comment` that answers review summary bodies and conversation comments by naming or quoting each point it addresses. List every commit a reply cites in `commits`. Never resolve a thread in this mode, even one whose fix has landed: that confirmation is the reviewer's to give.
+
+## Triage with the user
+
+Begin with a short PR summary so the user is oriented. Open it with the same identity table every time, so the PR is recognizable at a glance:
+
+```markdown
+| #<number> <author full name> |
+| ---------------------------- |
+| <PR title, verbatim>         |
+
+`<base>` ← `<head branch>` at `<short head SHA>` · <N> files, +<added>/−<deleted> · <first review | re-review of N prior findings | N unanswered comments> · <PR URL>
+```
+
+Keep the number in the table plain rather than a markdown link: Claude Code renders a link as its text followed by the URL in parentheses, which would bury the author's name. The bare URL at the end of the line below stays clickable in the terminal.
+
+Use the author's GitHub display name, or their login when no name is set. Follow it with a few bullets on what the PR changes and anything the author already called out, such as known gaps or linked tickets. Leave out workflow status (whether the reviewer is still running, whether the checkout matches) unless something is wrong.
+
+Walk through every item individually. Ask only whether that item should be included; do not ask for an overall verdict yet.
+
+- With a structured question UI, offer `Include`, `Exclude`, and `Other`. `Other` opens discussion or lets the user rewrite or reclassify the item.
+- Without one, ask: `Should this be included?` A bare yes includes it, a bare no excludes it, and a fuller answer opens discussion.
+
+Keep the question concise: what the item is and its concrete consequence. Do not put the full technical body or file coordinates in the question unless the user asks to discuss it. Preserve each ruling as you proceed.
+
+After triage, show everything that will post and explicitly ask for confirmation before posting. If the user declines, revise or stop as directed. Never infer posting approval from the earlier per-item rulings.
+
+## Post
+
+Render the confirmed batch with this exact header, so every posted message is attributed:
+
+```markdown
+{{ includeTemplate ".chezmoitemplates/posting-attribution.md" . | trim }}
+```
+
+Set `head_sha` to the head the content was formed against. Run `scripts/post.py --dry-run batch.json` and resolve every problem it reports. If the PR's head has moved, do not post content formed against the stale code: tell the user a new pass is needed and, in a review pass, leave it active so `review ready` reports the stale head rather than changing the checkout underneath the current session. Only then run `scripts/post.py batch.json`. If a step fails after part of the batch landed, retry only with the remainder batch the poster prints, never the original. Do not fall back to hand-built `gh` posting if the script fails. Posting is the only external mutation this skill performs, and only after the confirmation above.
+
+## Signals
+
+Several of these sessions often run at once, and the user moves between them from the Herdr sidebar. Use the `signal-user` skill so the sidebar shows which one needs them, as your last step each time you stop for the user:
+
+- **🛑 before each stop for the user**: when a review is ready to triage (`#254 ready to triage`) or replies are drafted (`#254 replies drafted`), before each item question, before the posting confirmation (`#254 confirm post`), and when the head moved and a new pass is needed. The user's answer clears it.
+- **✓ when the batch is posted**, so the user can see at a glance which are done (`#254 posted`).
+
+The `review ready` queue mode itself signals nothing; it dispatches and stops.
+
+## Boundaries
+
+- Do not edit the PR's source in any mode.
+- Do not request or report Nits.
+- Do not launch more than one active review pass for the same PR head.
+- Do not update an active review worktree when the PR head changes; report it as stale and let a later `review ready` run refresh it after the pass completes.
+- Do not remove a review worktree except through `review ready`'s cleanup step, or when the user separately asks.
+- Resolve only threads I started, and only in a review.

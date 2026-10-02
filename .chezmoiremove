@@ -107,3 +107,9 @@
 # agent rename (Herdr now accepts only [a-z0-9_-] agent names) to a workspace
 # token.
 .config/herdr/toggle-agent-flag.sh
+# github-pr-review became github-pr when it gained a respond mode for replying
+# to reviews as the PR's author. Without these the old name lingers in every
+# harness on machines that already applied it.
+.agents/skills/github-pr-review
+.claude/skills/github-pr-review
+.gemini/config/plugins/kris-steinhoff/skills/github-pr-review

@@ -8,3 +8,6 @@ README.md
 {{- if ne .chezmoi.os "darwin" }}
 Library/**
 {{- end }}
+
+# Bytecode from running skill scripts in the source dir.
+**/__pycache__

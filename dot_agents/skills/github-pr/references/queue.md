@@ -64,7 +64,7 @@ scripts/dispatch.py mark --worktree <path> --pr-number <n> --head-sha <sha> --st
 Seed the reviewer with this outcome, filling in the actual values:
 
 ```text
-Run `/github-pr-review <n>` on this PR against `<base_branch>`. Work interactively with Kris here through finding triage and final posting confirmation.
+Run `/github-pr review <n>` on this PR against `<base_branch>`. Work interactively with Kris here through finding triage and final posting confirmation.
 ```
 
 Use a Claude agent named `review-<n>` in the worktree pane. For a new pane, use the `launch-agent-in-pane` primitive. If a completed worktree was refreshed and its prior Claude agent still occupies the pane, use the `herdr` skill to prompt that existing agent with the new seed instead; do not create another worktree or agent merely to redeliver it. Do not thread report-back—the review remains interactive in its own pane.
@@ -85,4 +85,4 @@ The interactive reviewer records its terminal decision from the PR worktree:
 scripts/dispatch.py complete --worktree <path> --pr-number <n> --head-sha <sha>
 ```
 
-This updates only the review state inside the existing provenance marker. It does not remove the worktree, stop the agent, change GitHub, or claim that a review was posted; a later `ready` pass removes the worktree once `cleanup` marks it `remove`.
+This updates only the review state inside the existing provenance marker. It does not remove the worktree, stop the agent, change GitHub, or claim that a review was posted; a later `review ready` pass removes the worktree once `cleanup` marks it `remove`.

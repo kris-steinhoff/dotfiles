@@ -39,7 +39,7 @@ def judgment(reason, **partial):
 
 
 def fail(message):
-    print(f"github-pr-review dispatch: {message}", file=sys.stderr)
+    print(f"github-pr dispatch: {message}", file=sys.stderr)
     raise SystemExit(1)
 
 

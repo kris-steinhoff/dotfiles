@@ -8,7 +8,7 @@ Prefer background workers when the harness supports them so the user can continu
 
 Delegate as soon as a task takes one of these shapes:
 
-- Reading across files to reach a conclusion, including audits, local implementation reviews, call-path tracing, and unfamiliar-code research. Run the `investigate` or `review` skill for the sweep, then verify the evidence needed for the final judgment. Use `github-pr-review` for the end-to-end GitHub PR workflow.
+- Reading across files to reach a conclusion, including audits, local implementation reviews, call-path tracing, and unfamiliar-code research. Run the `investigate` or `review` skill for the sweep, then verify the evidence needed for the final judgment. Use `github-pr` for the end-to-end GitHub PR workflows: `review` to review a PR, `respond` to reply to reviews as its author.
 - Editing across files or implementing a change that needs several steps. Give the `implement` skill a concrete outcome, relevant constraints, and verification expectations.
 - Reviewing completed work. Keep implementation and review separate when the risk warrants a second pass.
 
@@ -18,7 +18,7 @@ At each phase boundary — investigation giving way to implementation, implement
 
 ## Coordination
 
-- A specialist skill may run in a fresh context that cannot see this conversation, so hand it a self-contained task: the goal, the checkout, the constraints, and what done looks like. For `review`, include the implementation intent and change scope; it returns findings without user interaction. `github-pr-review` stays with the user because it triages and confirms posting interactively.
+- A specialist skill may run in a fresh context that cannot see this conversation, so hand it a self-contained task: the goal, the checkout, the constraints, and what done looks like. For `review`, include the implementation intent and change scope; it returns findings without user interaction. `github-pr` stays with the user because it triages and confirms posting interactively.
 - Give each worker a bounded task with enough context to act without repeated clarification.
 - Preserve one writer for a shared working tree. Sequence investigation, implementation, and review when later work depends on earlier findings.
 - Keep raw file dumps and edit-by-edit narration in worker contexts. Bring conclusions, decisions, risks, and useful progress back to the user.

@@ -33,7 +33,8 @@ Running the command again for the same ref **resumes**: it reads the existing st
 - `HERDR_ENV=1`. Workers are Herdr pane agents.
 - The `worktree-layout` skill, when the repository uses that layout. Load it before touching worktrees there.
 - The dispatch primitives `create-worktree`, `launch-agent-in-pane`, and `remove-worktree`. Load each once and run its script per unit.
-- The `investigate` skill for pre-investigation, and the `watch-pr` skill for waiting on CI when the repository's flow has PRs.
+- The `investigate` skill for pre-investigation, and the `watch-pr` skill for waiting on CI and reviews when the repository's flow has PRs.
+- The `github-pr` skill's `respond` mode, for replying to reviews on the run's PRs.
 - Claude Code's `SendMessage` for talking to `claude` workers, and `herdr agent prompt` for `codex` workers (see Worker kinds).
 - The `signal-user` skill, for showing the user in the Herdr sidebar where the run stands (see Signals).
 
@@ -158,6 +159,7 @@ The driver lands code the user hasn't read, so an independent review of every un
 
 - **Unit review.** When a worker reports done, run a review as an in-process subagent that didn't write the code, pointed at the worktree and the commits since the base: correctness, fit with the repository's conventions, test coverage, and whether it does what the unit asked and nothing more. Findings go back to the worker as follow-up work; the unit is `fixing` until the re-review passes. Then the unit does whatever the repository's flow calls for next, such as a push and a PR with `watch-pr --until ci --sha <sha>` run in the background, or nothing more in a flow that stays local.
 Any review beyond the unit level, such as one pass over a whole phase before it goes to the team, is the project's flow to call for. When its instructions do, run it the same way: a subagent that didn't write the code, with fixes landed and reviewed per conventions.
+- **Reviews on a PR.** When a PR of the run's is in front of reviewers, keep `watch-pr --until review` running in the background on it. When a review lands, its findings are follow-up work: send each to the worker of the unit it touches while that worker is still running (the unit is `fixing` until its re-review passes), and otherwise add a fix unit to the graph for it. A finding you would decline rather than fix goes in the batch for the user, since disagreeing with a reviewer is their call. Once the fixes are pushed, reply with `github-pr respond <n>` at your next stop for the user: it drafts each reply and posts only what the user approves. That reply is also what lets the review watch re-arm without firing on the review it just handled. Never post to the PR any other way.
 
 The `review` skill talks to the user, so use it only for a review the user wants to triage in person. Everything else is a subagent review.
 
