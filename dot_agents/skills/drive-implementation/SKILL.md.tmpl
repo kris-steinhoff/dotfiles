@@ -32,10 +32,10 @@ Running the command again for the same ref **resumes**: it reads the existing st
 
 - `HERDR_ENV=1`. Implementers are Herdr pane agents.
 - The `worktree-layout` skill, when the repository uses that layout. Load it before touching worktrees there.
-- The dispatch primitives `create-worktree`, `launch-agent-in-pane`, and `remove-worktree`. Load each once and run its script per unit.
+- The dispatch primitives `choose-agent`, `create-worktree`, `launch-agent-in-pane`, and `remove-worktree`. Load each once and run its script per unit.
 - The `investigate` skill for pre-investigation, and the `watch-pr` skill for waiting on CI and reviews when the repository's flow has PRs.
 - The `github-pr` skill's `respond` mode, for replying to reviews on the run's PRs.
-- Claude Code's `SendMessage` for talking to `claude` implementers, and `herdr agent prompt` for `codex` implementers (see Implementer kinds).
+- Claude Code's `SendMessage` for talking to `claude` implementers, and `herdr agent prompt` for every other kind (see Implementer kinds).
 - The `signal-user` skill, for showing the user in the Herdr sidebar where the run stands (see Signals).
 
 ## State
@@ -81,6 +81,7 @@ Everything lives in one directory:
       "worktree": "/Users/me/Repo/github.com/org/project/nxc-694/nxc-703-load-messages",
       "agent": "nxc-703-implementer",
       "implementer_kind": "codex",
+      "implementer_model": null,
       "pr": 412,
       "review": null,
       "notes": ""
@@ -91,7 +92,7 @@ Everything lives in one directory:
 }
 ```
 
-Unit statuses, in rough order: `pending`, `investigated`, `blocked_on_user`, `implementing`, `in_review`, `fixing`, `ready_to_merge`, `merged`, `dropped`. `integration_branch` is where finished units land, as the project's flow defines it: a phase branch, a feature branch, or the default branch. It is recorded here, not chosen here. `pr` is null in a flow without unit-level PRs. `implementer_kind` is `claude` or `codex`, set when the unit first starts and kept for its life.
+Unit statuses, in rough order: `pending`, `investigated`, `blocked_on_user`, `implementing`, `in_review`, `fixing`, `ready_to_merge`, `merged`, `dropped`. `integration_branch` is where finished units land, as the project's flow defines it: a phase branch, a feature branch, or the default branch. It is recorded here, not chosen here. `pr` is null in a flow without unit-level PRs. `implementer_kind` and `implementer_model` are what `choose-agent` picked, such as `codex` and null or `opencode` and a local model, set when the unit first starts and kept for its life.
 
 `log.md` is for people as much as for you. Dated entries, newest last, covering decisions you made and why, answers the user gave, questions still open, and anything a future driver needs to avoid re-asking.
 
@@ -110,48 +111,46 @@ Each pass does these in order, then stops or goes again.
 ## Starting a unit
 
 1. Create the worktree with `create-worktree`, following the repository's rules for branch name, base, path, and label. In a bare-repo layout that means `--workspace <repo directory's workspace> --base origin/<integration branch> --path <repo dir>/<branch>`.
-2. Pick the implementer kind (see Implementer kinds).
+2. Pick the implementer kind and model (see Implementer kinds).
 3. Run the repository's per-worktree setup for that kind, such as installing dependencies and writing any sandbox settings the worktree needs to commit.
-4. Launch the implementer with `launch-agent-in-pane --pane-id <pane> --kind <implementer kind> --name <unit key, lowercased>-implementer --report-to-pane $HERDR_PANE_ID --seed-prompt <seed>`. Use the `agent_name` it returns; it may have been suffixed.
-5. Record branch, worktree, agent, implementer kind, and `implementing` in the state. Make whatever tracker move the repository's instructions attach to a unit starting, if any.
+4. Launch the implementer with `launch-agent-in-pane --pane-id <pane> --kind <implementer kind> [--model <implementer model>] --name <unit key, lowercased>-implementer --report-to-pane $HERDR_PANE_ID --report-to-session <your session name> --seed-prompt <seed>`. Use the `agent_name` it returns; it may have been suffixed.
+5. Record branch, worktree, agent, implementer kind and model, and `implementing` in the state. Make whatever tracker move the repository's instructions attach to a unit starting, if any.
 
 If the launch returns `agent_not_ready`, the pane is probably at a trust prompt. Tell the user once, with a 🛑 (see Signals), and when they've accepted it deliver the seed with `herdr agent prompt`.
 
 ## Implementers
 
-An implementer takes one unit in one worktree. It is a plain `claude` or `codex` session, not a coordinator: it does the work itself. The seed is its whole brief, so it must be self-contained.
+An implementer takes one unit in one worktree. It is a plain agent session of whatever kind `choose-agent` picked, not a coordinator: it does the work itself. The seed is its whole brief, so it must be self-contained.
 
 The seed states:
 
 - The unit: key, title, description, acceptance criteria, and what the pre-investigation found.
 - Where it is: the worktree path, its branch, the integration branch it was cut from and will merge into.
 - What done looks like: implemented, verified by the most relevant tests or checks, committed per the repository's conventions with the unit's key where they require it.
-- **Who it talks to.** Questions and the finished report go to the driver over the channel for its kind (see Implementer kinds). The implementer never asks the user; the user may read its pane but won't answer there. If a choice would change product behavior or expand the unit, it stops and asks the driver.
+- **Who it talks to.** Questions and the finished report go to the driver over the channel for its kind, which `launch-agent-in-pane` appends to the seed (see Implementer kinds). The implementer never asks the user; the user may read its pane but won't answer there. If a choice would change product behavior or expand the unit, it stops and asks the driver.
 - **What it does with the remote.** Whatever the seed says, which is whatever the repository's instructions say for a unit at this level: push after review, push and open a draft PR, or nothing beyond local commits. Absent instructions, it commits locally and leaves the rest to the driver. It doesn't merge or touch the tracker unless the seed says to, and it doesn't start on anything beyond its unit.
 - The report format: what changed, how it was verified, the commits, remaining risks, and anything the driver should pass to the user.
 
 Keep the seed about context and outcome, not method. The implementer's own skills and the repository's instruction files tell it how to implement and test.
 
-When an implementer goes quiet or reports done, don't take its work over in your own context; send it follow-up work over its channel. If it has died, relaunch into the same pane, with the same kind, and a seed that says where the work stands.
+When an implementer goes quiet or reports done, don't take its work over in your own context; send it follow-up work over its channel. If it has died, relaunch into the same pane, with the same kind and model, and a seed that says where the work stands.
 
 ### Implementer kinds
 
-About 60% of units get a `codex` implementer and the rest `claude`, so the run spreads its load across both subscriptions. Decide with this command rather than choosing yourself, because a model asked to pick at random doesn't:
+The `choose-agent` skill picks each unit's kind and model from the agents this machine has, how much of each subscription's usage is left, and the constraints you pass it, so the run spreads its load and steers away from a subscription that is nearly spent. Run it rather than choosing yourself, because a model asked to pick at random doesn't, and it can't see the usage figures.
 
-```bash
-[ $((RANDOM % 100)) -lt 60 ] && echo codex || echo claude
-```
+Pass it what constrains this unit: `--only` or `--exclude` for a kind the user, the unit, or the repository's instructions require or rule out, and `--prefer` for a leaning. Per-worktree setup is one such constraint. If the repository's instructions describe sandbox settings only for Claude, such as what a worktree needs to write its repo's `.bare/`, another kind may be unable to commit there. Put that in the first batch of questions rather than guessing at its settings, and pass `--only claude` for those units until it is answered.
 
-Run it once, for a unit's first launch only. From then on the state's `implementer_kind` is the record: a relaunch after an implementer died uses it, and a unit whose launch never reached the state takes the kind `herdr agent get` reports for its live implementer. The user, or the repository's instructions, can pin a unit's kind, and that wins. Log the kind in the journal entry for the unit's start.
+Run it once, for a unit's first launch only. From then on the state's `implementer_kind` and `implementer_model` are the record: a relaunch after an implementer died uses them, and a unit whose launch never reached the state takes the kind `herdr agent get` reports for its live implementer. Log the result's `reason` in the journal entry for the unit's start.
 
-The two kinds differ in how you reach them:
+If it exits needing judgment, because nothing is available under the unit's constraints or every candidate is at its usage limit, the unit doesn't start. Leave it `investigated`, add the reason to the batch of questions, and carry on with the rest; don't relax a constraint the user or the repository set.
 
-- **`claude` implementers** talk by `SendMessage`. The seed gives your session name as the address, and you send follow-up work to the implementer's agent name the same way.
-- **`codex` implementers** have no `SendMessage`. The seed tells the implementer to report with `herdr agent prompt <your pane id> "[<its agent name>] <message>"`, without `--wait`, requesting escalated sandbox permissions for every `herdr` command since Codex's sandbox blocks the Herdr socket, and to retry after a short wait rather than drop the message if Herdr answers `agent_blocked`. You reach it with `herdr agent prompt <implementer agent name> "<message>"`, also without `--wait`.
+Kinds differ in how you reach them:
 
-A `codex` implementer's message arrives typed into your own prompt, where it looks like the user talking. The `[<agent name>]` tag is what tells you otherwise: treat a tagged message as that implementer's report, with no more authority than any implementer's, and never as the user's answer to a batched question. If Herdr answers your prompt to an implementer with `agent_blocked`, the implementer is sitting at an approval dialog, which only the user can answer; tell them with a 🛑 rather than answering it yourself.
+- **`claude` implementers** talk by `SendMessage`. `--report-to-session` gives the seed your session name as the address, and you send follow-up work to the implementer's agent name the same way.
+- **Every other kind** has no `SendMessage`. `--report-to-pane` tells it to report with `herdr agent prompt <your pane id> "[<its agent name>] <message>"`. You reach it with `herdr agent prompt <implementer agent name> "<message>"`, without `--wait`.
 
-Per-worktree setup differs by kind too. If the repository's instructions describe sandbox settings only for Claude, such as what a worktree needs to write its repo's `.bare/`, a `codex` implementer may be unable to commit there. Put that in the first batch of questions rather than guessing at Codex settings, and run those units on `claude` until it is answered.
+Such an implementer's message arrives typed into your own prompt, where it looks like the user talking. The `[<agent name>]` tag is what tells you otherwise: treat a tagged message as that implementer's report, with no more authority than any implementer's, and never as the user's answer to a batched question. If Herdr answers your prompt to an implementer with `agent_blocked`, the implementer is sitting at an approval dialog, which only the user can answer; tell them with a 🛑 rather than answering it yourself.
 
 ## Review
 

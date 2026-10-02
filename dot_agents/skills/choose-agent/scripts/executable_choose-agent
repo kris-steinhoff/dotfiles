@@ -1,0 +1,290 @@
+#!/usr/bin/env python3
+"""Choose which agent kind (and model) to launch for a piece of work.
+
+A Herdr dispatch primitive. Candidates are declared per machine in
+~/.config/choose-agent/candidates.toml, since only the machine knows which
+agents it has and whether any run on local models; without that file the
+candidates are Claude and Codex at 40/60, the split drive-implementation used
+before this existed. A candidate whose CLI is not on PATH drops out.
+
+Usage only weighs on candidates with a subscription quota. `ai-usage --json
+windows` reports each quota's windows, and a candidate signed out of its quota
+drops out. For the rest, each relevant window scores how fast its remaining
+capacity may be spent: (share left) / (share of the window's time left). A week
+half used with a day to go scores high, because that capacity is about to
+reset unused; a session nearly spent scores low; a window at the cutoff rules
+its candidate out until it resets. The candidate's base weight is multiplied by
+its lowest window score. An unmetered candidate (quota = "none", e.g. a local
+model) and a metered one whose usage could not be read keep their base weight.
+
+The pick is weighted-random rather than the top score, because a caller often
+starts several agents in a burst against the same usage snapshot, and the top
+score would send the whole burst to one place.
+
+Constraints come from the caller, which reads them from the user, the task, and
+the repository's instructions: --only and --exclude are hard limits, --prefer
+tilts the weights. Each takes a candidate name or a kind and may repeat.
+
+  {name, kind, model, reason, candidates, dropped}
+
+Exit codes (shared across the Herdr dispatch primitives):
+  0  success. The JSON result object is printed to stdout.
+  2  needs judgment: the constraints and availability leave no candidate, or
+     every remaining candidate is at its usage limit. stdout is
+     {"status": "needs_judgment", "reason": ...} with the candidates considered.
+  1  real error (an unreadable config). Diagnostics on stderr.
+"""
+
+import argparse
+import json
+import os
+import random
+import shutil
+import subprocess
+import sys
+import tomllib
+from datetime import datetime, timezone
+from pathlib import Path
+
+CONFIG_PATH = (
+    Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
+    / "choose-agent"
+    / "candidates.toml"
+)
+
+DEFAULT_CANDIDATES = [
+    {"name": "claude", "kind": "claude", "quota": "claude", "weight": 40},
+    {"name": "codex", "kind": "codex", "quota": "chatgpt", "weight": 60},
+]
+
+QUOTAS = ("claude", "chatgpt", "none")
+
+# A window at or past this share used rules its candidate out until it resets.
+CUTOFF_PERCENT = 90.0
+# Bounds on one window's score, so neither a nearly spent window nor one about
+# to reset swamps the base weights entirely.
+MIN_SCORE, MAX_SCORE = 0.1, 3.0
+# Floor on a window's remaining time share, so the last minutes before a reset
+# don't divide by nearly zero.
+MIN_TIME_LEFT = 0.02
+# How far --prefer tilts a candidate's weight.
+PREFER_TILT = 4.0
+
+
+def emit(obj, code=0):
+    print(json.dumps(obj))
+    sys.exit(code)
+
+
+def emit_judgment(reason, **fields):
+    emit({"status": "needs_judgment", "reason": reason, **fields}, 2)
+
+
+def emit_error(message):
+    print(f"choose-agent: {message}", file=sys.stderr)
+    sys.exit(1)
+
+
+def load_candidates(path):
+    if not path.exists():
+        raw, source = DEFAULT_CANDIDATES, "default"
+    else:
+        try:
+            raw = tomllib.loads(path.read_text()).get("candidate")
+        except (OSError, tomllib.TOMLDecodeError) as e:
+            emit_error(f"cannot read {path}: {e}")
+        if not isinstance(raw, list) or not raw:
+            emit_error(f"{path} declares no [[candidate]] entries")
+        source = str(path)
+    candidates = []
+    for i, c in enumerate(raw):
+        if not isinstance(c, dict) or not c.get("kind"):
+            emit_error(f"{path}: candidate {i + 1} has no kind")
+        quota = c.get("quota", "none")
+        if quota not in QUOTAS:
+            emit_error(f"{path}: candidate {i + 1} has quota {quota!r}; expected one of {', '.join(QUOTAS)}")
+        weight = c.get("weight", 1)
+        if not isinstance(weight, (int, float)) or weight <= 0:
+            emit_error(f"{path}: candidate {i + 1} needs a positive weight")
+        candidates.append({
+            "name": c.get("name") or c["kind"],
+            "kind": c["kind"],
+            "model": c.get("model"),
+            "quota": quota,
+            "weight": float(weight),
+        })
+    return candidates, source
+
+
+def matches(candidate, selectors):
+    return candidate["name"] in selectors or candidate["kind"] in selectors
+
+
+def read_usage(quotas, usage_file):
+    """Return {quota: windows-json entry}, or {} when usage cannot be read."""
+    if not quotas:
+        return {}
+    if usage_file:
+        try:
+            return json.loads(Path(usage_file).read_text())
+        except (OSError, json.JSONDecodeError) as e:
+            emit_error(f"cannot read usage file {usage_file}: {e}")
+    exe = shutil.which("ai-usage")
+    if not exe:
+        return {}
+    cmd = [exe, "--json", "windows"]
+    for quota in sorted(quotas):
+        cmd += ["--service", quota]
+    try:
+        out = subprocess.run(cmd, capture_output=True, text=True, timeout=60, check=True).stdout
+        return json.loads(out)
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
+        return {}
+
+
+def relevant(quota, model, key):
+    """Whether a quota window limits this candidate."""
+    if quota == "claude":
+        families = [f for f in ("opus", "sonnet") if model and f in model.lower()]
+        return key in ("five_hour", "seven_day", "credits") or key in {f"seven_day_{f}" for f in families}
+    # Codex's additional allowances cover individual features, not general use.
+    return not (key or "").startswith("additional:")
+
+
+def parse_time(value):
+    if not value:
+        return None
+    try:
+        t = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return t if t.tzinfo else t.replace(tzinfo=timezone.utc)
+
+
+def window_score(window, now):
+    """Score one window, or None when it has already reset."""
+    used = float(window.get("used_percent") or 0)
+    resets = parse_time(window.get("resets_at"))
+    if resets is not None and resets <= now:
+        return None
+    if used >= CUTOFF_PERCENT:
+        return 0.0
+    length = window.get("window_seconds")
+    time_left = 1.0
+    if resets is not None and length:
+        time_left = min(1.0, max(MIN_TIME_LEFT, (resets - now).total_seconds() / length))
+    return min(MAX_SCORE, max(MIN_SCORE, (100 - used) / 100 / time_left))
+
+
+def score_candidate(candidate, usage, now):
+    """Return (score, usage note, drop reason)."""
+    quota = candidate["quota"]
+    if quota == "none":
+        return 1.0, "unmetered", None
+    entry = usage.get(quota)
+    if not isinstance(entry, dict):
+        return 1.0, "usage unknown", None
+    status = entry.get("status")
+    if status == "signed_out":
+        return None, None, f"not signed in to {quota}"
+    if status not in ("ok", "stale"):
+        return 1.0, "usage unknown", None
+    scores = []
+    binding = None
+    for window in entry.get("windows") or []:
+        if not relevant(quota, candidate["model"], window.get("key")):
+            continue
+        s = window_score(window, now)
+        if s is None:
+            continue
+        scores.append(s)
+        if binding is None or s < binding[0]:
+            binding = (s, window)
+    if not scores:
+        return 1.0, "no current limits", None
+    s, window = binding
+    note = f"{window.get('label') or window.get('key')} {window.get('used_percent')}% used"
+    if window.get("resets_at"):
+        note += f", resets {window['resets_at']}"
+    if status == "stale":
+        note += " (stale)"
+    return s, note, None
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Choose which agent to launch.")
+    parser.add_argument("--only", action="append", default=[], metavar="NAME_OR_KIND",
+                        help="consider only these candidates (repeatable)")
+    parser.add_argument("--exclude", action="append", default=[], metavar="NAME_OR_KIND",
+                        help="never choose these candidates (repeatable)")
+    parser.add_argument("--prefer", action="append", default=[], metavar="NAME_OR_KIND",
+                        help="tilt the choice toward these candidates (repeatable)")
+    parser.add_argument("--config", type=Path, default=CONFIG_PATH, help=argparse.SUPPRESS)
+    parser.add_argument("--usage-file", help=argparse.SUPPRESS)
+    parser.add_argument("--seed", type=int, help=argparse.SUPPRESS)
+    args = parser.parse_args()
+
+    candidates, source = load_candidates(args.config)
+    dropped = []
+    remaining = []
+    for c in candidates:
+        if args.only and not matches(c, args.only):
+            dropped.append({"name": c["name"], "reason": "not in --only"})
+        elif matches(c, args.exclude):
+            dropped.append({"name": c["name"], "reason": "excluded"})
+        elif not shutil.which(c["kind"]):
+            dropped.append({"name": c["name"], "reason": f"{c['kind']} is not on PATH"})
+        else:
+            remaining.append(c)
+
+    usage = read_usage({c["quota"] for c in remaining if c["quota"] != "none"}, args.usage_file)
+    now = datetime.now(timezone.utc)
+    considered = []
+    for c in remaining:
+        score, note, drop = score_candidate(c, usage, now)
+        if drop:
+            dropped.append({"name": c["name"], "reason": drop})
+            continue
+        tilt = PREFER_TILT if matches(c, args.prefer) else 1.0
+        considered.append({
+            **{k: c[k] for k in ("name", "kind", "model", "quota")},
+            "base_weight": c["weight"],
+            "score": round(score, 3),
+            "weight": round(c["weight"] * score * tilt, 3),
+            "preferred": tilt > 1,
+            "usage": note,
+        })
+
+    if not considered:
+        emit_judgment("no candidate is available under these constraints",
+                      candidates_from=source, dropped=dropped)
+    live = [c for c in considered if c["weight"] > 0]
+    if not live:
+        emit_judgment("every available candidate is at its usage limit",
+                      candidates_from=source, candidates=considered, dropped=dropped)
+
+    rng = random.Random(args.seed)
+    chosen = live[0] if len(live) == 1 else rng.choices(live, weights=[c["weight"] for c in live])[0]
+
+    if len(considered) == 1:
+        reason = f"{chosen['name']} is the only available candidate"
+    else:
+        total = sum(c["weight"] for c in live)
+        odds = ", ".join(f"{c['name']} {100 * c['weight'] / total:.0f}%" for c in considered)
+        reason = f"weighted pick ({odds})"
+    if chosen["usage"]:
+        reason += f"; {chosen['name']}: {chosen['usage']}"
+
+    emit({
+        "name": chosen["name"],
+        "kind": chosen["kind"],
+        "model": chosen["model"],
+        "reason": reason,
+        "candidates_from": source,
+        "candidates": considered,
+        "dropped": dropped,
+    })
+
+
+if __name__ == "__main__":
+    main()

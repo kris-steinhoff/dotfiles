@@ -205,16 +205,38 @@ def name_args(kind, name):
     return [NAME_FLAGS[kind], name]
 
 
-def compose_prompt(seed_prompt, report_to_pane):
-    parts = []
-    if seed_prompt:
-        parts.append(seed_prompt)
-    if report_to_pane:
-        parts.append(
-            "When you finish, report your results back to the pane that dispatched "
-            f"you: Herdr pane {report_to_pane}."
+def report_instructions(kind, name, report_to_pane, report_to_session):
+    """How the launched agent reaches whoever dispatched it, by kind.
+
+    A claude agent reports to a Claude caller by SendMessage when the caller
+    gave its session name, since that arrives marked as another agent's message.
+    Anything else types into the caller's pane, where it would read as the user
+    talking, so every message carries the agent's name as a tag.
+    """
+    if kind == "claude" and report_to_session:
+        return (
+            "Send your results, and anything else for the agent that dispatched you, "
+            f"with SendMessage to `{report_to_session}`."
         )
-    return "\n\n".join(parts)
+    if not report_to_pane:
+        return None
+    lines = [
+        "Send your results, and anything else for the agent that dispatched you, with "
+        f'`herdr agent prompt {report_to_pane} "[{name}] <message>"`, without `--wait`. '
+        f"Start every message with the `[{name}]` tag: it lands in that agent's prompt, "
+        "and the tag is how it tells you apart from the user. If Herdr answers "
+        "`agent_blocked`, wait a little and retry rather than drop the message."
+    ]
+    if kind == "codex":
+        lines.append(
+            "Codex's sandbox blocks the Herdr socket, so request escalated permissions "
+            "for every `herdr` command."
+        )
+    return " ".join(lines)
+
+
+def compose_prompt(seed_prompt, report):
+    return "\n\n".join(part for part in (seed_prompt, report) if part)
 
 
 def main():
@@ -226,6 +248,10 @@ def main():
     parser.add_argument("--name", help="agent name base, e.g. nxc-162 (claude: also its session name)")
     parser.add_argument("--seed-prompt", help="prompt to deliver after launch")
     parser.add_argument("--report-to-pane", help="pane the launched agent should report back to")
+    parser.add_argument(
+        "--report-to-session",
+        help="the caller's Claude session name; a claude agent reports there by SendMessage instead",
+    )
     args = parser.parse_args()
 
     if os.environ.get("HERDR_ENV") != "1":
@@ -275,7 +301,8 @@ def main():
             start += ["--", *extra]
         herdr_json(start)
 
-        prompt = compose_prompt(args.seed_prompt, args.report_to_pane)
+        report = report_instructions(args.kind, name, args.report_to_pane, args.report_to_session)
+        prompt = compose_prompt(args.seed_prompt, report)
         if prompt:
             # No --wait: hand the prompt off without blocking on the agent's turn.
             herdr_json(["agent", "prompt", name, prompt])

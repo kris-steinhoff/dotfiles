@@ -1,0 +1,47 @@
+---
+name: choose-agent
+description: Deterministic dispatch primitive that chooses which agent kind and model to launch for a piece of work, from the machine's declared candidates, which of them are installed and signed in, how much of each subscription's usage is left, and any constraint the user or the repository's instructions set. Reach for it before writing a launched agent's seed prompt, since how the agent reports back depends on its kind. Not for raw usage queries (use ai-usage for that).
+{{- with get . "custom" }}
+{{ . }}
+{{- end }}
+---
+
+# choose-agent
+
+A dispatch primitive. Run the script; read its one-line JSON result.
+
+```bash
+scripts/choose-agent [--only <name|kind>]... [--exclude <name|kind>]... [--prefer <name|kind>]...
+```
+
+Load once per session; takes no `args`. Run the script directly via Bash for each launch — don't re-invoke this skill per item. It needs no Herdr socket, so it runs standalone.
+
+## Constraints are yours to gather
+
+The script can't read the conversation or the repository, so turn what they say into flags before running it, most authoritative first:
+
+1. What the user said in this session.
+2. A pin on this piece of work, such as a unit's recorded kind.
+3. The repository's instructions (`AGENTS.md`, `CLAUDE.md`), such as "implement with Codex" or "never use local models here".
+4. What you know the work needs. If a worktree's sandbox settings exist only for one kind, the other kind can't commit there, so exclude it.
+
+A requirement is `--only` or `--exclude`; a leaning is `--prefer`, which tilts the odds without overriding usage. When sources conflict, the higher one wins, and you pass only the result. Pass nothing when nothing applies; the machine's candidates and usage then decide alone.
+
+## What it does
+
+- Reads the machine's candidates from `~/.config/choose-agent/candidates.toml`, or uses Claude and Codex at 40/60 when the file is absent. Each `[[candidate]]` has a `kind` (an agent kind `launch-agent-in-pane` accepts), and optionally a `name` (defaults to the kind), a `model` hint, a `quota` (`claude`, `chatgpt`, or `none` for an unmetered local model; the default is `none`), and a `weight` (default 1).
+- Drops candidates ruled out by `--only` or `--exclude`, candidates whose CLI isn't on PATH, and metered candidates not signed in to their quota.
+- Weighs each metered candidate by its usage, from `ai-usage --json windows`. Capacity about to reset unused raises its weight, a nearly spent window lowers it, and a window at 90% rules it out. An unmetered candidate, or one whose usage couldn't be read, keeps its base weight, so a failed usage fetch never blocks a launch.
+- Picks at random by weight rather than taking the top score, so a burst of launches against one usage snapshot spreads out.
+
+## Output (stdout, JSON)
+
+`{ name, kind, model, reason, candidates_from, candidates, dropped }`
+
+Launch with `kind` and, when it is not null, `model` as the model hint. Record `name` wherever the work's kind is recorded, and put `reason` in any log of the launch, since it says which constraint or usage figure decided.
+
+## Exit codes
+
+- `0` — success, result on stdout.
+- `2` — needs judgment: nothing is available under the constraints, or every remaining candidate is at its usage limit. stdout is `{"status": "needs_judgment", "reason": ...}` with the candidates considered and why each other one dropped. Take it to the user rather than loosening a constraint yourself; a requirement from them or the repository isn't yours to relax.
+- `1` — real error (an unreadable candidates file). Diagnostics on stderr.

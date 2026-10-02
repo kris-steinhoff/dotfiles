@@ -87,7 +87,8 @@
         "~/Library/Developer/Xcode/DerivedData",
         "~/Library/Developer/CoreSimulator",
         "~/Library/Caches/org.swift.swiftpm",
-        "~/Library/org.swift.swiftpm"
+        "~/Library/org.swift.swiftpm",
+        "~/.local/state/ai-usage"
       ],
       "denyRead": [
         "~/.ssh/agent",
@@ -112,7 +113,9 @@
       ],
       "allowedDomains": [
         "127.0.0.1",
-        "localhost"
+        "localhost",
+        "api.anthropic.com",
+        "chatgpt.com"
       ]
     }
   },

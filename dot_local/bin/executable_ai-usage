@@ -10,7 +10,9 @@ usage endpoints. It currently supports Claude and ChatGPT (via Codex), and
 renders whichever limit windows each account reports.
 
 On a terminal it refreshes in place until interrupted. `--once` prints a
-single snapshot and exits.
+single snapshot and exits. `--json` prints each provider's raw payload, and
+`--json windows` prints every service's windows in one normalized shape for
+programs that compare the two, such as choose-agent.
 
 Every fetch goes through a shared cache in ~/.local/state/ai-usage/, so any
 number of callers can run as often as they like: a caller fetches only when
@@ -254,6 +256,9 @@ class Window:
     # Show the share left rather than used, matching how the provider's own
     # usage page reads. `percent` and severity still measure usage.
     show_remaining: bool = False
+    # Stable identity and length for `--json windows`; the display ignores them.
+    key: str | None = None
+    window_seconds: float | None = None
 
     @property
     def is_dollar(self) -> bool:
@@ -280,6 +285,10 @@ NAMED_WINDOWS: list[tuple[str, str, str | None]] = [
     ("seven_day_cowork", "Week · Cowork", None),
     ("seven_day_oauth_apps", "Week · Apps", None),
 ]
+# The Claude endpoint names its windows rather than stating their length.
+HOUR = 3600
+WINDOW_SECONDS = {"five_hour": 5 * HOUR}
+WEEK_SECONDS = 7 * 24 * HOUR
 
 
 def build_windows(data: dict) -> list[Window]:
@@ -306,6 +315,8 @@ def build_windows(data: dict) -> list[Window]:
                 severity=severity_by_kind.get(kind) if kind else None,
                 used_dollars=w.get("used_dollars"),
                 limit_dollars=w.get("limit_dollars"),
+                key=key,
+                window_seconds=WINDOW_SECONDS.get(key, WEEK_SECONDS if key.startswith("seven_day") else None),
             )
         )
 
@@ -325,6 +336,7 @@ def build_windows(data: dict) -> list[Window]:
                     severity=spend.get("severity"),
                     used_dollars=used["amount_minor"] / (10 ** used.get("exponent", 2)),
                     limit_dollars=limit["amount_minor"] / (10 ** limit.get("exponent", 2)),
+                    key="credits",
                 )
             )
 
@@ -380,17 +392,21 @@ def build_chatgpt_windows(data: dict) -> list[Window]:
                 percent=limit["used_percent"],
                 resets_at=chatgpt_window_reset(limit),
                 show_remaining=True,
+                key=key.removesuffix("_window"),
+                window_seconds=minutes * 60 if isinstance(minutes, (int, float)) else None,
             )
         )
     for limit in data.get("additional_rate_limits") or limits.get("additional_rate_limits") or []:
         if not isinstance(limit, dict) or limit.get("used_percent") is None:
             continue
+        name = str(limit.get("limit_name") or "Additional allowance")
         windows.append(
             Window(
-                label=str(limit.get("limit_name") or "Additional allowance"),
+                label=name,
                 percent=limit["used_percent"],
                 resets_at=chatgpt_window_reset(limit),
                 show_remaining=True,
+                key=f"additional:{name}",
             )
         )
     return windows
@@ -907,6 +923,42 @@ def run_live(services: list[str], interval: int) -> None:
 # --------------------------------------------------------------------------- #
 # Helpers
 # --------------------------------------------------------------------------- #
+def windows_json(service: str, entry: Cached) -> dict:
+    """One service's windows in the shape shared across providers.
+
+    `status` is `ok`, `stale` (an older payload kept after a failed fetch),
+    `error` (no payload at all), or `signed_out`. A consumer can tell a
+    service that is not set up from one whose usage is merely unknown.
+    """
+    if entry.error is not None and entry.error.credentials_missing:
+        status = "signed_out"
+    elif entry.data is None:
+        status = "error"
+    elif entry.error is not None:
+        status = "stale"
+    else:
+        status = "ok"
+    windows = []
+    if entry.data is not None:
+        built = build_windows(entry.data) if service == "claude" else build_chatgpt_windows(entry.data)
+        windows = [
+            {
+                "key": w.key,
+                "label": w.label,
+                "used_percent": round(w.pct, 1),
+                "window_seconds": w.window_seconds,
+                "resets_at": w.resets_at,
+            }
+            for w in built
+        ]
+    return {
+        "status": status,
+        "fetched_at": datetime.fromtimestamp(entry.fetched_at, timezone.utc).isoformat() if entry.fetched_at else None,
+        "error": entry.error.message if entry.error is not None else None,
+        "windows": windows,
+    }
+
+
 def die(*lines: str) -> None:
     err_console.print(f"[red]error:[/red] {lines[0]}")
     for extra in lines[1:]:
@@ -924,7 +976,11 @@ def main() -> None:
         "--service", choices=("claude", "chatgpt"), action="append",
         help="show only this service (repeatable; default: both)",
     )
-    parser.add_argument("--json", action="store_true", help="print raw payloads keyed by service and exit")
+    parser.add_argument(
+        "--json", nargs="?", const="raw", choices=("raw", "windows"),
+        help="print JSON keyed by service and exit: each provider's raw payload (the default), "
+             "or `windows` for every service's windows in one normalized shape",
+    )
     parser.add_argument("--once", action="store_true", help="print a single snapshot instead of the live view")
     parser.add_argument(
         "-n", "--interval", type=int, default=300, metavar="SECONDS",
@@ -934,6 +990,13 @@ def main() -> None:
     args = parser.parse_args()
     services = args.service or ["claude", "chatgpt"]
     interval = max(5, args.interval)
+
+    if args.json == "windows":
+        # Never fatal: a consumer wants every service's status, failures included.
+        entries = {service: load_service(service, interval) for service in services}
+        json.dump({service: windows_json(service, e) for service, e in entries.items()}, sys.stdout, indent=2)
+        sys.stdout.write("\n")
+        return
 
     if args.json:
         entries = {service: load_service(service, interval) for service in services}
