@@ -8,9 +8,9 @@ description: Drive a body of implementation work to completion from one conversa
 
 # drive-implementation
 
-You are the driver. Yours is the only conversation the user has about this body of work. Implementers run in their own worktrees and panes so the user can watch them, but they talk to you, never to the user. Your job is to keep work moving and to make the user's involvement a handful of batched decisions rather than a dozen open threads.
+You are the driver. Yours is the only conversation the user has about this body of work. The agents you start run in their own panes so the user can watch them, but they talk to you, never to the user. Most are implementers, each building one unit in its own worktree; others research or experiment to answer a question before a unit starts (see Agents). Your job is to keep work moving and to make the user's involvement a handful of batched decisions rather than a dozen open threads.
 
-The skill owns the loop, the state, and the implementer contract. The repository's own instruction files own everything about how its code moves: branch names, base branches, commit conventions, whether and when anything is pushed, whether PRs exist at all and at what level, tracker transitions, review requirements, and per-worktree setup. Read them before the first pass and follow them. How a finished unit reaches the mainline, whether work is chunked into larger review boundaries such as phases, and when anything goes to the team for review are the project's decisions, made in its instructions; the skill never makes them on its own. A project that wants the driver to make such a call, such as choosing where to cut a phase, says so there. When the instructions don't settle a question that the run depends on, such as whether units get PRs, whether anything is pushed and when, or where review sits, put it in the first batch of questions for the user rather than assuming, and record the answer in the log so the run never asks it twice. A repository whose instructions describe no flow at all is the clearest case of that: ask, don't invent one.
+The skill owns the loop, the state, and the contract with the agents it starts. The repository's own instruction files own everything about how its code moves: branch names, base branches, commit conventions, whether and when anything is pushed, whether PRs exist at all and at what level, tracker transitions, review requirements, and per-worktree setup. Read them before the first pass and follow them. How a finished unit reaches the mainline, whether work is chunked into larger review boundaries such as phases, and when anything goes to the team for review are the project's decisions, made in its instructions; the skill never makes them on its own. A project that wants the driver to make such a call, such as choosing where to cut a phase, says so there. When the instructions don't settle a question that the run depends on, such as whether units get PRs, whether anything is pushed and when, or where review sits, put it in the first batch of questions for the user rather than assuming, and record the answer in the log so the run never asks it twice. A repository whose instructions describe no flow at all is the clearest case of that: ask, don't invent one.
 
 ## Calling this skill
 
@@ -24,18 +24,18 @@ The skill owns the loop, the state, and the implementer contract. The repository
 - **A tracker story key** (`NXC-702`). One unit, or its subtasks if it has them.
 - **A plan file** (`plan.md`, `docs/plans/foo.md`). The units are its tasks, in its order unless it states dependencies. The plan's own tracker, such as checkboxes or a status table, is part of the contract: keep it current as units finish.
 
-How many units implement at once is your call, made unit by unit: the dependency graph says what could run, and whether two particular units should run together depends on whether they touch the same code, what each needs from the machine, and anything the repository's instructions say about scarce resources. One at a time is the safe answer when you're unsure.
+How many agents run at once is your call, made agent by agent: the dependency graph says what could run, and whether two particular agents should run together depends on whether they touch the same code, what each needs from the machine, and anything the repository's instructions say about scarce resources. A researcher only reads, so it rarely contends with anything; implementers and experimenters build and run tests. One at a time is the safe answer when you're unsure.
 
 Running the command again for the same ref **resumes**: it reads the existing state directory, reconciles it with reality (worktrees, live agents, PR states, tracker status), and continues. That is also how a driver recovers after its context is compacted or its session restarted, so the state directory, not your memory, is the source of truth.
 
 ## Dependencies
 
-- `HERDR_ENV=1`. Implementers are Herdr pane agents.
+- `HERDR_ENV=1`. Every agent you start is a Herdr pane agent.
 - The `worktree-layout` skill, when the repository uses that layout. Load it before touching worktrees there.
-- The dispatch primitives `choose-agent`, `create-worktree`, and `launch-agent-in-pane`, and the `cleanup-worktrees` skill. Load each once and run its script per unit.
+- The dispatch primitives `choose-agent`, `create-worktree`, `create-tab`, and `launch-agent-in-pane`, and the `cleanup-worktrees` skill. Load each once and run its script per agent.
 - The `investigate` skill for pre-investigation, and the `watch-pr` skill for waiting on CI and reviews when the repository's flow has PRs.
 - The `github-pr` skill's `respond` mode, for replying to reviews on the run's PRs.
-- Claude Code's `SendMessage` for talking to `claude` implementers, and `herdr agent prompt` for every other kind (see Implementer kinds).
+- Claude Code's `SendMessage` for talking to `claude` agents, and `herdr agent prompt` for every other kind (see Agent kinds).
 - The `signal-user` skill, for showing the user in the Herdr sidebar where the run stands (see Signals).
 
 ## State
@@ -80,77 +80,110 @@ Everything lives in one directory:
       "branch": "nxc-703-load-messages",
       "worktree": "/Users/me/Repo/github.com/org/project/nxc-694/nxc-703-load-messages",
       "agent": "nxc-703-implementer",
-      "implementer_kind": "codex",
-      "implementer_model": null,
+      "agent_role": "implementer",
+      "agent_kind": "codex",
+      "agent_model": null,
       "pr": 412,
       "review": null,
       "notes": ""
     },
-    {"id": "NXC-704", "title": "Load other records", "depends_on": ["NXC-703"], "status": "investigated"},
+    {
+      "id": "NXC-704",
+      "title": "Load other records",
+      "depends_on": ["NXC-703"],
+      "status": "investigating",
+      "agent": "nxc-704-researcher",
+      "agent_role": "researcher",
+      "agent_kind": "opencode",
+      "agent_model": "lmstudio/qwen3-35b",
+      "tab": "t-7"
+    },
     {"id": "NXC-705", "title": "Check a loaded dataset", "depends_on": ["NXC-704"], "status": "blocked_on_user"}
   ]
 }
 ```
 
-Unit statuses, in rough order: `pending`, `investigated`, `blocked_on_user`, `implementing`, `in_review`, `fixing`, `ready_to_merge`, `merged`, `dropped`. `integration_branch` is where finished units land, as the project's flow defines it: a phase branch, a feature branch, or the default branch. It is recorded here, not chosen here. `pr` is null in a flow without unit-level PRs. `implementer_kind` and `implementer_model` are what `choose-agent` picked, such as `codex` and null or `opencode` and a local model, set when the unit first starts and kept for its life.
+Unit statuses, in rough order: `pending`, `investigating`, `investigated`, `blocked_on_user`, `implementing`, `in_review`, `fixing`, `ready_to_merge`, `merged`, `dropped`. `integration_branch` is where finished units land, as the project's flow defines it: a phase branch, a feature branch, or the default branch. It is recorded here, not chosen here. `pr` is null in a flow without unit-level PRs.
 
-`log.md` is for people as much as for you. Dated entries, newest last, covering decisions you made and why, answers the user gave, questions still open, and anything a future driver needs to avoid re-asking.
+A unit has at most one live agent at a time, recorded in `agent` with its `agent_role`, and where it runs: `worktree` and `branch` for an implementer or experimenter, `tab` for a researcher. `agent_kind` and `agent_model` are what `choose-agent` picked for it, such as `codex` and null or `opencode` and a local model, set when that agent first starts and kept for its life. When the agent finishes, these fields clear or move on to the unit's next agent, and the log keeps the history.
+
+`log.md` is for people as much as for you. Dated entries, newest last, covering decisions you made and why, answers the user gave, questions still open, what researchers and experimenters found, and anything a future driver needs to avoid re-asking.
 
 ## The loop
 
 Each pass does these in order, then stops or goes again.
 
-1. **Reconcile.** Read `state.json`. Fetch if there is a remote. Check each in-flight unit against reality: is its worktree there, is its agent alive (`herdr agent get <agent>`, which sees implementers of either kind), what state is its PR in, has the tracker moved. Fix the state to match, and note anything surprising in the log.
-2. **Catch up with the remote.** If the integration branch has fallen behind its upstream, or behind the mainline it was cut from, bring it current before anything else lands on it, and tell each in-flight implementer that its base moved. Do it the way the repository's conventions say. Where they're silent, merge rather than rebase: in-flight units were cut from the integration branch's history, and rewriting it would orphan them.
-3. **Handle reports.** Work through what implementers have sent since the last pass (see Implementers). A "done" report goes to review; a question gets an answer from you if the state or the repository answers it, otherwise it joins the batch for the user; a blocker may reorder the graph.
-4. **Start what's unblocked.** For each `investigated` unit whose dependencies are all `merged`, as long as it can run alongside what's already running: cut its worktree and launch its implementer (see Starting a unit). Start in dependency order, then tracker key order.
-5. **Pre-investigate.** For the next two or three `pending` units in graph order, run the `investigate` skill against the integration branch's current state with the unit's description, asking what it needs that isn't specified, what it depends on that the graph doesn't show, and what in the codebase it will touch. Record the findings in the log, mark the unit `investigated` or `blocked_on_user`, and add any question only the user can answer to the batch.
+1. **Reconcile.** Read `state.json`. Fetch if there is a remote. Check each in-flight unit against reality: is its worktree or tab there, is its agent alive (`herdr agent get <agent>`, which sees agents of every kind), what state is its PR in, has the tracker moved. Fix the state to match, and note anything surprising in the log.
+2. **Catch up with the remote.** If the integration branch has fallen behind its upstream, or behind the mainline it was cut from, bring it current before anything else lands on it, and tell each in-flight implementer and experimenter that its base moved. Do it the way the repository's conventions say. Where they're silent, merge rather than rebase: in-flight units were cut from the integration branch's history, and rewriting it would orphan them.
+3. **Handle reports.** Work through what agents have sent since the last pass (see Agents). An implementer's "done" goes to review; a researcher's or experimenter's findings go into the log and settle the unit as `investigated` or `blocked_on_user`; a question gets an answer from you if the state or the repository answers it, otherwise it joins the batch for the user; a blocker may reorder the graph.
+4. **Start what's unblocked.** For each `investigated` unit whose dependencies are all `merged`, as long as it can run alongside what's already running: launch its implementer (see Starting an agent). Start in dependency order, then tracker key order.
+5. **Pre-investigate.** For the next two or three `pending` units in graph order, find out what each needs that isn't specified, what it depends on that the graph doesn't show, and what in the codebase it will touch, against the integration branch's current state. Who answers each question is a judgment call, made per question, weighing what it costs your context against how long it takes and who should see it. One or two lookups, such as a grep or a file read, you do yourself. A bounded read through the code goes to the `investigate` skill in a subagent, which keeps its noise out of your context. One that will take a while, or that the user may want to watch, gets a researcher. One that needs the code changed or run to answer, such as reproducing a bug, trying an approach, or running the suite with a change in place, gets an experimenter. While an agent is at it the unit is `investigating`. Record the findings in the log, mark the unit `investigated` or `blocked_on_user`, and add any question only the user can answer to the batch.
 6. **Do what the flow says comes next.** Any step the project's instructions attach to a unit landing, or to the integration branch reaching some state, happens here: opening or updating a PR, moving a tracker item, marking something ready for the team, or a decision the instructions assign to the driver. Log each one.
-7. **Stop or continue.** If any unit is `implementing`, `in_review`, or `fixing`, wait for the next implementer report or `watch-pr` exit; these wake the session, so don't poll on a timer. If nothing is running and nothing can start, present the batched questions and stop. That is the run's natural resting state, and the one it should be in when the user comes back.
+7. **Stop or continue.** If any unit is `investigating`, `implementing`, `in_review`, or `fixing`, wait for the next agent report or `watch-pr` exit; these wake the session, so don't poll on a timer. If nothing is running and nothing can start, present the batched questions and stop. That is the run's natural resting state, and the one it should be in when the user comes back.
 
-## Starting a unit
+## Agents
 
-1. Create the worktree with `create-worktree`, following the repository's rules for branch name, base, path, and label. In a bare-repo layout that means `--workspace <repo directory's workspace> --base origin/<integration branch> --path <repo dir>/<branch>`.
-2. Pick the implementer kind and model (see Implementer kinds).
-3. Run the repository's per-worktree setup for that kind, such as installing dependencies and writing any sandbox settings the worktree needs to commit.
-4. Launch the implementer with `launch-agent-in-pane --pane-id <pane> --kind <implementer kind> [--model <implementer model>] --name <unit key, lowercased>-implementer --report-to-pane $HERDR_PANE_ID --report-to-session <your session name> --seed-prompt <seed>`. Use the `agent_name` it returns; it may have been suffixed.
-5. Record branch, worktree, agent, implementer kind and model, and `implementing` in the state. Make whatever tracker move the repository's instructions attach to a unit starting, if any.
+Every agent you start takes one unit in one role. It is a plain agent session of whatever kind `choose-agent` picked, not a coordinator: it does the work itself. Its name is the unit key, lowercased, with the role as a suffix, such as `nxc-703-implementer`. The role decides where it runs and when it ends:
 
-If the launch returns `agent_not_ready`, the pane is probably at a trust prompt. Tell the user once, with a 🛑 (see Signals), and when they've accepted it deliver the seed with `herdr agent prompt`.
+| Role         | Runs in                                                       | Does                                                       | Ends                |
+| ------------ | ------------------------------------------------------------- | ---------------------------------------------------------- | ------------------- |
+| implementer  | its own worktree, on the unit's branch                        | builds the unit, verifies it, commits                      | when the unit lands |
+| experimenter | its own worktree, on a throwaway branch                       | changes and runs code to answer a question about a unit    | after it reports    |
+| researcher   | a tab in the integration branch's checkout, or the repo's own | reads code and sources to answer a question; edits nothing | after it reports    |
 
-## Implementers
+The seed is its whole brief, so it must be self-contained. Every seed states:
 
-An implementer takes one unit in one worktree. It is a plain agent session of whatever kind `choose-agent` picked, not a coordinator: it does the work itself. The seed is its whole brief, so it must be self-contained.
+- The unit: key, title, description, acceptance criteria, and what any earlier investigation found.
+- Where it is: its worktree path and branch, or for a researcher the checkout and the ref to read; and the integration branch the work is based on.
+- What done looks like, which depends on the role (below).
+- **Who it talks to.** Questions and the finished report go to the driver over the channel for its kind, which `launch-agent-in-pane` appends to the seed (see Agent kinds). The agent never asks the user; the user may read its pane but won't answer there. If a choice would change product behavior or expand the unit, it stops and asks the driver.
+- **What it does with the remote.** Only an implementer ever touches it, and only as the seed says. Researchers and experimenters push nothing, merge nothing, and never touch the tracker.
+- The report format.
 
-The seed states:
+Keep the seed about context and outcome, not method. The agent's own skills and the repository's instruction files tell it how to implement, test, or investigate.
 
-- The unit: key, title, description, acceptance criteria, and what the pre-investigation found.
-- Where it is: the worktree path, its branch, the integration branch it was cut from and will merge into.
-- What done looks like: implemented, verified by the most relevant tests or checks, committed per the repository's conventions with the unit's key where they require it.
-- **Who it talks to.** Questions and the finished report go to the driver over the channel for its kind, which `launch-agent-in-pane` appends to the seed (see Implementer kinds). The implementer never asks the user; the user may read its pane but won't answer there. If a choice would change product behavior or expand the unit, it stops and asks the driver.
-- **What it does with the remote.** Whatever the seed says, which is whatever the repository's instructions say for a unit at this level: push after review, push and open a draft PR, or nothing beyond local commits. Absent instructions, it commits locally and leaves the rest to the driver. It doesn't merge or touch the tracker unless the seed says to, and it doesn't start on anything beyond its unit.
-- The report format: what changed, how it was verified, the commits, remaining risks, and anything the driver should pass to the user.
+When an agent goes quiet or reports, don't take its work over in your own context; send it follow-up work over its channel. If it has died, relaunch into the same pane, with the same role, kind, and model, and a seed that says where the work stands.
 
-Keep the seed about context and outcome, not method. The implementer's own skills and the repository's instruction files tell it how to implement and test.
+### Implementers
 
-When an implementer goes quiet or reports done, don't take its work over in your own context; send it follow-up work over its channel. If it has died, relaunch into the same pane, with the same kind and model, and a seed that says where the work stands.
+An implementer is done when its unit is implemented, verified by the most relevant tests or checks, and committed per the repository's conventions with the unit's key where they require it. What it does with the remote is whatever the repository's instructions say for a unit at this level: push after review, push and open a draft PR, or nothing beyond local commits. Absent instructions, it commits locally and leaves the rest to the driver. It doesn't merge or touch the tracker unless the seed says to, and it doesn't start on anything beyond its unit. Its report covers what changed, how it was verified, the commits, remaining risks, and anything the driver should pass to the user.
 
-### Implementer kinds
+An implementer's work goes to review (see Review) and then lands (see Landing and teardown).
 
-The `choose-agent` skill picks each unit's kind and model from the agents this machine has, how much of each subscription's usage is left, and the constraints you pass it, so the run spreads its load and steers away from a subscription that is nearly spent. Run it rather than choosing yourself, because a model asked to pick at random doesn't, and it can't see the usage figures.
+### Researchers and experimenters
 
-Pass it what constrains this unit: `--only` or `--exclude` for a kind the user, the unit, or the repository's instructions require or rule out, and `--prefer` for a leaning. Per-worktree setup is one such constraint. If the repository's instructions describe sandbox settings only for Claude, such as what a worktree needs to write its repo's `.bare/`, another kind may be unable to commit there. Put that in the first batch of questions rather than guessing at its settings, and pass `--only claude` for those units until it is answered.
+Both answer the question pre-investigation asks about a unit, stated in the seed; seed them to use the `investigate` skill. A researcher only reads, so it shares a checkout and needs no worktree. An experimenter may edit, build, run, and commit freely in its own worktree, because nothing it does lands: the integration branch never sees its branch, and the unit's implementer starts fresh from the integration branch. Before reporting, an experimenter commits what it wants kept as evidence, such as a reproduction or a sketch of an approach, and discards the rest, so its tree is clean.
 
-Run it once, for a unit's first launch only. From then on the state's `implementer_kind` and `implementer_model` are the record: a relaunch after an implementer died uses them, and a unit whose launch never reached the state takes the kind `herdr agent get` reports for its live implementer. Log the result's `reason` in the journal entry for the unit's start.
+Their report is evidence: what they found, how they know it, what the unit will touch, and what remains unknown, plus for an experimenter the commits worth looking at. Nothing they wrote is reviewed, because nothing lands. Record the findings in the log, and when an implementer later takes the unit, put the findings in its seed and point it at any experiment commits worth reading. Don't tell it to build on them.
 
-If it exits needing judgment, because nothing is available under the unit's constraints or every candidate is at its usage limit, the unit doesn't start. Leave it `investigated`, add the reason to the batch of questions, and carry on with the rest; don't relax a constraint the user or the repository set.
+Once their report is in, take them down. Close a researcher's tab with `herdr tab close <tab>`. Remove an experimenter's worktree with `cleanup-worktrees` as for a landed unit, naming it as done. Its branch holds commits that never landed, so `git branch -d` keeps it, and that is how the evidence stays readable. Log the kept branch.
+
+### Agent kinds
+
+The `choose-agent` skill picks each agent's kind and model from the agents this machine has, how much of each subscription's usage is left, and the constraints you pass it, so the run spreads its load and steers away from a subscription that is nearly spent. Run it rather than choosing yourself, because a model asked to pick at random doesn't, and it can't see the usage figures.
+
+Pass it what constrains this agent: `--only` or `--exclude` for a kind the user, the unit, or the repository's instructions require or rule out, and `--prefer` for a leaning. Per-worktree setup is one such constraint. If the repository's instructions describe sandbox settings only for Claude, such as what a worktree needs to write its repo's `.bare/`, another kind may be unable to commit there. Put that in the first batch of questions rather than guessing at its settings, and pass `--only claude` for implementers and experimenters until it is answered. A researcher commits nothing, so that constraint doesn't reach it.
+
+Run it once per agent, for its first launch only. From then on the state's `agent_kind` and `agent_model` are the record: a relaunch after an agent died uses them, and an agent whose launch never reached the state takes the kind `herdr agent get` reports for it. Log the result's `reason` in the journal entry for the agent's start.
+
+If it exits needing judgment, because nothing is available under the agent's constraints or every candidate is at its usage limit, the agent doesn't start. Leave its unit where it was, add the reason to the batch of questions, and carry on with the rest; don't relax a constraint the user or the repository set.
 
 Kinds differ in how you reach them:
 
-- **`claude` implementers** talk by `SendMessage`. `--report-to-session` gives the seed your session name as the address, and you send follow-up work to the implementer's agent name the same way.
-- **Every other kind** has no `SendMessage`. `--report-to-pane` tells it to report with `herdr agent prompt <your pane id> "[<its agent name>] <message>"`. You reach it with `herdr agent prompt <implementer agent name> "<message>"`, without `--wait`.
+- **`claude` agents** talk by `SendMessage`. `--report-to-session` gives the seed your session name as the address, and you send follow-up work to the agent's name the same way.
+- **Every other kind** has no `SendMessage`. `--report-to-pane` tells it to report with `herdr agent prompt <your pane id> "[<its agent name>] <message>"`. You reach it with `herdr agent prompt <agent name> "<message>"`, without `--wait`.
 
-Such an implementer's message arrives typed into your own prompt, where it looks like the user talking. The `[<agent name>]` tag is what tells you otherwise: treat a tagged message as that implementer's report, with no more authority than any implementer's, and never as the user's answer to a batched question. If Herdr answers your prompt to an implementer with `agent_blocked`, the implementer is sitting at an approval dialog, which only the user can answer; tell them with a 🛑 rather than answering it yourself.
+Such an agent's message arrives typed into your own prompt, where it looks like the user talking. The `[<agent name>]` tag is what tells you otherwise: treat a tagged message as that agent's report, with no more authority than any agent's, and never as the user's answer to a batched question. If Herdr answers your prompt to an agent with `agent_blocked`, the agent is sitting at an approval dialog, which only the user can answer; tell them with a 🛑 rather than answering it yourself.
+
+## Starting an agent
+
+1. Place it. For an implementer or experimenter, create the worktree with `create-worktree`, following the repository's rules for branch name, base, path, and label. In a bare-repo layout that means `--workspace <repo directory's workspace> --base origin/<integration branch> --path <repo dir>/<branch>`. An experimenter's branch must not collide with the name the unit's implementer will take, so add `-experiment` to it. For a researcher, open a tab with `create-tab --workspace-id <workspace> --cwd <checkout> --label <agent name>` in the workspace of the integration branch's worktree, or of the repository directory when the integration branch has no worktree, in which case its seed names `origin/<integration branch>` as the ref to read.
+2. Pick the kind and model (see Agent kinds).
+3. For a worktree, run the repository's per-worktree setup for that kind, such as installing dependencies and writing any sandbox settings the worktree needs to commit.
+4. Launch the agent with `launch-agent-in-pane --pane-id <pane> --kind <kind> [--model <model>] --name <unit key, lowercased>-<role> --report-to-pane $HERDR_PANE_ID --report-to-session <your session name> --seed-prompt <seed>`. Use the `agent_name` it returns; it may have been suffixed.
+5. Record the agent, its role, kind, and model, its worktree and branch or its tab, and the unit's new status in the state: `implementing` for an implementer, `investigating` otherwise. Make whatever tracker move the repository's instructions attach to a unit starting, if any, when an implementer starts.
+
+If the launch returns `agent_not_ready`, the pane is probably at a trust prompt. Tell the user once, with a 🛑 (see Signals), and when they've accepted it deliver the seed with `herdr agent prompt`.
 
 ## Review
 
@@ -174,17 +207,17 @@ scripts/cleanup-worktrees --worktree <unit worktree> --done-agent <implementer>
 
 It removes the worktree and its workspace, which ends the implementer, then deletes the unit's branch with `git branch -d`. Always pass `--worktree`: a sweep would also reach worktrees this run didn't create.
 
-- **A dirty tree keeps the worktree.** The implementer left uncommitted work, so find out what it is before anything discards it.
+- **A dirty tree keeps the worktree.** The agent left uncommitted work, so find out what it is before anything discards it.
 - **A kept branch is information.** `git branch -d` refuses a branch that isn't fully merged into its upstream or HEAD, so it holds commits that live nowhere else; leave it, log why, and mention it when you stop. Never `git branch -D`, and never delete a remote branch, on your own authority; both need the repository's instructions or the user to say so.
 
-Keep the sidebar to the repository directory, the integration branch's worktree if it has one, and the units in flight.
+Keep the sidebar to the repository directory, the integration branch's worktree if it has one, and the agents in flight.
 
 ## Talking to the user
 
 The user reads one pane: yours. Make what reaches it worth reading.
 
 - **Batch questions.** Collect them across the pass and present them together, each with enough context to answer cold: which unit, what the choice is, what each option costs, and what you'd pick. Use the structured question tool when the harness has one. Don't ask one at a time as they arise.
-- **Report events, not progress.** A unit landing, something going to the team for review, an implementer blocked, a CI failure you couldn't trace. Not "still implementing".
+- **Report events, not progress.** A unit landing, something going to the team for review, an agent blocked, a CI failure you couldn't trace. Not "still implementing".
 - **Decisions stay the user's.** Scope changes, dropping or splitting a unit, anything that touches product behavior, and anything the repository says is the user's call. Everything else you decide and log.
 - **When you stop**, say in one short message where the run stands: what merged, what's in flight, what's waiting on them. The log has the detail.
 
@@ -193,18 +226,18 @@ The user reads one pane: yours. Make what reaches it worth reading.
 The user runs this alongside other work and checks back from the Herdr sidebar, so end every pass with the `signal-user` signal that matches where the run stands, as your last step before the turn ends. Each one replaces the last, so the sidebar always shows the run's current state; don't clear one yourself.
 
 - **🛑 when the run needs the user**: batched questions to answer, a trust prompt to accept, a decision only they can make. Name it in a few words, such as `3 questions on NXC-694`.
-- **… when the run is waiting on its own work**: implementers at work, reviews running, CI on a unit's PR. Raise it with no command behind it, since the wait is on several things at once, such as `2 units in flight`.
+- **… when the run is waiting on its own work**: agents at work, reviews running, CI on a unit's PR. Raise it with no command behind it, since the wait is on several things at once, such as `2 units in flight`.
 - **✓ when the run is finished** and has a result for the user to look at: every unit landed, or a phase ready for the team. Say what, such as `NXC-694 landed`.
 
-Implementers never signal; they talk only to you, and their panes aren't where the user answers anything.
+Agents you start never signal; they talk only to you, and their panes aren't where the user answers anything.
 
 ## Resuming
 
-A resume starts with reconcile and trusts the state directory over anything you remember. If the state and reality disagree, reality wins and the log records the discrepancy. If you were launched with a session name, confirm it matches `driver.name`; if not, update the state and tell any live implementer the new address.
+A resume starts with reconcile and trusts the state directory over anything you remember. If the state and reality disagree, reality wins and the log records the discrepancy. If you were launched with a session name, confirm it matches `driver.name`; if not, update the state and tell any live agent the new address.
 
 ## Boundaries
 
 - Don't implement in your own context. Your context holds the graph, the decisions, and the open questions, and implementation diffs would crowd those out. Discovery that hasn't become a bounded unit yet is the one exception, and only until it does.
-- Don't open a second conversation with the user. No implementer reports to the user, and no implementer's pane is where the user is expected to answer anything.
+- Don't open a second conversation with the user. No agent you start reports to the user, and no agent's pane is where the user is expected to answer anything.
 - Don't push to or rewrite the integration branch except as the repository's conventions assign to your role.
-- Don't remove a worktree that isn't `merged`, or any worktree this run didn't create. Never force-delete a branch or delete a remote one unless the repository's instructions or the user say to.
+- Don't remove a worktree that isn't `merged` or a finished experiment's, or any worktree this run didn't create. Never force-delete a branch or delete a remote branch unless the repository's instructions or the user say to.
