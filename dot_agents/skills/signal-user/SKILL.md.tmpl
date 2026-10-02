@@ -28,11 +28,16 @@ scripts/signal-user clear
 
 Each prints one JSON line. Outside a Herdr pane they print `{"status":"skipped",...}` and signal nothing (a wrapped command still runs), so there is no need to check first.
 
+The script reaches Herdr through its local socket, `~/.config/herdr/herdr.sock`, and whether a sandbox lets it through depends on the harness:
+
+- **Codex**: its sandbox blocks local sockets, so request escalated sandbox permissions on every `signal-user` command from the first call, rather than waiting for a refusal. In a wrapped `wait`, that permission also covers the command it runs.
+- **Claude Code**: its sandbox already allows the Herdr socket, so run `signal-user` as an ordinary command.
+
 ## When it fails
 
 A failure exits 1 with one JSON line whose `status` says what went wrong. Act on the status, not on a guess about panes:
 
-- **`herdr_denied`**: the Herdr socket was refused, which is what a sandbox does to a command that may not reach local sockets. Rerun the same signal command with permission to reach them (your harness's escalation for local socket access) before looking into anything else. The failure says nothing about panes; Herdr was never asked.
+- **`herdr_denied`**: a sandbox refused the Herdr socket. The failure says nothing about panes, because Herdr was never asked. If your harness can grant the permission, rerun the same signal command with it before looking into anything else. If it can't, tell the user that the sandbox blocked the Herdr socket.
 - **`herdr_unavailable`**: Herdr could not answer for some other reason, such as a stopped server. `detail` holds Herdr's own message and `error_code` its code when it gave one. Tell the user rather than working around it.
 - **`unresolved`**: Herdr answered, but no single pane could be identified as yours. `reason` says why, and `candidates` lists the panes when several matched. Don't pick one yourself, because a signal under another agent's pane is one you cannot clear. Tell the user the signal did not go up.
 

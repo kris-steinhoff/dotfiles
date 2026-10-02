@@ -134,7 +134,7 @@ herdr_failed() {
 	local status=herdr_unavailable hint=""
 	if grep -Eqi 'PermissionDenied|permission denied|operation not permitted' <<<"$herdr_detail"; then
 		status=herdr_denied
-		hint="the Herdr socket was refused, as a sandbox does; rerun this same command with permission to reach local sockets before looking into pane state"
+		hint="a sandbox refused the Herdr socket; if your harness can grant permission to reach it, rerun this same command with that permission before looking into pane state, and otherwise tell the user"
 	fi
 	fail "$(jq -nc --arg s "$status" --arg q "$1" --arg d "$herdr_detail" --arg c "$herdr_code" \
 		--arg sock "${HERDR_SOCKET_PATH:-}" --arg h "$hint" '
