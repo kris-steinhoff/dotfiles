@@ -118,7 +118,9 @@
         "127.0.0.1",
         "localhost",
         "api.anthropic.com",
-        "chatgpt.com"
+        "chatgpt.com",
+        "api.github.com",
+        "github.com"
       ]
     }
   },
