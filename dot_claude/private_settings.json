@@ -88,7 +88,9 @@
         "~/Library/Developer/CoreSimulator",
         "~/Library/Caches/org.swift.swiftpm",
         "~/Library/org.swift.swiftpm",
-        "~/.local/state/ai-usage"
+        "~/.local/state/ai-usage",
+        "~/Documents/Chief of Staff/inbox",
+        "~/.herdr/worktrees"
       ],
       "denyRead": [
         "~/.ssh/agent",
