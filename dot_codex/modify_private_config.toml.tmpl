@@ -16,9 +16,9 @@ would clobber that state on every apply and force re-trusting projects and hooks
 A modify_ script instead receives the current file on stdin and its stdout
 becomes the new file. We parse with tomlkit (which preserves the layout of
 everything it does not touch), set only the settings we manage (model, the
-project doc fallback, [features], [agents] -- the last templated on
-agentBudget), and write the whole document back. Everything Codex wrote
-round-trips verbatim, so applies stay idempotent and nothing is silently
+project doc fallback, approval behavior, [features], [agents] -- the last
+templated on agentBudget), and write the whole document back. Everything Codex
+wrote round-trips verbatim, so applies stay idempotent and nothing is silently
 dropped, whatever new keys Codex may add.
 """
 
@@ -36,6 +36,8 @@ doc = tomlkit.parse(sys.stdin.read() or "")
 doc["model"] = "gpt-5.6-sol"
 doc["model_reasoning_effort"] = "medium"
 doc["project_doc_fallback_filenames"] = ["CLAUDE.md"]
+doc["approval_policy"] = "on-request"
+doc["approvals_reviewer"] = "auto_review"
 
 features = tomlkit.table()
 features["hooks"] = True
