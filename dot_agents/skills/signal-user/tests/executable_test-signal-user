@@ -201,4 +201,23 @@ expect_failure "a refused wait" "$root" FAKE_PANE=denied -- wait "x" -- touch "$
 [ ! -s "$out" ] || die "a wait's JSON belongs on stderr"
 jq -e '.status == "herdr_denied"' "$tmp/err" >/dev/null || die "a failed wait should report JSON on stderr"
 
+# --- Reason length
+
+# A reason that fills the line exactly is raised: 27 characters after the
+# two-column 🛑, 28 after ✓ or ….
+run_signal "$root" FAKE_PANE=alias -- ask "$(printf 'a%.0s' {1..27})" || die "a 27-character ask should fit"
+run_signal "$root" FAKE_PANE=alias -- ready "$(printf 'a%.0s' {1..28})" || die "a 28-character ready should fit"
+
+# One character more is refused before Herdr is asked anything, and a wrapped
+# command does not run.
+expect_failure "a 28-character ask" "$root" FAKE_PANE=alias -- ask "$(printf 'a%.0s' {1..28})"
+assert_out '.status == "too_long" and .length == 28 and .limit == 27'
+[ ! -s "$log" ] || die "a too-long reason should not reach Herdr"
+expect_failure "a 29-character wait" "$root" FAKE_PANE=alias -- wait "$(printf 'a%.0s' {1..29})" -- touch "$tmp/ran"
+[ ! -e "$tmp/ran" ] || die "a too-long wait should not run its command"
+jq -e '.status == "too_long" and .limit == 28' "$tmp/err" >/dev/null || die "a too-long wait should report JSON on stderr"
+
+# Length is counted in characters, not bytes.
+run_signal "$root" FAKE_PANE=alias -- ready "$(printf 'é%.0s' {1..28})" || die "28 accented characters should fit"
+
 echo "signal-user tests passed"

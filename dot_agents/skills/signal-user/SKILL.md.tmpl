@@ -39,6 +39,7 @@ A failure exits 1 with one JSON line whose `status` says what went wrong. Act on
 
 - **`herdr_denied`**: a sandbox refused the Herdr socket. The failure says nothing about panes, because Herdr was never asked. If your harness can grant the permission, rerun the same signal command with it before looking into anything else. If it can't, tell the user that the sandbox blocked the Herdr socket.
 - **`herdr_unavailable`**: Herdr could not answer for some other reason, such as a stopped server. `detail` holds Herdr's own message and `error_code` its code when it gave one. Tell the user rather than working around it.
+- **`too_long`**: the reason is longer than `limit` characters (see [The reason](#the-reason)). Nothing was raised; rerun with a shorter one.
 - **`unresolved`**: Herdr answered, but no single pane could be identified as yours. `reason` says why, and `candidates` lists the panes when several matched. Don't pick one yourself, because a signal under another agent's pane is one you cannot clear. Tell the user the signal did not go up.
 
 A wrapped command does not run when the signal fails, so rerunning the whole `wait ... --` line runs it once.
@@ -67,7 +68,7 @@ When there is no command to wrap, such as another agent reporting back, raise `w
 
 ## The reason
 
-The sidebar line truncates, so keep the reason to a few words: `pick a migration strategy`, `approve the force-push`, `PR #254`, `CI on #254`, `staging deploy`. Leave it out only when it is self-evident from the workspace name.
+The sidebar line has room for 30 columns at its widest, so a reason gets at most 27 characters after 🛑 (an emoji, two columns wide) and 28 after ✓ or `…`. The script refuses a longer one rather than let Herdr cut it off. Aim for a few words: `pick a migration strategy`, `approve the force-push`, `PR #254`, `CI on #254`, `staging deploy`. Leave it out only when it is self-evident from the workspace name.
 
 ## Clearing
 

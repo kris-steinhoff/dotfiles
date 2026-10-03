@@ -39,6 +39,7 @@
 #       herdr_unavailable  Herdr could not answer (server down, an error code,
 #                          output that isn't JSON)
 #       unresolved         Herdr answered, but no single pane is this agent
+#       too_long           the reason would not fit the sidebar line
 #     2 bad usage.
 #   wait -- <command>: the command's own exit code. Its stdout is left to the
 #     command; this script's JSON line goes to stderr. If the signal fails, the
@@ -49,6 +50,13 @@ ASK="🛑"
 READY="✓"
 WAIT="…"
 TTL_MS=86400000
+
+# The sidebar gives the signal line 30 columns at its widest (Herdr's
+# sidebar_max_width of 36, less the row's indent and margin). The glyph and a
+# space come out of that, and 🛑 is an emoji two columns wide, so an ask's
+# reason gets one column fewer than the others. Herdr cuts a longer line short
+# with "…", so a reason over the limit is refused rather than shown cut off.
+SIGNAL_COLUMNS=30
 
 usage() {
 	cat <<'EOF'
@@ -105,6 +113,18 @@ fail() { # fail <json>: report a failure and stop, before any wrapped command ru
 	report "$1"
 	exit 1
 }
+
+if [ "$cmd" != clear ]; then
+	glyph_width=1
+	[ "$cmd" != ask ] || glyph_width=2
+	limit=$((SIGNAL_COLUMNS - glyph_width - 1))
+	length="$(jq -rn --arg r "$reason" '$r | length')"
+	if [ "$length" -gt "$limit" ]; then
+		fail "$(jq -nc --arg r "$reason" --argjson n "$length" --argjson l "$limit" '
+			{status: "too_long", reason: $r, length: $n, limit: $l,
+			 hint: "the sidebar would cut this reason off; rerun with one of at most \($l) characters"}')"
+	fi
+fi
 
 # herdr_q <args...>: run a Herdr query, leaving its JSON (or nothing, for a
 # write) in $herdr_out. On failure it returns nonzero with Herdr's own message
