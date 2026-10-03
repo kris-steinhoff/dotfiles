@@ -2,7 +2,8 @@
   "agentPushNotifEnabled": true,
   "enabledPlugins": {
     "agent-skills@addy-agent-skills": true,
-    "aws-core@agent-toolkit-for-aws": true
+    "aws-core@agent-toolkit-for-aws": true,
+    "swift-lsp@claude-plugins-official": true
   },
   "env": {
     "DISABLE_AUTOUPDATER": "1"
