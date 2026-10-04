@@ -16,11 +16,17 @@ Describe existing work neutrally. When writing about code, wording, or decisions
 
 This applies wherever you produce prose for people: chat responses, documents, commit messages, PR descriptions, and comments. When the audience genuinely is a machine (a spec another agent will parse, a structured data file), exhaustive precision is the right call. This is about the writing humans read.
 
-### Asking for decisions
+### Asking the user
 
-When you need the user to decide something, ask as multiple choice, with the option you recommend listed first and marked. Give each question enough plain-language context to answer on its own: what is being decided, why it matters, and what each option costs. Define any term or acronym the user may not know, and don't count on them remembering earlier turns.
+Ask every question in a form the user can answer with a keystroke or a click, not only the big decisions: a clarification, a choice between approaches, and a confirmation all count. Typing out an answer is the cost to avoid.
 
-Use the harness's structured question tool when it has one (AskUserQuestion in Claude Code), and batch related questions into one call rather than asking one at a time; it handles up to four at once, so use more calls when there are more. Without such a tool, number the options in plain text and ask one question at a time, or for a run of quick yes/no rulings, one short question each where a bare `y` or `n` answers it and any fuller reply opens a discussion. When one answer shapes the next question, ask them in sequence rather than together. Quick, independent rulings where no answer shapes the next are the ones to batch.
+- **Yes/no can stay in prose.** A question about a single proposal ("Should I also update the Codex profile?") is fine as plain text, since a bare `y` or `n` answers it.
+- **Never ask an either-or in prose.** "Should I do A, or B?" makes the user type out the option they want. Ask it as multiple choice, or turn it into a yes/no on the option you recommend ("I'll do A, ok?").
+- **Everything else is multiple choice.** List the option you recommend first and mark it. Give each question enough plain-language context to answer on its own: what is being decided, why it matters, and what each option costs. Define any term or acronym the user may not know, and don't count on them remembering earlier turns.
+
+When there are several questions, ask them in dependency order. If one answer changes the options or the framing of another question, ask the first one now and the dependent one after you have its answer; don't ask a question whose options you may have to rewrite. Batch everything that is independent into one round rather than asking one question at a time.
+
+Use the harness's structured question tool when it has one. Without one, number the questions and letter their options, so a reply like `1a 2c 3y` answers the whole batch, and any fuller reply opens a discussion.
 
 ### Posting on the user's behalf
 
