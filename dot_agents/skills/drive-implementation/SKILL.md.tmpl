@@ -216,14 +216,16 @@ Keep the sidebar to the repository directory, the integration branch's worktree 
 
 The user reads one pane: yours. Make what reaches it worth reading.
 
-- **Batch questions.** Collect them across the pass and present them together, each with enough context to answer cold: which unit, what the choice is, what each option costs, and what you'd pick. Use the structured question tool when the harness has one. Don't ask one at a time as they arise.
+- **Batch questions.** Collect them across the pass and present them together, each with enough context to answer cold: which unit, what the choice is, what each option costs, and what you'd pick. Raise 🛑 first (see Signals), then ask: a multiple-choice question in the structured question tool, when the harness has one and the decision has options, and otherwise a short summary of what you need from the user. Don't ask one at a time as they arise.
 - **Report events, not progress.** A unit landing, something going to the team for review, an agent blocked, a CI failure you couldn't trace. Not "still implementing".
 - **Decisions stay the user's.** Scope changes, dropping or splitting a unit, anything that touches product behavior, and anything the repository says is the user's call. Everything else you decide and log.
 - **When you stop**, say in one short message where the run stands: what merged, what's in flight, what's waiting on them. The log has the detail.
 
 ## Signals
 
-The user runs this alongside other work and checks back from the Herdr sidebar, so end every pass with the `signal-user` signal that matches where the run stands, as your last step before the turn ends. Each one replaces the last, so the sidebar always shows the run's current state; don't clear one yourself.
+The user runs this alongside other work and checks back from the Herdr sidebar, so end every pass with the `signal-user` signal that matches where the run stands. Each one replaces the last, so the sidebar always shows the run's current state; don't clear one yourself.
+
+Before you ask the user anything, raise 🛑 first, then ask. A question prompt holds your turn until the user answers, so a 🛑 raised after it goes up only once they have replied, and their reply clears it. A ✓ or `…` is still the last step before the turn ends.
 
 - **🛑 when the run needs the user**: batched questions to answer, a trust prompt to accept, a decision only they can make. Name it in a few words, such as `3 questions on NXC-694`.
 - **… when the run is waiting on its own work**: agents at work, reviews running, CI on a unit's PR. Raise it with no command behind it, since the wait is on several things at once, such as `2 units in flight`.
