@@ -6,6 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a personal dotfiles repository managed with [chezmoi](https://chezmoi.io/). This repo is the chezmoi source directory — files use chezmoi naming conventions (`dot_` prefix for dotfiles, `executable_` prefix for scripts) and are applied to `$HOME` by chezmoi.
 
+## Signaling the user
+
+When the `signal-user` skill is available, use it each time you stop: 🛑 before asking the user something, ✓ when there is a commit or other result for them to look at, and `…` when you end your turn waiting on something that will wake you. Outside Herdr it does nothing, so there is no need to check first.
+
 ## Bootstrap
 
 To set up a new machine:
