@@ -4,15 +4,15 @@ Signals are workspace metadata rather than agent renames, so they do not change 
 
 ## Glyphs
 
-The glyph's visual weight follows urgency. 🛑 is an emoji, which the terminal draws in full color and double width regardless of the sidebar's token color, so the one signal that blocks on the user is the one that stands out. ✓ and `…` are plain text glyphs, so they take the token's dim default color and recede like the branch line beneath them. Both text glyphs are ordinary Unicode rather than Nerd Font icons, so they render in any terminal font.
+The glyph's visual weight follows urgency. ✋🏽 is an emoji, which the terminal draws in full color and double width regardless of the sidebar's token color, so the one signal that blocks on the user is the one that stands out. The hand carries a skin-tone modifier because the default cartoon-yellow ✋ reads at a glance as Herdr's own yellow in-progress dot; the toned sequence is still one two-column glyph, which Herdr's width count gets right. ✓ and `…` are plain text glyphs, so they take the token's dim default color and recede like the branch line beneath them. Both text glyphs are ordinary Unicode rather than Nerd Font icons, so they render in any terminal font.
 
 ## Lifetimes
 
-A 🛑 or ✓ remains until the raising pane starts working again, the user dismisses it, the pane closes, or its 24-hour TTL expires. The Herdr plugin keys clearing to `signal_pane`, so activity from another pane in the workspace cannot clear the signal.
+A ✋🏽 or ✓ remains until the raising pane starts working again, the user dismisses it, the pane closes, or its 24-hour TTL expires. The Herdr plugin keys clearing to `signal_pane`, so activity from another pane in the workspace cannot clear the signal.
 
 A `…` can outlive several agent turns. The plugin therefore ignores it. A wrapped command clears its own `…` on exit only when that exact signal still owns the workspace; an unwrapped wait must be cleared explicitly.
 
-When a wrapped wait finishes after the same agent has replaced its `…` with 🛑 or ✓, it leaves a one-minute `signal_skip` token while the agent is idle. The plugin consumes that token instead of mistaking the wait-driven wakeup for a user reply. The token is not written while the agent is already working, because there will be no wakeup and it could swallow the next real reply.
+When a wrapped wait finishes after the same agent has replaced its `…` with ✋🏽 or ✓, it leaves a one-minute `signal_skip` token while the agent is idle. The plugin consumes that token instead of mistaking the wait-driven wakeup for a user reply. The token is not written while the agent is already working, because there will be no wakeup and it could swallow the next real reply.
 
 ## Ownership and precedence
 
@@ -20,7 +20,7 @@ The signaling script asks Herdr to canonicalize the inherited pane ID before rec
 
 Under Codex the inherited ID cannot be taken at its word. An interactive Codex runs tool commands in a shared app-server daemon by default, and that daemon carries the `HERDR_*` environment of whichever pane first started it, so every session on it inherits that pane, which may be a live shell in another workspace or a pane since closed. `launch-agent-in-pane` starts Codex with `--no-daemon` so the variables stay true, but a hand-launched Codex still shares the daemon. So the script trusts an inherited pane under Codex only when Herdr says it hosts a Codex agent. Otherwise it picks the Codex agent whose working directory most closely contains the command's own, and fails if two share it. It matches by directory rather than by Codex session ID because Herdr's own Codex integration records the session through the same inherited variables and so attaches it to the wrong pane.
 
-One signal is visible per workspace. An agent can always replace its own signal with its current state. Another pane can replace a signal only with one of equal or greater urgency: 🛑, then ✓, then `…`. The manual ⚑ flag is a separate workspace token, so neither mechanism erases the other.
+One signal is visible per workspace. An agent can always replace its own signal with its current state. Another pane can replace a signal only with one of equal or greater urgency: ✋🏽, then ✓, then `…`. The manual ⚑ flag is a separate workspace token, so neither mechanism erases the other.
 
 ## Failures
 

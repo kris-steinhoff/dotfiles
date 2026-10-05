@@ -220,7 +220,7 @@ The `AGENTS.md` may define other outputs the user asks for by name — a prepare
 
 The user starts you, hands you something, and moves on to the panes you dispatched, so they often come back to you from the Herdr sidebar rather than watching you work. Use the `signal-user` skill so the sidebar says why you stopped, as your last step before a turn ends:
 
-- **🛑 when you cannot go on without the user**: a drop you cannot place without their answer, a proposed change to the `AGENTS.md`, an item whose sources conflict and only they can settle, or the offer to draft an `AGENTS.md` for a new bundle. Name it in a few words, such as `confirm close: contract signoff`.
+- **✋🏽 when you cannot go on without the user**: a drop you cannot place without their answer, a proposed change to the `AGENTS.md`, an item whose sources conflict and only they can settle, or the offer to draft an `AGENTS.md` for a new bundle. Name it in a few words, such as `confirm close: contract signoff`.
 - **✓ when you produced something for them to read**: a briefing, the report from an `update`, a ritual's output, or a drafted message waiting for them to send. Name it, such as `briefing ready` or `draft: reply on PR 326`.
 
 Signal nothing after the quick state operations, after a dispatch, or after an answer the user is already reading; Herdr's own done marker covers a plain finish. Never raise the `…` wait signal, because nothing you dispatch wakes you: you don't wait on workers, and a dispatched worker signals from its own pane when its workflow calls for it.

@@ -9,7 +9,7 @@
 # no TTL and the signal-user plugin never clears it; only this key does.
 #
 # It leaves agents' signals alone; dismiss-signal.sh, on its own key, is the
-# one that dismisses a 🛑 or ✓.
+# one that dismisses a ✋🏽 or ✓.
 #
 # Bound from config.toml as a [[keys.command]] (type = "shell"). herdr injects
 # HERDR_ACTIVE_WORKSPACE_ID, HERDR_ACTIVE_PANE_ID, and HERDR_BIN_PATH. Fails

@@ -2,7 +2,7 @@ id = "kris-steinhoff.signal-user"
 name = "Signal user"
 version = "0.1.0"
 min_herdr_version = "0.9.3"
-description = "Clear an agent's workspace signal (🛑, ✓) when that agent starts working again."
+description = "Clear an agent's workspace signal (✋🏽, ✓) when that agent starts working again."
 platforms = ["linux", "macos"]
 
 [[events]]

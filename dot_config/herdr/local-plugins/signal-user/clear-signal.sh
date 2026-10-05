@@ -1,8 +1,8 @@
 #!/bin/sh
 # Herdr event hook for the signal-user plugin.
 #
-# An agent raises a signal (🛑, ✓, or `…`) with the signal-user skill, which
-# records its own pane in the workspace's `signal_pane` token. This takes a 🛑
+# An agent raises a signal (✋🏽, ✓, or `…`) with the signal-user skill, which
+# records its own pane in the workspace's `signal_pane` token. This takes a ✋🏽
 # or ✓ down when that pane's agent goes back to `working`, because the user
 # replying is what ends it. A `…` outlives the agent's turns (the user can chat
 # with it while CI runs), so the skill clears it when the wait ends, and this
@@ -34,14 +34,14 @@ tokens="$("$HERDR" workspace get "$ws" 2>/dev/null | jq -c '.result.workspace.to
 owner="$(printf '%s' "$tokens" | jq -r '.signal_pane // empty' 2>/dev/null)"
 [ "$owner" = "$pane" ] || exit 0
 
-# Resuming ends a 🛑 or ✓, not a `…`. A resume caused by the agent's own
+# Resuming ends a ✋🏽 or ✓, not a `…`. A resume caused by the agent's own
 # wrapped wait finishing isn't the user replying: the skill leaves a
 # `signal_skip` note naming the pane just before that wakeup, so let one resume
 # pass and remove the note.
 if [ "$status" = "working" ]; then
 	signal="$(printf '%s' "$tokens" | jq -r '.signal // empty' 2>/dev/null)"
 	case "$signal" in
-	"🛑"* | "✓"*) ;;
+	"✋🏽"* | "✓"*) ;;
 	*) exit 0 ;;
 	esac
 	if [ "$(printf '%s' "$tokens" | jq -r '.signal_skip // empty' 2>/dev/null)" = "$pane" ]; then

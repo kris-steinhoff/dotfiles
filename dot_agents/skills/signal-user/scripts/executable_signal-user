@@ -1,7 +1,7 @@
 #!/bin/bash
 # Show the user why this agent stopped, as a signal on its Herdr workspace:
 #
-#   🛑  ask    the agent is waiting on the user (an answer, a decision)
+#   ✋🏽  ask    the agent is waiting on the user (an answer, a decision)
 #   ✓  ready  the agent finished something for the user to look at (a PR, a
 #              draft, a preview), but nothing is blocked on them
 #   …  wait   the agent is waiting on something else (a build, a deploy, a
@@ -12,7 +12,7 @@
 # the pane that raised it. The two kinds end differently, so they clear
 # differently:
 #
-# - A 🛑 or ✓ ends when the user replies. The signal-user Herdr plugin clears
+# - A ✋🏽 or ✓ ends when the user replies. The signal-user Herdr plugin clears
 #   it when the raising pane's agent starts working again.
 # - A `…` ends when the thing waited on finishes, which can be several turns
 #   later; the user may chat with the agent meanwhile. So the plugin leaves it
@@ -24,7 +24,7 @@
 # 24-hour TTL (the longest Herdr allows) backs everything up.
 #
 # A workspace shows one signal. A signal never replaces another agent's more
-# urgent one (🛑 over ✓ over `…`), because hiding a request for the user behind
+# urgent one (✋🏽 over ✓ over `…`), because hiding a request for the user behind
 # something that asks less of them is the overwrite that costs something. An
 # agent's own signal is always replaced; its newest one is its current state.
 #
@@ -46,21 +46,21 @@
 #     command does not run, so retrying the same line runs it once.
 set -euo pipefail
 
-ASK="🛑"
+ASK="✋🏽"
 READY="✓"
 WAIT="…"
 TTL_MS=86400000
 
 # The sidebar gives the signal line 30 columns at its widest (Herdr's
 # sidebar_max_width of 36, less the row's indent and margin). The glyph and a
-# space come out of that, and 🛑 is an emoji two columns wide, so an ask's
+# space come out of that, and ✋🏽 is an emoji two columns wide, so an ask's
 # reason gets one column fewer than the others. Herdr cuts a longer line short
 # with "…", so a reason over the limit is refused rather than shown cut off.
 SIGNAL_COLUMNS=30
 
 usage() {
 	cat <<'EOF'
-Usage: signal-user ask [<reason>]                 🛑 waiting on the user
+Usage: signal-user ask [<reason>]                 ✋🏽 waiting on the user
        signal-user ready [<reason>]               ✓ finished, for the user to look at
        signal-user wait [<reason>] -- <command>   … while <command> runs
        signal-user wait [<reason>]                … until `clear`
@@ -277,7 +277,7 @@ fi
 # Clear the `…` when the command ends, but only if it is still the one showing:
 # any signal raised since then has replaced it and is not ours to end.
 #
-# If that replacement is this agent's own 🛑 or ✓, the command ending is about
+# If that replacement is this agent's own ✋🏽 or ✓, the command ending is about
 # to wake the agent (its harness reports the finished background job), and the
 # plugin would read that resume as the user's reply and clear the signal. So
 # leave a `signal_skip` note telling the plugin to let this pane's next resume
