@@ -119,7 +119,7 @@ Each pass does these in order, then stops or goes again.
 4. **Start what's unblocked.** For each `investigated` unit whose dependencies are all `merged`, as long as it can run alongside what's already running: launch its implementer (see Starting an agent). Start in dependency order, then tracker key order.
 5. **Pre-investigate.** For the next two or three `pending` units in graph order, find out what each needs that isn't specified, what it depends on that the graph doesn't show, and what in the codebase it will touch, against the integration branch's current state. Who answers each question is a judgment call, made per question, weighing what it costs your context against how long it takes and who should see it. One or two lookups, such as a grep or a file read, you do yourself. A bounded read through the code goes to the `investigate` skill in a subagent, which keeps its noise out of your context. One that will take a while, or that the user may want to watch, gets a researcher. One that needs the code changed or run to answer, such as reproducing a bug, trying an approach, or running the suite with a change in place, gets an experimenter. While an agent is at it the unit is `investigating`. Record the findings in the log, mark the unit `investigated` or `blocked_on_user`, and add any question only the user can answer to the batch.
 6. **Do what the flow says comes next.** Any step the project's instructions attach to a unit landing, or to the integration branch reaching some state, happens here: opening or updating a PR, moving a tracker item, marking something ready for the team, or a decision the instructions assign to the driver. Log each one.
-7. **Stop or continue.** If any unit is `investigating`, `implementing`, `in_review`, or `fixing`, wait for the next agent report or `watch-pr` exit; these wake the session, so don't poll on a timer. If nothing is running and nothing can start, present the batched questions and stop. That is the run's natural resting state, and the one it should be in when the user comes back.
+7. **Stop or continue.** If any unit is `investigating`, `implementing`, `in_review`, or `fixing`, wait for the next agent report or `watch-pr` exit; these wake the session, so don't poll on a timer. If nothing is running and nothing can start, present the batched questions and stop. That is the run's natural resting state, and the one it should be in when the user comes back. Either way, the pass ends with the signal for where the run stands, and a question still owed by the user outranks work in flight (see Signals).
 
 ## Agents
 
@@ -225,11 +225,15 @@ The user reads one pane: yours. Make what reaches it worth reading.
 
 The user runs this alongside other work and checks back from the Herdr sidebar, so end every pass with the `signal-user` signal that matches where the run stands. Each one replaces the last, so the sidebar always shows the run's current state; don't clear one yourself.
 
-Before you ask the user anything, raise ✋🏽 first, then ask. A question prompt holds your turn until the user answers, so a ✋🏽 raised after it goes up only once they have replied, and their reply clears it. A ✓ or `…` is still the last step before the turn ends.
+A run usually needs the user and waits on its own work at the same time. The signal answers whether the user should come over, so when both are true it is ✋🏽: agents in flight will wake you on their own, but nothing answers a question for the user, and a `…` tells them to look away from the one thing only they can move. Pick the first that holds:
 
-- **✋🏽 when the run needs the user**: batched questions to answer, a trust prompt to accept, a decision only they can make. Name it in a few words, such as `3 questions on NXC-694`.
-- **… when the run is waiting on its own work**: agents at work, reviews running, CI on a unit's PR. Raise it with no command behind it, since the wait is on several things at once, such as `2 units in flight`.
+- **✋🏽 when anything waits on the user**, whatever else is running: batched questions, a decision only they can make, a manual step only they can take (a test run on their machine, a preview to look at, a credential), a trust prompt to accept. Name it in a few words, such as `3 questions on NXC-694` or `run xcodebuild on phase 03`.
 - **✓ when the run is finished** and has a result for the user to look at: every unit landed, or a phase ready for the team. Say what, such as `NXC-694 landed`.
+- **… when nothing waits on the user** and the run is waiting on its own work: agents at work, reviews running, CI on a unit's PR. Raise it with no command behind it, since the wait is on several things at once, such as `2 units in flight`.
+
+Before you ask the user anything, raise ✋🏽 first, then ask, even if you raised `…` earlier in the same turn. A question prompt holds your turn until the user answers, so a ✋🏽 raised after it goes up only once they have replied, and their reply clears it.
+
+A ✋🏽 also comes down whenever you resume, including when an agent's report wakes you rather than the user. So a pass that ends with the user's answer or manual step still owed raises ✋🏽 again, rather than the `…` the agents in flight would otherwise call for.
 
 Agents you start never signal; they talk only to you, and their panes aren't where the user answers anything.
 
