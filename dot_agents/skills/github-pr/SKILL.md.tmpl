@@ -30,7 +30,7 @@ The queue mode removes finished review worktrees, then dispatches or refreshes r
 
 Resolve the PR. If the current checkout is not its recorded exact-head-branch review worktree, read [references/queue.md](references/queue.md) and run that document's prepare, create, mark, and launch flow for this PR alone, then stop; the launched reviewer continues interactively in its pane. If the current checkout is the recorded worktree for this PR and head SHA, conduct the review here.
 
-Read the PR title, author, body, base branch, current head SHA, and changed files, and run `scripts/feedback.py <n>` for my prior reviews and the threads I started. On a re-review, include unresolved prior findings in the review brief so the reviewer verifies them against the current code and does not duplicate findings that still stand.
+Read the PR title, author, body, base branch, current head SHA, and changed files, and run `scripts/feedback.py <n> --mode review` for the summary header, my prior reviews, and the threads I started. On a re-review, include unresolved prior findings in the review brief so the reviewer verifies them against the current code and does not duplicate findings that still stand.
 
 Invoke the shared `review` skill once with a self-contained brief containing:
 
@@ -43,7 +43,7 @@ The shared reviewer returns Blockers and Follow-ups without editing, interaction
 
 On a re-review, each prior finding the reviewer verifies as fixed is a thread to resolve: resolving is how the reviewer confirms a fix holds. A prior finding that still stands gets a reply on its thread instead of a new inline comment.
 
-Triage follows [Triage with the user](#triage-with-the-user), with the review's findings as its items. Then derive the GitHub event from the included findings: any Blocker means `REQUEST_CHANGES`; otherwise use `APPROVE`. A Follow-up never changes the event by itself. If no findings remain, the review is an approval. The final confirmation shows the event, the summary, the included findings, and the threads to be resolved.
+Triage follows [Triage with the user](#triage-with-the-user), with the review's findings as its items; when the review found nothing, the summary still opens before the confirmation. Then derive the GitHub event from the included findings: any Blocker means `REQUEST_CHANGES`; otherwise use `APPROVE`. A Follow-up never changes the event by itself. If no findings remain, the review is an approval. The final confirmation shows the event, the summary, the included findings, and the threads to be resolved.
 
 Render the confirmed review into a batch with one inline comment per included finding where possible, replies on the threads of still-open prior findings, and `resolve` for the verified fixes. Prefix each finding body with `[Blocker]` or `[Follow-up]`.
 
@@ -53,7 +53,7 @@ When the workflow reaches a terminal decision (successfully posted, or the user 
 
 Run this inline, in the session that invokes it; it dispatches nothing. Work from a checkout of the PR's head when one exists, so answers rest on the code as it stands. If the authenticated user is not the PR's author, say so and ask before going on.
 
-Run `scripts/feedback.py <n>` and take every `unanswered` inline thread, whoever started it, and every review summary body and conversation comment that is not my own. Whether a summary or comment was already answered is a judgment the API can't make: list those after `my_latest` as needing replies, and the older ones separately as possibly answered, so triage settles them rather than a timestamp. Bot reviewers are included; say which items are a bot's, so the user can skip them quickly.
+Run `scripts/feedback.py <n> --mode respond` and take every `unanswered` inline thread, whoever started it, and every review summary body and conversation comment that is not my own. Whether a summary or comment was already answered is a judgment the API can't make: list those after `my_latest` as needing replies, and the older ones separately as possibly answered, so triage settles them rather than a timestamp. Bot reviewers are included; say which items are a bot's, so the user can skip them quickly.
 
 Draft one reply for each item, grounded in evidence rather than intent:
 
@@ -70,19 +70,9 @@ Render the confirmed replies into a batch with no review: `thread_replies` for i
 
 ## Triage with the user
 
-Begin with a short PR summary so the user is oriented. Open it with the same identity table every time, so the PR is recognizable at a glance:
+Every triage opens with a short PR summary so the user is oriented, even when there are no items and the next step is the final confirmation. Several of these sessions run at once, and the summary is how the user tells which PR a pane is asking about.
 
-```markdown
-| #<number> <author full name> |
-| ---------------------------- |
-| <PR title, verbatim>         |
-
-`<base>` ← `<head branch>` at `<short head SHA>` · <N> files, +<added>/−<deleted> · <first review | re-review of N prior findings | N unanswered comments> · <PR URL>
-```
-
-Keep the number in the table plain rather than a markdown link: Claude Code renders a link as its text followed by the URL in parentheses, which would bury the author's name. The bare URL at the end of the line below stays clickable in the terminal.
-
-Use the author's GitHub display name, or their login when no name is set. Follow it with a few bullets on what the PR changes and anything the author already called out, such as known gaps or linked tickets. Leave out workflow status (whether the reviewer is still running, whether the checkout matches) unless something is wrong.
+Start it with the `header` from `scripts/feedback.py`, printed verbatim as markdown: an identity table (number, author's display name, title) and a line with the branches, head, size, and where this pass stands. The script renders it so it looks the same every time; do not rebuild it by hand or turn the number into a link. Follow it with a few bullets on what the PR changes and anything the author already called out, such as known gaps or linked tickets. Leave out workflow status (whether the reviewer is still running, whether the checkout matches) unless something is wrong.
 
 Walk through every item individually. Ask only whether that item should be included; do not ask for an overall verdict yet.
 

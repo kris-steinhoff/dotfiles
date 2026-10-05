@@ -72,7 +72,8 @@ def viewer_login():
 
 
 def pr_view(pr):
-    fields = "number,url,title,author,baseRefName,headRefName,headRefOid,state,isDraft"
+    fields = ("number,url,title,author,baseRefName,headRefName,headRefOid,state,isDraft,"
+              "additions,deletions,changedFiles")
     return json.loads(gh_out("pr", "view", str(pr), "--json", fields))
 
 
