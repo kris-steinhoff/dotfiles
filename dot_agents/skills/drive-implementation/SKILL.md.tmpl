@@ -223,7 +223,7 @@ The user reads one pane: yours. Make what reaches it worth reading.
 
 ## Signals
 
-The user runs this alongside other work and checks back from the Herdr sidebar, so end every pass with the `signal-user` signal that matches where the run stands. Each one replaces the last, so the sidebar always shows the run's current state; don't clear one yourself.
+The user runs this alongside other work and checks back from the Herdr sidebar, so a driver that is not working always shows a signal. End every turn with the `signal-user` signal that matches where the run stands: not only a loop pass, but also a turn spent on the user's aside, a one-off request, or another session's question, since the user's reply took the last ✋🏽 or ✓ down and a turn that ends without one leaves the sidebar blank. Each signal replaces the last, so the sidebar always shows the run's current state; don't clear one yourself.
 
 A run usually needs the user and waits on its own work at the same time. The signal answers whether the user should come over, so when both are true it is ✋🏽: agents in flight will wake you on their own, but nothing answers a question for the user, and a `…` tells them to look away from the one thing only they can move. Pick the first that holds:
 
@@ -231,9 +231,11 @@ A run usually needs the user and waits on its own work at the same time. The sig
 - **✓ when the run is finished** and has a result for the user to look at: every unit landed, or a phase ready for the team. Say what, such as `NXC-694 landed`.
 - **… when nothing waits on the user** and the run is waiting on its own work: agents at work, reviews running, CI on a unit's PR. Raise it with no command behind it, since the wait is on several things at once, such as `2 units in flight`.
 
+One of these always holds. A run with nothing owed by the user, nothing running, and work left is stalled, and only the user can unstall it, so that is a ✋🏽 saying what is stuck.
+
 Before you ask the user anything, raise ✋🏽 first, then ask, even if you raised `…` earlier in the same turn. A question prompt holds your turn until the user answers, so a ✋🏽 raised after it goes up only once they have replied, and their reply clears it.
 
-A ✋🏽 also comes down whenever you resume, including when an agent's report wakes you rather than the user. So a pass that ends with the user's answer or manual step still owed raises ✋🏽 again, rather than the `…` the agents in flight would otherwise call for.
+A ✋🏽 also comes down whenever you resume, including when an agent's report wakes you rather than the user. So a turn that ends with the user's answer or manual step still owed raises ✋🏽 again, rather than the `…` the agents in flight would otherwise call for.
 
 Agents you start never signal; they talk only to you, and their panes aren't where the user answers anything.
 
