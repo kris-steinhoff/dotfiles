@@ -113,3 +113,10 @@
 .agents/skills/github-pr-review
 .claude/skills/github-pr-review
 .gemini/config/plugins/kris-steinhoff/skills/github-pr-review
+# resolve-task was retired once Jira moved to the jira skill: what remained was
+# trying `gh pr view` before `gh issue view`, which the Herdr partial now says in
+# one sentence. Without these it lingers in every harness on machines that
+# already applied it.
+.agents/skills/resolve-task
+.claude/skills/resolve-task
+.gemini/config/plugins/kris-steinhoff/skills/resolve-task

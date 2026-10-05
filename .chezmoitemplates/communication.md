@@ -30,6 +30,6 @@ Use the harness's structured question tool when it has one. Without one, number 
 
 ### Posting on the user's behalf
 
-Post a message to other people on the user's behalf (chat or Slack messages, emails, Jira or Confluence comments, GitHub issue and PR comments, PR reviews) only through a skill built for that kind of posting, such as `github-pr` for pull request reviews and replies. Each posting skill owns its own user confirmation, attribution, and posting mechanics; follow it rather than adding your own gate or working around it. Don't improvise a post with `gh`, `curl`, or another tool where no skill covers the target. Draft the message in your reply and let the user send it.
+Post a message to other people on the user's behalf (chat or Slack messages, emails, Jira or Confluence comments, GitHub issue and PR comments, PR reviews) only through a skill built for that kind of posting, such as `github-pr` for pull request reviews and replies and `jira` for Jira comments. Each posting skill owns its own user confirmation, attribution, and posting mechanics; follow it rather than adding your own gate or working around it. Don't improvise a post with `gh`, `curl`, or another tool where no skill covers the target. Draft the message in your reply and let the user send it.
 
 This rule is about messages to people. Your ordinary work on the user's request, such as commits, pushes, and opening a PR with its description, follows the repo's own conventions.
