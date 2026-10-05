@@ -95,12 +95,13 @@ Set `head_sha` to the head the content was formed against. Run `scripts/post.py 
 
 ## Signals
 
-Several of these sessions often run at once, and the user moves between them from the Herdr sidebar. Use the `signal-user` skill so the sidebar shows which one needs them, as your last step each time you stop for the user:
+Several of these sessions often run at once, and the user moves between them from the Herdr sidebar, so a `review <n>` or `respond <n>` session that is not working always shows a signal. Use the `signal-user` skill as the last step of every turn, not only at the stops below: the user's reply takes the last ✋🏽 or ✓ down, so a turn spent on an aside or a follow-up question that ends without one leaves the sidebar blank. Pick the first that holds:
 
-- **✋🏽 before each stop for the user**: when a review is ready to triage (`#254 ready to triage`) or replies are drafted (`#254 replies drafted`), before each item question, before the posting confirmation (`#254 confirm post`), and when the head moved and a new pass is needed. The user's answer clears it.
-- **✓ when the batch is posted**, so the user can see at a glance which are done (`#254 posted`).
+- **✋🏽 when anything waits on the user**: a review ready to triage (`#254 ready to triage`) or replies drafted (`#254 replies drafted`), each item question, the posting confirmation (`#254 confirm post`), a head that moved so a new pass is needed, or any other question. Raise it before asking, since a question prompt holds the turn until the user answers.
+- **✓ when the pass is over**: the batch posted (`#254 posted`), or the user chose to finish without posting (`#254 done, not posted`). It stays the answer on every later turn, until something new waits on the user.
+- **… when nothing waits on the user** and the session ends its turn while something it started will wake it, such as a review running in the background (`#254 reviewing`).
 
-The `review ready` queue mode itself signals nothing; it dispatches and stops.
+The `review ready` queue mode itself signals nothing; it dispatches and stops, and each reviewer it launches signals for itself.
 
 ## Boundaries
 
