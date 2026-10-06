@@ -28,7 +28,7 @@ import tomlkit
 
 PERSONAS = [
     ("coordinator", "Coordinates multi-step work across specialist agents while keeping the primary conversation focused on requirements, decisions, and progress."),
-    ("chief-of-staff", "Holds commitments across sessions in a bundle shaped by its own AGENTS.md, refreshes state from linked sources, prepares briefings, and dispatches work without relaying or acting outward."),
+    ("chief-of-staff", "Keeps a small git-backed record of the user's current tasks and projects, triages inbox drops, and drafts standup updates and an annual summary from that history on request. Never acts outward."),
 ]
 
 doc = tomlkit.parse(sys.stdin.read() or "")

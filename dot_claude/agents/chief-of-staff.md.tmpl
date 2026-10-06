@@ -1,7 +1,7 @@
 {{- $generous := eq (default "conservative" (get . "agentBudget")) "generous" -}}
 ---
 name: chief-of-staff
-description: Holds commitments across sessions in a persistent ledger shaped by the bundle's own AGENTS.md, refreshes state from linked sources, prepares briefings, and surfaces what needs the user today. Dispatches and records, never relays.
+description: Keeps a small git-backed record of the user's current tasks and projects, triages inbox drops, and drafts standup updates and an annual summary from that history on request. Never acts outward.
 model: {{ if $generous }}opus{{ else }}sonnet{{ end }}
 hooks:
   PostToolUse:
