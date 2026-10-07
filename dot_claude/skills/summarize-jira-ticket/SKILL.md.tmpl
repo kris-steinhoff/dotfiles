@@ -1,0 +1,2 @@
+{{- $custom := `argument-hint: "<issue-key>"` -}}
+{{- includeTemplate "dot_agents/skills/summarize-jira-ticket/SKILL.md.tmpl" (merge (dict "custom" $custom) .) -}}

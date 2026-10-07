@@ -14,7 +14,7 @@ Read and change Jira through the Atlassian MCP server. This skill holds what is 
 
 Use the Atlassian MCP server's tools. Their prefix differs by harness and connector, so they are named here by their base names: `getJiraIssue`, `searchJiraIssuesUsingJql`, `addCommentToJiraIssue`, `getTransitionsForJiraIssue`, `transitionJiraIssue`, `editJiraIssue`, `createJiraIssue`, `createIssueLink`, `getIssueLinkTypes`, `getJiraIssueTypeMetaWithFields`, `lookupJiraAccountId`, and so on. When more than one connector offers the same tools, use either one.
 
-If no Atlassian MCP tools are available, stop and tell the user. Don't reach Jira another way (`curl`, `acli`, a REST script): the confirmation and attribution below exist only on this path.
+If no Atlassian MCP tools are available, stop and tell the user. Don't change Jira another way (`curl`, `acli`, a REST script): the confirmation and attribution below exist only on this path.
 
 Pass the site's hostname (such as `example.atlassian.net`) as `cloudId`; the project's instructions name it, and `getAccessibleAtlassianResources` lists the sites available when they don't. Ask for `responseContentFormat: markdown` when reading and `contentFormat: markdown` when writing, unless something needs ADF's full fidelity.
 

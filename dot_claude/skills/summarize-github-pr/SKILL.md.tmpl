@@ -1,0 +1,2 @@
+{{- $custom := `argument-hint: "<pr-number>"` -}}
+{{- includeTemplate "dot_agents/skills/summarize-github-pr/SKILL.md.tmpl" (merge (dict "custom" $custom) .) -}}

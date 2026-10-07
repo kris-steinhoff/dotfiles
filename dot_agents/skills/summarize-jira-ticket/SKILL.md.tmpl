@@ -1,0 +1,21 @@
+---
+name: summarize-jira-ticket
+description: Shows one Jira issue's metadata in the same shape every time, so a person can tell at a glance which issue it is and where it stands — type, key, summary, assignee, and URL; for an epic, its status and a progress bar of its children by status; for any other issue, its status, parent, linked pull requests, blockers, and subtasks. Read-only, and it doesn't describe the work. Pass the issue key; print what it returns to the user verbatim.
+{{- with get . "custom" }}
+{{ . }}
+{{- end }}
+---
+
+# summarize-jira-ticket
+
+Show one Jira issue's metadata so a person can tell which issue it is and where it stands. A script reads Jira and renders it, so it reads the same whichever agent shows it.
+
+Run `scripts/summary.py <key> --site <site>` by its full path from the skill directory, in the working directory. The site is the Jira site's hostname, such as `example.atlassian.net`, from the project's instructions; if they don't name one, ask the user rather than guessing. The script reads Jira's REST API, through Atlassian's gateway at `api.atlassian.com`, with a read-only API token from the `JIRA_API_TOKEN` and `JIRA_EMAIL` environment variables, and finds the issue's pull requests with `gh` when the working directory is a GitHub repository. Under a sandbox that proxies network access, it reaches the Jira site, `api.atlassian.com`, and `api.github.com`.
+
+It prints markdown:
+
+- a table of the issue's type, key, and summary, over its assignee and URL
+- for an epic, its status, a bar of its children by status category (█ done, ▒ in progress, ░ to do) with their counts, and one bullet for each unfinished child
+- for any other issue, its status and parent, then one bullet for each linked PR and each unfinished issue blocking it, and a count of its subtasks done
+
+Print that output to the user exactly as it is, as markdown, in your reply. The script's output reaches only you, so the user sees the summary only when you print it. Don't add to it, reword it, or turn anything in it into a link. If the script says those variables aren't set, or can't reach Jira, tell the user what it said rather than reading Jira another way. This skill describes nothing about the work, and changes nothing in Jira.

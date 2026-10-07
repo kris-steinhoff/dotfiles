@@ -30,7 +30,7 @@ The queue mode removes finished review worktrees, then dispatches or refreshes r
 
 Resolve the PR. If the current checkout is not its recorded exact-head-branch review worktree, read [references/queue.md](references/queue.md) and run that document's prepare, create, mark, and launch flow for this PR alone, then stop; the launched reviewer continues interactively in its pane. If the current checkout is the recorded worktree for this PR and head SHA, conduct the review here.
 
-Read the PR title, author, body, base branch, current head SHA, and changed files, and run `scripts/feedback.py <n> --mode review` for the summary header, my prior reviews, and the threads I started. On a re-review, include unresolved prior findings in the review brief so the reviewer verifies them against the current code and does not duplicate findings that still stand.
+Read the PR title, author, body, base branch, current head SHA, and changed files, and run `scripts/feedback.py <n>` for my prior reviews and the threads I started. On a re-review, include unresolved prior findings in the review brief so the reviewer verifies them against the current code and does not duplicate findings that still stand.
 
 Invoke the shared `review` skill once with a self-contained brief containing:
 
@@ -38,6 +38,8 @@ Invoke the shared `review` skill once with a self-contained brief containing:
 - the change scope (`<base>...HEAD` in this checkout)
 - relevant unresolved prior findings and their thread comment IDs
 - an explicit instruction not to report Nits
+
+While the reviewer runs, tell the user in a line or two that it is running and what you asked it to focus on. Leave describing the PR to the summary that opens triage.
 
 The shared reviewer returns Blockers and Follow-ups without editing, interaction, a verdict, or posting. Preserve its classifications unless discussion with the user supplies new technical evidence.
 
@@ -53,7 +55,7 @@ When the workflow reaches a terminal decision (successfully posted, or the user 
 
 Run this inline, in the session that invokes it; it dispatches nothing. Work from a checkout of the PR's head when one exists, so answers rest on the code as it stands. If the authenticated user is not the PR's author, say so and ask before going on.
 
-Run `scripts/feedback.py <n> --mode respond` and take every `unanswered` inline thread, whoever started it, and every review summary body and conversation comment that is not my own. Whether a summary or comment was already answered is a judgment the API can't make: list those after `my_latest` as needing replies, and the older ones separately as possibly answered, so triage settles them rather than a timestamp. Bot reviewers are included; say which items are a bot's, so the user can skip them quickly.
+Run `scripts/feedback.py <n>` and take every `unanswered` inline thread, whoever started it, and every review summary body and conversation comment that is not my own. Whether a summary or comment was already answered is a judgment the API can't make: list those after `my_latest` as needing replies, and the older ones separately as possibly answered, so triage settles them rather than a timestamp. Bot reviewers are included; say which items are a bot's, so the user can skip them quickly.
 
 Draft one reply for each item, grounded in evidence rather than intent:
 
@@ -70,11 +72,11 @@ Render the confirmed replies into a batch with no review: `thread_replies` for i
 
 ## Triage with the user
 
-Every triage opens with a short PR summary so the user is oriented, even when there are no items and the next step is the final confirmation. Several of these sessions run at once, and the summary is how the user tells which PR a pane is asking about.
+Every triage opens with the PR's summary so the user is oriented, even when there are no items and the next step is the final confirmation. Several of these sessions run at once, and the summary is how the user tells which PR a pane is asking about.
 
-Start it with the `header` from `scripts/feedback.py`, printed verbatim as markdown: an identity table (number, author's display name, title) and a line with the branches, head, size, and where this pass stands. The script renders it so it looks the same every time; do not rebuild it by hand or turn the number into a link. Follow it with a few bullets on what the PR changes and anything the author already called out, such as known gaps or linked tickets. Leave out workflow status (whether the reviewer is still running, whether the checkout matches) unless something is wrong.
+Show the PR's summary with the `summarize-github-pr` skill, printed verbatim as markdown: its number, title, URL, author, the reviews so far, and its size. It is rendered the same way every time; do not rebuild or reword it, and add nothing to it but workflow status that something has gone wrong with, such as a checkout that doesn't match.
 
-The summary is text in the turn that starts triage, written before you raise ✋🏽 and open the first item's question. When the review comes back with findings, the order is: summary, a one-line count of what the review found, the signal, then the first question. Going straight from the reviewer's hand-back to a question skips it, and a summary written when the reviewer started does not count: by triage the user has been in other panes, and that message has scrolled out of view.
+The summary is text in the turn that starts triage, printed before you raise ✋🏽 and open the first item's question. When the review comes back with findings, the order is: the summary, a one-line count of what the review found, the signal, then the first question. Going straight from the reviewer's hand-back to a question skips it, and a description written when the reviewer started does not count: by triage the user has been in other panes, and that message has scrolled out of view.
 
 Walk through every item individually. Ask only whether that item should be included; do not ask for an overall verdict yet.
 
@@ -83,7 +85,7 @@ Walk through every item individually. Ask only whether that item should be inclu
 
 Keep the question concise: what the item is and its concrete consequence. Do not put the full technical body or file coordinates in the question unless the user asks to discuss it. Preserve each ruling as you proceed.
 
-After triage, show everything that will post and explicitly ask for confirmation before posting. If the user declines, revise or stop as directed. Never infer posting approval from the earlier per-item rulings.
+After triage, show everything that will post and explicitly ask for confirmation before posting. When triage walked through any items, open the confirmation with the summary's identity table again, so the user can see which PR it is posting to. If the user declines, revise or stop as directed. Never infer posting approval from the earlier per-item rulings.
 
 ## Post
 

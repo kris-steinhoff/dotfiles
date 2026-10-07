@@ -123,7 +123,9 @@
         "github.com",
         "files.pythonhosted.org",
         "pypi.org",
-        "registry.npmjs.org"
+        "registry.npmjs.org",
+        "*.atlassian.net",
+        "api.atlassian.com"
       ]
     }
   },
