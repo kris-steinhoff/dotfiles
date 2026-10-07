@@ -1,6 +1,6 @@
 ---
 name: drive-implementation
-description: Drive a body of implementation work to completion from one conversation. Takes a tracker epic or story key, or a plan file, builds the dependency graph of units, and keeps work moving: starts unblocked units as implementer agents in their own worktrees, investigates upcoming units so questions reach the user in batches before they block, reviews finished units and lands them the way the project's flow says, and stops only when nothing can move without the user's answer. Invoke as `/drive-implementation <ref>` to start or resume a run. Requires HERDR_ENV=1.
+description: "Drive a body of implementation work to completion from one conversation. Takes a tracker epic or story key, or a plan file, builds the dependency graph of units, and keeps work moving: starts unblocked units as implementer agents in their own worktrees, investigates upcoming units so questions reach the user in batches before they block, reviews finished units and lands them the way the project's flow says, and stops only when nothing can move without the user's answer. Invoke as `/drive-implementation REF` to start or resume a run. Requires HERDR_ENV=1."
 {{- with get . "custom" }}
 {{ . }}
 {{- end }}
@@ -32,7 +32,7 @@ Running the command again for the same ref **resumes**: it reads the existing st
 
 - `HERDR_ENV=1`. Every agent you start is a Herdr pane agent.
 - The `worktree-layout` skill, when the repository uses that layout. Load it before touching worktrees there.
-- The dispatch primitives `choose-agent`, `create-worktree`, `create-tab`, and `launch-agent-in-pane`, and the `cleanup-worktrees` skill. Load each once and run its script per agent.
+- The dispatch primitives `choose-agent`, `create-worktree`, `create-tab`, and `launch-agent-in-pane`, plus the `herdr-reorder-worktrees` and `cleanup-worktrees` skills. Load each once and run its script when its step calls for it.
 - The `investigate` skill for pre-investigation, and the `watch-pr` skill for waiting on CI and reviews when the repository's flow has PRs.
 - The `github-pr` skill's `respond` mode, for replying to reviews on the run's PRs.
 - Claude Code's `SendMessage` for talking to `claude` agents, and `herdr agent prompt` for every other kind (see Agent kinds).
@@ -178,10 +178,11 @@ Such an agent's message arrives typed into your own prompt, where it looks like 
 ## Starting an agent
 
 1. Place it. For an implementer or experimenter, create the worktree with `create-worktree`, following the repository's rules for branch name, base, path, and label. In a bare-repo layout that means `--workspace <repo directory's workspace> --base origin/<integration branch> --path <repo dir>/<branch>`. An experimenter's branch must not collide with the name the unit's implementer will take, so add `-experiment` to it. For a researcher, open a tab with `create-tab --workspace-id <workspace> --cwd <checkout> --label <agent name>` in the workspace of the integration branch's worktree, or of the repository directory when the integration branch has no worktree, in which case its seed names `origin/<integration branch>` as the ref to read.
-2. Pick the kind and model (see Agent kinds).
-3. For a worktree, run the repository's per-worktree setup for that kind, such as installing dependencies and writing any sandbox settings the worktree needs to commit.
-4. Launch the agent with `launch-agent-in-pane --pane-id <pane> --kind <kind> [--model <model>] --name <unit key, lowercased>-<role> --report-to-pane $HERDR_PANE_ID --report-to-session <your session name> --seed-prompt <seed>`. Use the `agent_name` it returns; it may have been suffixed.
-5. Record the agent, its role, kind, and model, its worktree and branch or its tab, and the unit's new status in the state: `implementing` for an implementer, `investigating` otherwise. Make whatever tracker move the repository's instructions attach to a unit starting, if any, when an implementer starts.
+2. Restore the sidebar order after creating a worktree. Unless the user or repository specifies another order, run `herdr-reorder-worktrees list`, find the new workspace's repository group, sort every linked worktree in that group by label using a case-insensitive comparison and workspace ID as the tie-breaker, then pass the complete ordered ID list to `herdr-reorder-worktrees order`. Use IDs from the listing rather than labels. If this presentation-only step fails, log the reason and continue; it does not block the agent's work.
+3. Pick the kind and model (see Agent kinds).
+4. For a worktree, run the repository's per-worktree setup for that kind, such as installing dependencies and writing any sandbox settings the worktree needs to commit.
+5. Launch the agent with `launch-agent-in-pane --pane-id <pane> --kind <kind> [--model <model>] --name <unit key, lowercased>-<role> --report-to-pane $HERDR_PANE_ID --report-to-session <your session name> --seed-prompt <seed>`. Use the `agent_name` it returns; it may have been suffixed.
+6. Record the agent, its role, kind, and model, its worktree and branch or its tab, and the unit's new status in the state: `implementing` for an implementer, `investigating` otherwise. Make whatever tracker move the repository's instructions attach to a unit starting, if any, when an implementer starts.
 
 If the launch returns `agent_not_ready`, the pane is probably at a trust prompt. Tell the user once, with a ✋🏽 (see Signals), and when they've accepted it deliver the seed with `herdr agent prompt`.
 
@@ -210,7 +211,7 @@ It removes the worktree and its workspace, which ends the implementer, then dele
 - **A dirty tree keeps the worktree.** The agent left uncommitted work, so find out what it is before anything discards it.
 - **A kept branch is information.** `git branch -d` refuses a branch that isn't fully merged into its upstream or HEAD, so it holds commits that live nowhere else; leave it, log why, and mention it when you stop. Never `git branch -D`, and never delete a remote branch, on your own authority; both need the repository's instructions or the user to say so.
 
-Keep the sidebar to the repository directory, the integration branch's worktree if it has one, and the agents in flight.
+Keep the sidebar to the repository directory, the integration branch's worktree if it has one, and the agents in flight. Keep each linked-worktree group alphabetized unless the user or repository specifies another order.
 
 ## Talking to the user
 
@@ -231,7 +232,7 @@ A run usually needs the user and waits on its own work at the same time. The sig
 - **✓ when the run is finished** and has a result for the user to look at: every unit landed, or a phase ready for the team. Say what, such as `NXC-694 landed`.
 - **… when nothing waits on the user** and the run is waiting on its own work: agents at work, reviews running, CI on a unit's PR. Raise it with no command behind it, since the wait is on several things at once, such as `2 units in flight`.
 
-One of these always holds. A run with nothing owed by the user, nothing running, and work left is stalled, and only the user can unstall it, so that is a ✋🏽 saying what is stuck.
+One of these always holds. A run with nothing owed by the user, nothing running, and work left is stalled, and only the user can get it moving, so that is a ✋🏽 saying what is stuck.
 
 Before you ask the user anything, raise ✋🏽 first, then ask, even if you raised `…` earlier in the same turn. A question prompt holds your turn until the user answers, so a ✋🏽 raised after it goes up only once they have replied, and their reply clears it.
 

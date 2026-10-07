@@ -1,0 +1,142 @@
+#!/usr/bin/env python3
+"""Behavior tests for herdr-reorder-worktrees without mutating a live session."""
+
+import importlib.machinery
+import importlib.util
+import json
+import pathlib
+import unittest
+
+
+SKILL_DIR = pathlib.Path(__file__).parents[1]
+SCRIPT = SKILL_DIR / "scripts" / "herdr-reorder-worktrees"
+if not SCRIPT.exists():
+    SCRIPT = SKILL_DIR / "scripts" / "executable_herdr-reorder-worktrees"
+LOADER = importlib.machinery.SourceFileLoader("herdr_reorder_worktrees", str(SCRIPT))
+SPEC = importlib.util.spec_from_loader(LOADER.name, LOADER)
+MODULE = importlib.util.module_from_spec(SPEC)
+LOADER.exec_module(MODULE)
+
+
+def workspace(workspace_id, label, repo_key=None, linked=False):
+    item = {"workspace_id": workspace_id, "label": label}
+    if repo_key:
+        item["worktree"] = {
+            "repo_key": repo_key,
+            "repo_name": repo_key,
+            "repo_root": f"/repos/{repo_key}",
+            "checkout_path": f"/worktrees/{label}",
+            "is_linked_worktree": linked,
+        }
+    return item
+
+
+class FakeHerdr:
+    def __init__(self, workspaces):
+        self.workspaces = workspaces
+        self.calls = []
+
+    def request(self, method, params):
+        self.calls.append((method, params))
+        if method == "workspace.list":
+            return {"type": "workspace_list", "workspaces": self.workspaces}
+        if method != "workspace.move_block":
+            raise AssertionError(method)
+        moving = params["workspace_ids"]
+        before = params.get("before_workspace_id")
+        by_id = {item["workspace_id"]: item for item in self.workspaces}
+        remaining = [item for item in self.workspaces if item["workspace_id"] not in moving]
+        insert_at = len(remaining)
+        if before is not None:
+            insert_at = [item["workspace_id"] for item in remaining].index(before)
+        self.workspaces = remaining[:insert_at] + [by_id[item] for item in moving] + remaining[insert_at:]
+        return {
+            "type": "workspace_reordered",
+            "workspace_ids": moving,
+            "before_workspace_id": before,
+            "workspaces": self.workspaces,
+        }
+
+
+class ReorderTests(unittest.TestCase):
+    def setUp(self):
+        self.herdr = FakeHerdr(
+            [
+                workspace("w1", "main", "repo", False),
+                workspace("w2", "alpha", "repo", True),
+                workspace("w3", "beta", "repo", True),
+                workspace("w4", "gamma", "repo", True),
+                workspace("w5", "other"),
+            ]
+        )
+
+    def args(self, *argv):
+        return MODULE.build_parser().parse_args(argv)
+
+    def test_complete_order_preserves_group_position(self):
+        result = MODULE.execute(
+            self.args("order", "gamma", "alpha", "beta"), self.herdr.request
+        )
+        self.assertTrue(result["changed"])
+        self.assertEqual([item["label"] for item in result["worktrees"]], ["gamma", "alpha", "beta"])
+        self.assertEqual(
+            self.herdr.calls[-1],
+            (
+                "workspace.move_block",
+                {"workspace_ids": ["w4", "w2", "w3"], "before_workspace_id": "w5"},
+            ),
+        )
+
+    def test_relative_move(self):
+        result = MODULE.execute(
+            self.args("move", "gamma", "--before", "alpha"), self.herdr.request
+        )
+        self.assertEqual([item["label"] for item in result["worktrees"]], ["gamma", "alpha", "beta"])
+
+    def test_move_after(self):
+        result = MODULE.execute(
+            self.args("move", "alpha", "--after", "gamma"), self.herdr.request
+        )
+        self.assertEqual([item["label"] for item in result["worktrees"]], ["beta", "gamma", "alpha"])
+
+    def test_move_multiple_to_end_preserves_supplied_order(self):
+        result = MODULE.execute(
+            self.args("move", "beta", "alpha", "--end"), self.herdr.request
+        )
+        self.assertEqual([item["label"] for item in result["worktrees"]], ["gamma", "beta", "alpha"])
+
+    def test_noop_avoids_mutation(self):
+        result = MODULE.execute(
+            self.args("order", "alpha", "beta", "gamma"), self.herdr.request
+        )
+        self.assertFalse(result["changed"])
+        self.assertEqual([method for method, _ in self.herdr.calls], ["workspace.list"])
+
+    def test_incomplete_order_needs_judgment(self):
+        with self.assertRaisesRegex(MODULE.NeedsJudgment, "every linked worktree"):
+            MODULE.execute(self.args("order", "alpha", "beta"), self.herdr.request)
+
+    def test_duplicate_label_needs_judgment(self):
+        self.herdr.workspaces.append(workspace("w6", "alpha", "second", True))
+        with self.assertRaisesRegex(MODULE.NeedsJudgment, "ambiguous"):
+            MODULE.execute(self.args("move", "alpha", "--end"), self.herdr.request)
+
+    def test_cross_repo_destination_needs_judgment(self):
+        self.herdr.workspaces.append(workspace("w6", "delta", "second", True))
+        with self.assertRaisesRegex(MODULE.NeedsJudgment, "another repository"):
+            MODULE.execute(
+                self.args("move", "alpha", "--before", "delta"), self.herdr.request
+            )
+
+    def test_list_groups_linked_worktrees(self):
+        result = MODULE.execute(self.args("list"), self.herdr.request)
+        self.assertEqual(len(result["groups"]), 1)
+        self.assertEqual(result["groups"][0]["parent_workspace_id"], "w1")
+        self.assertEqual(
+            [item["workspace_id"] for item in result["groups"][0]["worktrees"]],
+            ["w2", "w3", "w4"],
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()

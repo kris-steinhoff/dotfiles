@@ -1,0 +1,332 @@
+#!/usr/bin/env python3
+"""Reorder linked Herdr worktree workspaces within one repository group.
+
+Herdr exposes workspace.move_block through its newline-delimited JSON socket
+API but currently has no matching CLI wrapper. This helper gives agents a
+small, deterministic surface over that method and keeps unrelated workspace
+groups in place.
+
+Exit codes:
+  0  success; one JSON result on stdout
+  2  needs judgment; one JSON result on stdout
+  1  operational failure; one JSON result on stdout
+"""
+
+import argparse
+import json
+import os
+import socket
+import sys
+import uuid
+from pathlib import Path
+
+
+class NeedsJudgment(Exception):
+    pass
+
+
+class HerdrFailure(Exception):
+    def __init__(self, message, *, status="error", error_code=None):
+        super().__init__(message)
+        self.status = status
+        self.error_code = error_code
+
+
+def emit(payload, code):
+    print(json.dumps(payload, separators=(",", ":")))
+    return code
+
+
+def socket_path():
+    explicit = os.environ.get("HERDR_SOCKET_PATH")
+    if explicit:
+        return os.path.expanduser(explicit)
+    config_home = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+    session = os.environ.get("HERDR_SESSION")
+    if session and session != "default":
+        return str(config_home / "herdr" / "sessions" / session / "herdr.sock")
+    return str(config_home / "herdr" / "herdr.sock")
+
+
+def socket_request(method, params):
+    request_id = f"herdr-reorder-worktrees:{uuid.uuid4().hex}"
+    request = {"id": request_id, "method": method, "params": params}
+    path = socket_path()
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+            client.settimeout(10)
+            client.connect(path)
+            client.sendall(json.dumps(request, separators=(",", ":")).encode() + b"\n")
+            response_bytes = b""
+            while b"\n" not in response_bytes:
+                chunk = client.recv(65536)
+                if not chunk:
+                    break
+                response_bytes += chunk
+    except PermissionError as error:
+        raise HerdrFailure(
+            f"sandbox refused the Herdr socket {path}: {error}", status="herdr_denied"
+        ) from error
+    except (FileNotFoundError, ConnectionError, TimeoutError, OSError) as error:
+        raise HerdrFailure(f"could not reach Herdr socket {path}: {error}") from error
+
+    line = response_bytes.split(b"\n", 1)[0]
+    try:
+        response = json.loads(line)
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise HerdrFailure(f"Herdr returned an invalid response: {line[:200]!r}") from error
+    if response.get("id") != request_id:
+        raise HerdrFailure("Herdr response did not match the request id")
+    if "error" in response:
+        body = response.get("error") or {}
+        code = body.get("code")
+        message = body.get("message") or "Herdr rejected the request"
+        if code in {"method_not_found", "unsupported_method", "unsupported"}:
+            raise NeedsJudgment(
+                "the running Herdr server does not support workspace.move_block"
+            )
+        raise HerdrFailure(message, error_code=code)
+    result = response.get("result")
+    if not isinstance(result, dict):
+        raise HerdrFailure("Herdr response has no result object")
+    return result
+
+
+def build_parser():
+    parser = argparse.ArgumentParser(
+        description="Reorder linked Herdr worktrees within one repository group."
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    subparsers.add_parser("list", help="list worktree groups in sidebar order")
+
+    order = subparsers.add_parser("order", help="set one repo group's complete order")
+    order.add_argument("refs", nargs="+", metavar="WORKTREE")
+
+    move = subparsers.add_parser("move", help="move worktrees within one repo group")
+    move.add_argument("refs", nargs="+", metavar="WORKTREE")
+    destination = move.add_mutually_exclusive_group(required=True)
+    destination.add_argument("--before", metavar="WORKTREE")
+    destination.add_argument("--after", metavar="WORKTREE")
+    destination.add_argument("--end", action="store_true")
+    return parser
+
+
+def workspace_list(request):
+    result = request("workspace.list", {})
+    workspaces = result.get("workspaces")
+    if not isinstance(workspaces, list) or not all(isinstance(item, dict) for item in workspaces):
+        raise HerdrFailure("workspace.list returned no workspace list")
+    return workspaces
+
+
+def compact_workspace(workspace):
+    worktree = workspace.get("worktree") or {}
+    payload = {
+        "workspace_id": workspace.get("workspace_id"),
+        "label": workspace.get("label"),
+    }
+    for source, target in (
+        ("checkout_path", "checkout_path"),
+        ("repo_name", "repo_name"),
+        ("repo_root", "repo_root"),
+        ("repo_key", "repo_key"),
+        ("is_linked_worktree", "is_linked_worktree"),
+    ):
+        if source in worktree:
+            payload[target] = worktree[source]
+    return payload
+
+
+def linked_groups(workspaces):
+    groups = {}
+    order = []
+    for workspace in workspaces:
+        worktree = workspace.get("worktree") or {}
+        key = worktree.get("repo_key")
+        if not key:
+            continue
+        if key not in groups:
+            groups[key] = {
+                "repo_key": key,
+                "repo_name": worktree.get("repo_name"),
+                "repo_root": worktree.get("repo_root"),
+                "parent_workspace_id": None,
+                "worktrees": [],
+            }
+            order.append(key)
+        if worktree.get("is_linked_worktree"):
+            groups[key]["worktrees"].append(compact_workspace(workspace))
+        elif groups[key]["parent_workspace_id"] is None:
+            groups[key]["parent_workspace_id"] = workspace.get("workspace_id")
+    return [groups[key] for key in order if groups[key]["worktrees"]]
+
+
+def normalize_path(value):
+    return os.path.realpath(os.path.expanduser(value))
+
+
+def resolve_ref(ref, workspaces):
+    id_matches = [item for item in workspaces if item.get("workspace_id") == ref]
+    if id_matches:
+        return id_matches[0]
+
+    if os.path.sep in ref or ref.startswith("~"):
+        wanted = normalize_path(ref)
+        path_matches = [
+            item
+            for item in workspaces
+            if (item.get("worktree") or {}).get("checkout_path")
+            and normalize_path((item.get("worktree") or {})["checkout_path"]) == wanted
+        ]
+        if len(path_matches) == 1:
+            return path_matches[0]
+        if len(path_matches) > 1:
+            raise NeedsJudgment(f"worktree path {ref!r} matches several workspaces")
+
+    label_matches = [item for item in workspaces if item.get("label") == ref]
+    if len(label_matches) == 1:
+        return label_matches[0]
+    if len(label_matches) > 1:
+        candidates = ", ".join(item.get("workspace_id", "?") for item in label_matches)
+        raise NeedsJudgment(
+            f"workspace label {ref!r} is ambiguous; use one of these ids: {candidates}"
+        )
+    raise NeedsJudgment(f"no live Herdr workspace matches {ref!r}")
+
+
+def resolve_linked_refs(refs, workspaces):
+    resolved = [resolve_ref(ref, workspaces) for ref in refs]
+    ids = [item.get("workspace_id") for item in resolved]
+    if len(ids) != len(set(ids)):
+        raise NeedsJudgment("the same worktree was specified more than once")
+    for item in resolved:
+        worktree = item.get("worktree") or {}
+        if not worktree.get("is_linked_worktree"):
+            raise NeedsJudgment(
+                f"workspace {item.get('workspace_id')!r} is not a linked worktree"
+            )
+    repo_keys = {(item.get("worktree") or {}).get("repo_key") for item in resolved}
+    if len(repo_keys) != 1 or None in repo_keys:
+        raise NeedsJudgment("the requested worktrees do not belong to one repository group")
+    return resolved, next(iter(repo_keys))
+
+
+def group_workspaces(workspaces, repo_key):
+    return [
+        item
+        for item in workspaces
+        if (item.get("worktree") or {}).get("repo_key") == repo_key
+        and (item.get("worktree") or {}).get("is_linked_worktree")
+    ]
+
+
+def boundary_after_group(workspaces, repo_key):
+    indices = [
+        index
+        for index, item in enumerate(workspaces)
+        if (item.get("worktree") or {}).get("repo_key") == repo_key
+        and (item.get("worktree") or {}).get("is_linked_worktree")
+    ]
+    if not indices:
+        raise NeedsJudgment("the repository group has no linked worktrees")
+    group_ids = {
+        item.get("workspace_id")
+        for item in workspaces
+        if (item.get("worktree") or {}).get("repo_key") == repo_key
+        and (item.get("worktree") or {}).get("is_linked_worktree")
+    }
+    for item in workspaces[max(indices) + 1 :]:
+        if item.get("workspace_id") not in group_ids:
+            return item.get("workspace_id")
+    return None
+
+
+def result_order(result, repo_key):
+    workspaces = result.get("workspaces")
+    if not isinstance(workspaces, list):
+        raise HerdrFailure("workspace.move_block returned no authoritative workspace list")
+    return [compact_workspace(item) for item in group_workspaces(workspaces, repo_key)]
+
+
+def execute(args, request=socket_request):
+    workspaces = workspace_list(request)
+    if args.command == "list":
+        return {"status": "ok", "groups": linked_groups(workspaces)}
+
+    selected, repo_key = resolve_linked_refs(args.refs, workspaces)
+    current_group = group_workspaces(workspaces, repo_key)
+    current_ids = [item.get("workspace_id") for item in current_group]
+    selected_ids = [item.get("workspace_id") for item in selected]
+
+    if args.command == "order":
+        if set(selected_ids) != set(current_ids) or len(selected_ids) != len(current_ids):
+            missing = [
+                item.get("workspace_id") for item in current_group if item.get("workspace_id") not in selected_ids
+            ]
+            raise NeedsJudgment(
+                "order requires every linked worktree in the repository group exactly once"
+                + (f"; missing: {', '.join(missing)}" if missing else "")
+            )
+        desired_ids = selected_ids
+    else:
+        remaining = [workspace_id for workspace_id in current_ids if workspace_id not in selected_ids]
+        if args.end:
+            insert_at = len(remaining)
+        else:
+            anchor_ref = args.before or args.after
+            anchor, anchor_repo_key = resolve_linked_refs([anchor_ref], workspaces)
+            if anchor_repo_key != repo_key:
+                raise NeedsJudgment("the destination worktree belongs to another repository group")
+            anchor_id = anchor[0].get("workspace_id")
+            if anchor_id in selected_ids:
+                raise NeedsJudgment("the destination worktree is also being moved")
+            insert_at = remaining.index(anchor_id) + (1 if args.after else 0)
+        desired_ids = remaining[:insert_at] + selected_ids + remaining[insert_at:]
+
+    if desired_ids == current_ids:
+        return {
+            "status": "ok",
+            "changed": False,
+            "repo_key": repo_key,
+            "worktrees": [compact_workspace(item) for item in current_group],
+        }
+
+    before_workspace_id = boundary_after_group(workspaces, repo_key)
+    result = request(
+        "workspace.move_block",
+        {
+            "workspace_ids": desired_ids,
+            "before_workspace_id": before_workspace_id,
+        },
+    )
+    return {
+        "status": "ok",
+        "changed": True,
+        "repo_key": repo_key,
+        "worktrees": result_order(result, repo_key),
+    }
+
+
+def main(argv=None):
+    args = build_parser().parse_args(argv)
+    if os.environ.get("HERDR_ENV") != "1":
+        return emit(
+            {
+                "status": "needs_judgment",
+                "reason": "not running inside a Herdr session (HERDR_ENV != 1)",
+            },
+            2,
+        )
+    try:
+        return emit(execute(args), 0)
+    except NeedsJudgment as error:
+        return emit({"status": "needs_judgment", "reason": str(error)}, 2)
+    except HerdrFailure as error:
+        payload = {"status": error.status, "reason": str(error)}
+        if error.error_code:
+            payload["error_code"] = error.error_code
+        return emit(payload, 1)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

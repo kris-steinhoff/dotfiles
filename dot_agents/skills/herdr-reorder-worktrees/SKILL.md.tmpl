@@ -1,0 +1,33 @@
+---
+name: herdr-reorder-worktrees
+description: Reorder a repository's linked Herdr worktree workspaces in the sidebar. Use when the user asks to arrange, move, or sort Herdr worktrees within one repo group. Resolves workspace IDs, exact labels, or checkout paths and refuses ambiguous or cross-repository moves. Requires HERDR_ENV=1.
+{{- with get . "custom" }}
+{{ . }}
+{{- end }}
+---
+
+# herdr-reorder-worktrees
+
+Reorder linked worktree workspaces within one repository group and keep unrelated workspace groups in place. Run the deterministic helper and read its one-line JSON result.
+
+```bash
+scripts/herdr-reorder-worktrees list
+scripts/herdr-reorder-worktrees order <worktree-ref>...
+scripts/herdr-reorder-worktrees move <worktree-ref>... --before <worktree-ref>
+scripts/herdr-reorder-worktrees move <worktree-ref>... --after <worktree-ref>
+scripts/herdr-reorder-worktrees move <worktree-ref>... --end
+```
+
+A worktree ref is an exact Herdr workspace ID, exact workspace label, or checkout path. Prefer IDs after listing because labels can repeat. `order` requires every linked worktree in the repository group exactly once and makes that the group's complete order. `move` accepts a subset, preserves its supplied order, and places it before, after, or at the end of another worktree in the same group. Both preserve the repository group's position relative to other sidebar groups.
+
+Run `list` first unless the request already supplies unambiguous live workspace IDs. Sidebar positions and workspace numbers are not stable identifiers. If the user's desired ordering is incomplete and cannot be represented as a relative move, show the listed worktrees and ask for the missing choice.
+
+The mutation uses Herdr's raw `workspace.move_block` socket method because the CLI has no workspace-reorder wrapper. Under Codex, request permission to reach the Herdr local socket on the first helper call; a sandbox refusal is not evidence that Herdr or a workspace is unavailable.
+
+## Output and stopping conditions
+
+Success exits `0` with `{ status, changed, repo_key, worktrees }`; `list` instead returns `{ status, groups }`. `worktrees` is the authoritative resulting order for that repository group.
+
+Exit `2` is `needs_judgment`: the session is not Herdr-managed, a ref is missing or ambiguous, the exact order is incomplete, refs cross repository groups, or the running server lacks `workspace.move_block`. Resolve the stated condition or ask the user; do not guess.
+
+Exit `1` is an operational failure. If `status` is `herdr_denied`, rerun the same command with permission to reach the local socket. For other failures, report the error and do not repeat the mutation.
