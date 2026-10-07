@@ -33,15 +33,18 @@ A requirement is `--only` or `--exclude`; a leaning is `--prefer`, which tilts t
 - Drops candidates ruled out by `--only` or `--exclude`, candidates whose CLI isn't on PATH, and metered candidates not signed in to their quota.
 - Weighs each metered candidate by its usage, from `ai-usage --json windows`. Capacity about to reset unused raises its weight, a nearly spent window lowers it, and a window at 90% rules it out. An unmetered candidate, or one whose usage couldn't be read, keeps its base weight, so a failed usage fetch never blocks a launch.
 - Picks at random by weight rather than taking the top score, so a burst of launches against one usage snapshot spreads out.
+- Raises backpressure when every candidate the work could go to has a usage window ahead of pace: a larger share used than the share of the window gone, the even pace that would spend it exactly at the reset. A 5-hour session at 21% with four hours left is ahead; a week at 80% with an hour left is not. While any candidate is on pace, the weights already steer around the others, so there is nothing to report. The constraints count: with `--only claude`, Claude's usage alone decides.
 
 ## Output (stdout, JSON)
 
-`{ name, kind, model, reason, candidates_from, candidates, dropped }`
+`{ name, kind, model, reason, backpressure, candidates_from, candidates, dropped }`
 
 Launch with `kind` and, when it is not null, `model` as the model hint. Record `name` wherever the work's kind is recorded, and put `reason` in any log of the launch, since it says which constraint or usage figure decided.
+
+`backpressure` is null, or `{ message, until, windows }`: the message reads "Approaching usage quota: recommend stopping work until <until>.", followed by a note that it is advice only, where `until` is the earliest time one candidate has all its windows back on pace (assuming no further use, so usually before the reset), and `windows` lists the ones that raised it. `until` is null when a window reports no reset time. It is advice only. Ignore it by default and launch as usual; act on it only when the user, your instructions, or a workflow you are following explicitly asks you to follow usage backpressure, and then as they say.
 
 ## Exit codes
 
 - `0` — success, result on stdout.
-- `2` — needs judgment: nothing is available under the constraints, or every remaining candidate is at its usage limit. stdout is `{"status": "needs_judgment", "reason": ...}` with the candidates considered and why each other one dropped. Take it to the user rather than loosening a constraint yourself; a requirement from them or the repository isn't yours to relax.
+- `2` — needs judgment: nothing is available under the constraints, or every remaining candidate is at its usage limit. stdout is `{"status": "needs_judgment", "reason": ...}` with the candidates considered and why each other one dropped, plus `backpressure` when the cause is usage, so its `until` says when work could resume. Take it to the user rather than loosening a constraint yourself; a requirement from them or the repository isn't yours to relax.
 - `1` — real error (an unreadable candidates file). Diagnostics on stderr.

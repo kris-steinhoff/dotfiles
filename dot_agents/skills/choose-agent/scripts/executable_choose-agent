@@ -21,17 +21,38 @@ The pick is weighted-random rather than the top score, because a caller often
 starts several agents in a burst against the same usage snapshot, and the top
 score would send the whole burst to one place.
 
+Backpressure is the signal that the work as a whole should slow down, not just
+move elsewhere. A window is under pressure when it is ahead of pace: its share
+used is past the share of the window elapsed, the even pace that would spend
+all of it exactly at the reset. A five-hour session 21% used with four hours to
+go is ahead; a week 80% used with an hour to go is not. A window is relieved
+once time catches up with what it has used, which is before its reset unless it
+is at the cutoff. A window that reports no length or reset time falls back to a
+fixed WARN_PERCENT and is relieved only at reset. A candidate is under pressure
+while any of its windows is, and is relieved when the last of them is.
+While any candidate the work could go to is not under pressure, the weights
+already steer around the spent ones and there is nothing to report. Once every
+one is, the result carries a backpressure message naming the earliest time one
+of them is relieved. An unmetered candidate, or one whose usage could not be
+read, is never under pressure, so neither can raise it. Backpressure is advice
+only, and its message says so: a caller ignores it unless it was explicitly
+asked to follow it.
+
 Constraints come from the caller, which reads them from the user, the task, and
 the repository's instructions: --only and --exclude are hard limits, --prefer
 tilts the weights. Each takes a candidate name or a kind and may repeat.
 
-  {name, kind, model, reason, candidates, dropped}
+  {name, kind, model, reason, backpressure, candidates_from, candidates, dropped}
+
+backpressure is null, or {message, until, windows} when every candidate is under
+pressure; until is null when a pressured window reports no reset time.
 
 Exit codes (shared across the Herdr dispatch primitives):
   0  success. The JSON result object is printed to stdout.
   2  needs judgment: the constraints and availability leave no candidate, or
      every remaining candidate is at its usage limit. stdout is
-     {"status": "needs_judgment", "reason": ...} with the candidates considered.
+     {"status": "needs_judgment", "reason": ...} with the candidates considered,
+     and backpressure when the cause is usage.
   1  real error (an unreadable config). Diagnostics on stderr.
 """
 
@@ -43,7 +64,7 @@ import shutil
 import subprocess
 import sys
 import tomllib
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 CONFIG_PATH = (
@@ -61,6 +82,8 @@ QUOTAS = ("claude", "chatgpt", "none")
 
 # A window at or past this share used rules its candidate out until it resets.
 CUTOFF_PERCENT = 90.0
+# A window without a length or reset time is under pressure at this share used.
+WARN_PERCENT = 80.0
 # Bounds on one window's score, so neither a nearly spent window nor one about
 # to reset swamps the base weights entirely.
 MIN_SCORE, MAX_SCORE = 0.1, 3.0
@@ -176,21 +199,48 @@ def window_score(window, now):
     return min(MAX_SCORE, max(MIN_SCORE, (100 - used) / 100 / time_left))
 
 
+def window_pressure(window, now):
+    """Return None when the window is on pace, or (relieved at, note).
+
+    The relief time is None when the window reports no reset time.
+    """
+    used = float(window.get("used_percent") or 0)
+    resets = parse_time(window.get("resets_at"))
+    length = window.get("window_seconds")
+    note = f"{window.get('label') or window.get('key')} {window.get('used_percent')}% used"
+    if resets is None or not length:
+        return (resets, note) if used >= WARN_PERCENT else None
+    if used >= CUTOFF_PERCENT:
+        return resets, note
+    # On pace means the share used is no more than the share elapsed; this is
+    # when that holds again.
+    caught_up = resets - timedelta(seconds=length * (1 - used / 100))
+    if caught_up <= now:
+        return None
+    elapsed = 1 - (resets - now).total_seconds() / length
+    return caught_up, f"{note} with {max(0, round(100 * elapsed))}% of the window gone"
+
+
 def score_candidate(candidate, usage, now):
-    """Return (score, usage note, drop reason)."""
+    """Return (score, usage note, drop reason, pressure).
+
+    pressure is None, or {until, windows}: the time every window ahead of pace
+    is relieved (None when one has no reset time), and those windows.
+    """
     quota = candidate["quota"]
     if quota == "none":
-        return 1.0, "unmetered", None
+        return 1.0, "unmetered", None, None
     entry = usage.get(quota)
     if not isinstance(entry, dict):
-        return 1.0, "usage unknown", None
+        return 1.0, "usage unknown", None, None
     status = entry.get("status")
     if status == "signed_out":
-        return None, None, f"not signed in to {quota}"
+        return None, None, f"not signed in to {quota}", None
     if status not in ("ok", "stale"):
-        return 1.0, "usage unknown", None
+        return 1.0, "usage unknown", None, None
     scores = []
     binding = None
+    pressured = []
     for window in entry.get("windows") or []:
         if not relevant(quota, candidate["model"], window.get("key")):
             continue
@@ -200,15 +250,42 @@ def score_candidate(candidate, usage, now):
         scores.append(s)
         if binding is None or s < binding[0]:
             binding = (s, window)
+        p = window_pressure(window, now)
+        if p:
+            pressured.append(p)
+    pressure = None
+    if pressured:
+        reliefs = [relief for relief, _ in pressured]
+        pressure = {
+            "until": None if None in reliefs else max(reliefs),
+            "windows": [f"{quota} {note}" for _, note in pressured],
+        }
     if not scores:
-        return 1.0, "no current limits", None
+        return 1.0, "no current limits", None, None
     s, window = binding
     note = f"{window.get('label') or window.get('key')} {window.get('used_percent')}% used"
     if window.get("resets_at"):
         note += f", resets {window['resets_at']}"
     if status == "stale":
         note += " (stale)"
-    return s, note, None
+    return s, note, None, pressure
+
+
+def backpressure(pressures):
+    """Return the backpressure object when every candidate is under pressure."""
+    if not pressures or None in pressures:
+        return None
+    known = [p["until"] for p in pressures if p["until"] is not None]
+    until = min(known).replace(microsecond=0).isoformat() if known else None
+    message = "Approaching usage quota: recommend stopping work"
+    message += f" until {until}." if until else "."
+    message += (" This is advice only: ignore it unless you were explicitly asked"
+                " to follow usage backpressure.")
+    return {
+        "message": message,
+        "until": until,
+        "windows": [w for p in pressures for w in p["windows"]],
+    }
 
 
 def main():
@@ -240,11 +317,13 @@ def main():
     usage = read_usage({c["quota"] for c in remaining if c["quota"] != "none"}, args.usage_file)
     now = datetime.now(timezone.utc)
     considered = []
+    pressures = []
     for c in remaining:
-        score, note, drop = score_candidate(c, usage, now)
+        score, note, drop, pressure = score_candidate(c, usage, now)
         if drop:
             dropped.append({"name": c["name"], "reason": drop})
             continue
+        pressures.append(pressure)
         tilt = PREFER_TILT if matches(c, args.prefer) else 1.0
         considered.append({
             **{k: c[k] for k in ("name", "kind", "model", "quota")},
@@ -261,6 +340,7 @@ def main():
     live = [c for c in considered if c["weight"] > 0]
     if not live:
         emit_judgment("every available candidate is at its usage limit",
+                      backpressure=backpressure(pressures),
                       candidates_from=source, candidates=considered, dropped=dropped)
 
     rng = random.Random(args.seed)
@@ -280,6 +360,7 @@ def main():
         "kind": chosen["kind"],
         "model": chosen["model"],
         "reason": reason,
+        "backpressure": backpressure(pressures),
         "candidates_from": source,
         "candidates": considered,
         "dropped": dropped,
