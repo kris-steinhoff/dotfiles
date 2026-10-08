@@ -1,6 +1,6 @@
 ---
 name: signal-user
-description: Show the user why this agent stopped, as a signal under its Herdr workspace in the sidebar — ✋🏽 waiting on the user's answer or decision, ✓ finished something for them to look at, `…` waiting on something that will wake it. Use only when explicitly asked to, by the user or by instructions you are following; never on your own judgment that a turn deserves one. Requires HERDR_ENV=1; it is a no-op elsewhere.
+description: Show the user why this agent stopped, as a signal under its Herdr workspace in the sidebar — ✋🏻 waiting on the user's answer or decision, ✓ finished something for them to look at, `…` waiting on something that will wake it. Use only when explicitly asked to, by the user or by instructions you are following; never on your own judgment that a turn deserves one. Requires HERDR_ENV=1; it is a no-op elsewhere.
 {{- with get . "custom" }}
 {{ . }}
 {{- end }}
@@ -14,7 +14,7 @@ Signals are kept for workflows where they pay off, so the user can trust each on
 
 The signals:
 
-- **✋🏽 ask**: stuck until the user answers. Look here first.
+- **✋🏻 ask**: stuck until the user answers. Look here first.
 - **✓ ready**: finished something for the user to look at. Nothing is blocked; look when you can.
 - **… wait**: waiting on something else that will wake the agent. Look away.
 
@@ -48,9 +48,9 @@ A wrapped command does not run when the signal fails, so rerunning the whole `wa
 
 Signal as the last thing before ending your turn, or before opening a question prompt, so nothing you do afterward reads as you having resumed.
 
-- **✋🏽** when you cannot continue without the user: a decision between options, an answer, a credential or approval only they can give.
+- **✋🏻** when you cannot continue without the user: a decision between options, an answer, a credential or approval only they can give.
 - **✓** when you finished and there is a specific thing for the user to examine: a PR you opened, a draft, a preview deploy, a report. Not for every finish; if there is nothing to look at, signal nothing. Herdr's own done marker covers that, and a ✓ on every finish would just repeat it.
-- **…** when you are ending your turn while something you started will wake you: a background build or test run, a `watch-pr`, a deploy you are polling, another agent that will report back. If nothing will wake you, the wait isn't yours to signal; tell the user what to come back for and raise ✋🏽 instead.
+- **…** when you are ending your turn while something you started will wake you: a background build or test run, a `watch-pr`, a deploy you are polling, another agent that will report back. If nothing will wake you, the wait isn't yours to signal; tell the user what to come back for and raise ✋🏻 instead.
 
 Signal nothing for a finished task with nothing to decide, or a progress update. Herdr's own state covers a plain finish, and a signal that doesn't mean what it says teaches the user to ignore all of them.
 
@@ -68,12 +68,12 @@ When there is no command to wrap, such as another agent reporting back, raise `w
 
 ## The reason
 
-The sidebar line has room for 30 columns at its widest, so a reason gets at most 27 characters after ✋🏽 (an emoji, two columns wide) and 28 after ✓ or `…`. The script refuses a longer one rather than let Herdr cut it off. Aim for a few words: `pick a migration strategy`, `approve the force-push`, `PR #254`, `CI on #254`, `staging deploy`. Leave it out only when it is self-evident from the workspace name.
+The sidebar line has room for 30 columns at its widest, so a reason gets at most 27 characters after ✋🏻 (an emoji, two columns wide) and 28 after ✓ or `…`. The script refuses a longer one rather than let Herdr cut it off. Aim for a few words: `pick a migration strategy`, `approve the force-push`, `PR #254`, `CI on #254`, `staging deploy`. Leave it out only when it is self-evident from the workspace name.
 
 ## Clearing
 
-The signals end differently. A ✋🏽 or ✓ ends when the user replies, so a Herdr plugin takes it down when your agent starts working again; don't clear it yourself. The user can also dismiss a ✋🏽 or ✓ from Herdr, for one they dealt with elsewhere. A `…` ends when the wait does, which can be several turns later, since the user may talk to you while CI runs; the plugin leaves it alone, and a wrapped command clears it on exit. Run `clear` for an unwrapped `…` when its wait ends, or to withdraw a ✋🏽 or ✓ you no longer need. Either kind comes down when your pane closes, and a 24-hour expiry backs everything up.
+The signals end differently. A ✋🏻 or ✓ ends when the user replies, so a Herdr plugin takes it down when your agent starts working again; don't clear it yourself. The user can also dismiss a ✋🏻 or ✓ from Herdr, for one they dealt with elsewhere. A `…` ends when the wait does, which can be several turns later, since the user may talk to you while CI runs; the plugin leaves it alone, and a wrapped command clears it on exit. Run `clear` for an unwrapped `…` when its wait ends, or to withdraw a ✋🏻 or ✓ you no longer need. Either kind comes down when your pane closes, and a 24-hour expiry backs everything up.
 
-A workspace shows one signal, tied to the pane that raised it. `clear` leaves another agent's alone (`not_owner`). Your own newer signal always replaces your older one. Another agent's signal is replaced only by one at least as urgent, ✋🏽 over ✓ over `…`, so nothing that asks more of the user is hidden by something that asks less (`kept`). A wrapped command clears its `…` on exit only if that `…` is still showing, so it never takes down a signal raised after it.
+A workspace shows one signal, tied to the pane that raised it. `clear` leaves another agent's alone (`not_owner`). Your own newer signal always replaces your older one. Another agent's signal is replaced only by one at least as urgent, ✋🏻 over ✓ over `…`, so nothing that asks more of the user is hidden by something that asks less (`kept`). A wrapped command clears its `…` on exit only if that `…` is still showing, so it never takes down a signal raised after it.
 
 For maintenance details and the reasoning behind ownership, lifetimes, and precedence, read [Signal design](references/design.md).

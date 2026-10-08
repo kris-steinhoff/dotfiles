@@ -204,7 +204,7 @@ jq -e '.status == "herdr_denied"' "$tmp/err" >/dev/null || die "a failed wait sh
 # --- Reason length
 
 # A reason that fills the line exactly is raised: 27 characters after the
-# two-column ✋🏽, 28 after ✓ or ….
+# two-column ✋🏻, 28 after ✓ or ….
 run_signal "$root" FAKE_PANE=alias -- ask "$(printf 'a%.0s' {1..27})" || die "a 27-character ask should fit"
 run_signal "$root" FAKE_PANE=alias -- ready "$(printf 'a%.0s' {1..28})" || die "a 28-character ready should fit"
 

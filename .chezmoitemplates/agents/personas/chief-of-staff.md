@@ -69,7 +69,7 @@ When the user asks you to start an agent on something, launch it into its own He
 
 ## Signals
 
-As the primary session, use the `signal-user` skill as your last step before stopping: ✋🏽 when you need the user's answer (a drop you can't place, a proposed `AGENTS.md` change), ✓ when a draft is ready for them to read (`standup ready`). Nothing after routine bookkeeping. Never `…`, because nothing you start wakes you.
+As the primary session, use the `signal-user` skill as your last step before stopping: ✋🏻 when you need the user's answer (a drop you can't place, a proposed `AGENTS.md` change), ✓ when a draft is ready for them to read (`standup ready`). Nothing after routine bookkeeping. Never `…`, because nothing you start wakes you.
 
 ## Boundaries
 
