@@ -18,6 +18,12 @@ A bare `<n>`, or no mode at all, does not pick one. Ask whether to review or res
 
 This skill may be invoked directly, by any agent, or repeatedly with `/loop 5m /github-pr review ready` in a Claude session that remains open. Both GitHub scripts below, and the schema of everything posted, are in [references/posting.md](references/posting.md); read it before reading a PR's threads or posting.
 
+## Open with the summary
+
+A `review <n>` session conducting its review, and every `respond <n>` session, opens with the PR's summary. Several of these sessions run at once, and the summary is how the user tells which PR a pane is about.
+
+Before reading anything else about the PR, run the `summarize-github-pr` skill. Your first message to the user is its output, printed verbatim as markdown, before any status line or other text; the script's output reaches only you, so the user sees the summary only when you print it. Do not rebuild, reword, or add to it, except to note workflow status that has gone wrong, such as a checkout that doesn't match.
+
 ## `review ready`: dispatch the queue
 
 This mode requires Herdr (`HERDR_ENV=1`). Read [references/queue.md](references/queue.md), then run the queue and dispatch flow there. Do not ask the user to confirm the discovered set: `review ready` is explicit authorization to launch the requested review queue, including when a loop invoked it.
@@ -39,13 +45,13 @@ Invoke the shared `review` skill once with a self-contained brief containing:
 - relevant unresolved prior findings and their thread comment IDs
 - an explicit instruction not to report Nits
 
-While the reviewer runs, tell the user in a line or two that it is running and what you asked it to focus on. Leave describing the PR to the summary that opens triage.
+While the reviewer runs, tell the user in a line or two that it is running and what you asked it to focus on. The summary that opened the session already describes the PR.
 
 The shared reviewer returns Blockers and Follow-ups without editing, interaction, a verdict, or posting. Preserve its classifications unless discussion with the user supplies new technical evidence.
 
 On a re-review, each prior finding the reviewer verifies as fixed is a thread to resolve: resolving is how the reviewer confirms a fix holds. A prior finding that still stands gets a reply on its thread instead of a new inline comment.
 
-Triage follows [Triage with the user](#triage-with-the-user), with the review's findings as its items; when the review found nothing, the summary still opens before the confirmation. Then derive the GitHub event from the included findings: any Blocker means `REQUEST_CHANGES`; otherwise use `APPROVE`. A Follow-up never changes the event by itself. If no findings remain, the review is an approval. The final confirmation shows the event, the summary, the included findings, and the threads to be resolved.
+Triage follows [Triage with the user](#triage-with-the-user), with the review's findings as its items; when the review found nothing, go straight to the confirmation. Then derive the GitHub event from the included findings: any Blocker means `REQUEST_CHANGES`; otherwise use `APPROVE`. A Follow-up never changes the event by itself. If no findings remain, the review is an approval. The final confirmation shows the event, the included findings, and the threads to be resolved.
 
 Render the confirmed review into a batch with one inline comment per included finding where possible, replies on the threads of still-open prior findings, and `resolve` for the verified fixes. Prefix each finding body with `[Blocker]` or `[Follow-up]`.
 
@@ -72,11 +78,7 @@ Render the confirmed replies into a batch with no review: `thread_replies` for i
 
 ## Triage with the user
 
-Every triage opens with the PR's summary so the user is oriented, even when there are no items and the next step is the final confirmation. Several of these sessions run at once, and the summary is how the user tells which PR a pane is asking about.
-
-Show the PR's summary with the `summarize-github-pr` skill, printed verbatim as markdown: its number, title, URL, author, the reviews so far, and its size. It is rendered the same way every time; do not rebuild or reword it, and add nothing to it but workflow status that something has gone wrong with, such as a checkout that doesn't match.
-
-The summary is text in the turn that starts triage, printed before you raise ✋🏽 and open the first item's question. When the review comes back with findings, the order is: the summary, a one-line count of what the review found, the signal, then the first question. Going straight from the reviewer's hand-back to a question skips it, and a description written when the reviewer started does not count: by triage the user has been in other panes, and that message has scrolled out of view.
+Open triage with a one-line count of the items, such as `2 Blockers and 3 Follow-ups`, then raise ✋🏽 and ask the first item's question.
 
 Walk through every item individually. Ask only whether that item should be included; do not ask for an overall verdict yet.
 
@@ -85,7 +87,7 @@ Walk through every item individually. Ask only whether that item should be inclu
 
 Keep the question concise: what the item is and its concrete consequence. Do not put the full technical body or file coordinates in the question unless the user asks to discuss it. Preserve each ruling as you proceed.
 
-After triage, show everything that will post and explicitly ask for confirmation before posting. When triage walked through any items, open the confirmation with the summary's identity table again, so the user can see which PR it is posting to. If the user declines, revise or stop as directed. Never infer posting approval from the earlier per-item rulings.
+After triage, show everything that will post and explicitly ask for confirmation before posting. Open the confirmation with the summary's identity table (its first table, number and title over author and URL) copied from the opening summary, so the user can see which PR it is posting to. If the user declines, revise or stop as directed. Never infer posting approval from the earlier per-item rulings.
 
 ## Post
 
