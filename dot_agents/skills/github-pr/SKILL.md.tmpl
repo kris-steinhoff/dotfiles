@@ -22,7 +22,7 @@ This skill may be invoked directly, by any agent, or repeatedly with `/loop 5m /
 
 A `review <n>` session conducting its review, and every `respond <n>` session, opens with the PR's summary. Several of these sessions run at once, and the summary is how the user tells which PR a pane is about.
 
-Before reading anything else about the PR, run the `summarize-github-pr` skill. Your first message to the user is its output, printed verbatim as markdown, before any status line or other text; the script's output reaches only you, so the user sees the summary only when you print it. Do not rebuild, reword, or add to it, except to note workflow status that has gone wrong, such as a checkout that doesn't match.
+Before reading anything else about the PR, run the `summarize-github-pr` skill. Your first message to the user is its output copied line for line, the table, bullets, and size line as markdown, and nothing else; status lines come after it, in later messages. Describing the PR in a sentence instead (its number, author, size, or reviews in prose) does not count, however accurate: that paraphrase is exactly what has gone wrong before. Add nothing to the summary except to note workflow status that has gone wrong, such as a checkout that doesn't match.
 
 ## `review ready`: dispatch the queue
 

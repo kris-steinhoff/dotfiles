@@ -16,4 +16,16 @@ Run `scripts/summary.py <n>` by its full path from the skill directory, in the w
 - one bullet per review so far, with the reviewer, the review's type, and how many comments it started
 - the PR's size, and the PR it is stacked on when its base is another open PR's branch
 
-Print that output to the user exactly as it is, as markdown, in your reply. The script's output reaches only you, so the user sees the summary only when you print it. Don't add to it, reword it, or turn anything in it into a link. This skill describes nothing about what the PR changes, and changes nothing on GitHub.
+Then copy that output, every line of it, into your reply as markdown. The script's output reaches only you, so the user sees the summary only when you copy it. For a PR it looks like this:
+
+```markdown
+| **#254** Add rate-limit headers to the public API |
+| --- |
+| **Ada Lovelace** · https://github.com/example/service/pull/254 |
+
+- Grace Hopper: requested changes, 3 comments
+
+12 files, +340/−58 · stacked on #251
+```
+
+The table, bullets, and size line are the summary. A sentence that tells the user what they say, such as "PR #254 by Ada Lovelace changes 12 files and has one round of requested changes", is not: it is the failure this skill exists to prevent, because the user tells PRs apart by the fixed shape and a sentence doesn't scan. Don't add to it, reword it, shorten it, or turn anything in it into a link. This skill describes nothing about what the PR changes, and changes nothing on GitHub.
