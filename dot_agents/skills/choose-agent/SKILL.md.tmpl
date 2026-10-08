@@ -12,6 +12,7 @@ A dispatch primitive. Run the script; read its one-line JSON result.
 
 ```bash
 scripts/choose-agent [--only <name|kind>]... [--exclude <name|kind>]... [--prefer <name|kind>]...
+scripts/choose-agent --check [--only <name|kind>]... [--exclude <name|kind>]...
 ```
 
 Load once per session; takes no `args`. Run the script directly via Bash for each launch — don't re-invoke this skill per item. It needs no Herdr socket, so it runs standalone.
@@ -33,7 +34,7 @@ A requirement is `--only` or `--exclude`; a leaning is `--prefer`, which tilts t
 - Drops candidates ruled out by `--only` or `--exclude`, candidates whose CLI isn't on PATH, and metered candidates not signed in to their quota.
 - Weighs each metered candidate by its usage, from `ai-usage --json windows`. Capacity about to reset unused raises its weight, a nearly spent window lowers it, and a window at 90% rules it out. An unmetered candidate, or one whose usage couldn't be read, keeps its base weight, so a failed usage fetch never blocks a launch.
 - Picks at random by weight rather than taking the top score, so a burst of launches against one usage snapshot spreads out.
-- Raises backpressure when every candidate the work could go to has a usage window ahead of pace: a larger share used than the share of the window gone, the even pace that would spend it exactly at the reset. A 5-hour session at 21% with four hours left is ahead; a week at 80% with an hour left is not. While any candidate is on pace, the weights already steer around the others, so there is nothing to report. The constraints count: with `--only claude`, Claude's usage alone decides.
+- Raises backpressure when every candidate the work could go to has a usage window ahead of pace: a larger share used than 90% of the share of the window gone, the even pace that reaches the 90% cutoff exactly at the reset, so an agent keeping to it is never ruled out. A 5-hour session at 21% with four hours left is ahead; a week at 80% with an hour left is not. While any candidate is on pace, the weights already steer around the others, so there is nothing to report. The constraints count: with `--only claude`, Claude's usage alone decides.
 
 ## Output (stdout, JSON)
 
@@ -41,7 +42,11 @@ A requirement is `--only` or `--exclude`; a leaning is `--prefer`, which tilts t
 
 Launch with `kind` and, when it is not null, `model` as the model hint. Record `name` wherever the work's kind is recorded, and put `reason` in any log of the launch, since it says which constraint or usage figure decided.
 
-`backpressure` is null, or `{ message, until, windows }`: the message reads "Approaching usage quota: recommend stopping work until <until>.", followed by a note that it is advice only, where `until` is the earliest time one candidate has all its windows back on pace (assuming no further use, so usually before the reset), and `windows` lists the ones that raised it. `until` is null when a window reports no reset time. It is advice only. Ignore it by default and launch as usual; act on it only when the user, your instructions, or a workflow you are following explicitly asks you to follow usage backpressure, and then as they say.
+`backpressure` is null, or `{ message, until, windows }`: the message reads "Approaching usage quota: recommend stopping work until <until>.", followed by a note that it is advice only, where `until` is the earliest time one candidate has all its windows back on pace (assuming no further use, so usually before the reset), and `windows` lists the ones that raised it. `until` is pushed later by a random few percent of that window's length, so agents following the same snapshot don't all resume at once and push it straight back ahead of pace; it is null when a window reports no reset time. It is advice only. Ignore it by default and launch as usual; act on it only when the user, your instructions, or a workflow you are following explicitly asks you to follow usage backpressure, and then as they say.
+
+## Checking without launching
+
+`--check` reports backpressure without choosing a candidate, for an agent that runs long enough to never pass through a launch again. It takes the same `--only` and `--exclude` and prints `{ backpressure, candidates_from, candidates, dropped }`. A running agent checks its own quota with `--only <its name or kind>`, between tasks rather than in the middle of one; a dispatcher checks its pool with the flags it would launch with. Every candidate being at its usage limit is not needs-judgment here, because that is exactly what the backpressure reports; only an empty set of candidates exits `2`. The result is advice in the same way, so it means something only to an agent that was asked to follow it.
 
 ## Exit codes
 

@@ -23,20 +23,33 @@ score would send the whole burst to one place.
 
 Backpressure is the signal that the work as a whole should slow down, not just
 move elsewhere. A window is under pressure when it is ahead of pace: its share
-used is past the share of the window elapsed, the even pace that would spend
-all of it exactly at the reset. A five-hour session 21% used with four hours to
-go is ahead; a week 80% used with an hour to go is not. A window is relieved
-once time catches up with what it has used, which is before its reset unless it
-is at the cutoff. A window that reports no length or reset time falls back to a
+used is past the share of the window elapsed, scaled to the cutoff. That is the
+even pace that reaches the cutoff exactly at the reset, so an agent keeping to
+it is never ruled out; pacing to 100% instead would lock it out for the last
+tenth of every window. A five-hour session 21% used with four hours to go is
+ahead; a week 80% used with an hour to go is not. A window is relieved once
+time catches up with what it has used, which is before its reset unless it is
+at the cutoff. A window that reports no length or reset time falls back to a
 fixed WARN_PERCENT and is relieved only at reset. A candidate is under pressure
 while any of its windows is, and is relieved when the last of them is.
 While any candidate the work could go to is not under pressure, the weights
 already steer around the spent ones and there is nothing to report. Once every
 one is, the result carries a backpressure message naming the earliest time one
-of them is relieved. An unmetered candidate, or one whose usage could not be
-read, is never under pressure, so neither can raise it. Backpressure is advice
-only, and its message says so: a caller ignores it unless it was explicitly
-asked to follow it.
+of them is relieved, pushed later by a random share of up to JITTER_SHARE of
+that window's length. Every caller reading one usage snapshot computes the same
+relief time, so without the spread, agents that all follow the advice would
+all resume at once and push the window straight back ahead of pace. An
+unmetered candidate, or one whose usage could not be read, is never under
+pressure, so neither can raise it. Backpressure is advice only, and its
+message says so: a caller ignores it unless it was explicitly asked to follow
+it.
+
+The signal reaches a launch through the pick, but an agent that runs for a long
+time never launches again, so --check reports backpressure without picking:
+the same constraints and the same evaluation, and a result of
+{backpressure, candidates_from, candidates, dropped}. A running agent checks
+its own quota with --only <its name or kind>; a dispatcher checks its pool with
+the flags it would launch with.
 
 Constraints come from the caller, which reads them from the user, the task, and
 the repository's instructions: --only and --exclude are hard limits, --prefer
@@ -46,6 +59,9 @@ tilts the weights. Each takes a candidate name or a kind and may repeat.
 
 backpressure is null, or {message, until, windows} when every candidate is under
 pressure; until is null when a pressured window reports no reset time.
+
+With --check, every candidate at its usage limit is not an error: the result
+is the backpressure, and only an empty set of candidates exits 2.
 
 Exit codes (shared across the Herdr dispatch primitives):
   0  success. The JSON result object is printed to stdout.
@@ -84,6 +100,9 @@ QUOTAS = ("claude", "chatgpt", "none")
 CUTOFF_PERCENT = 90.0
 # A window without a length or reset time is under pressure at this share used.
 WARN_PERCENT = 80.0
+# Backpressure's relief time is pushed later by up to this share of the length
+# of the window that sets it, so agents following it don't all resume at once.
+JITTER_SHARE = 0.02
 # Bounds on one window's score, so neither a nearly spent window nor one about
 # to reset swamps the base weights entirely.
 MIN_SCORE, MAX_SCORE = 0.1, 3.0
@@ -200,32 +219,34 @@ def window_score(window, now):
 
 
 def window_pressure(window, now):
-    """Return None when the window is on pace, or (relieved at, note).
+    """Return None when the window is on pace, or (relieved at, length, note).
 
-    The relief time is None when the window reports no reset time.
+    The relief time is None when the window reports no reset time, and the
+    length is None when it reports no length.
     """
     used = float(window.get("used_percent") or 0)
     resets = parse_time(window.get("resets_at"))
     length = window.get("window_seconds")
     note = f"{window.get('label') or window.get('key')} {window.get('used_percent')}% used"
     if resets is None or not length:
-        return (resets, note) if used >= WARN_PERCENT else None
+        return (resets, length or None, note) if used >= WARN_PERCENT else None
     if used >= CUTOFF_PERCENT:
-        return resets, note
-    # On pace means the share used is no more than the share elapsed; this is
-    # when that holds again.
-    caught_up = resets - timedelta(seconds=length * (1 - used / 100))
+        return resets, length, note
+    # On pace means the share used is no more than the cutoff times the share
+    # elapsed; this is when that holds again.
+    caught_up = resets - timedelta(seconds=length * (1 - used / CUTOFF_PERCENT))
     if caught_up <= now:
         return None
     elapsed = 1 - (resets - now).total_seconds() / length
-    return caught_up, f"{note} with {max(0, round(100 * elapsed))}% of the window gone"
+    return caught_up, length, f"{note} with {max(0, round(100 * elapsed))}% of the window gone"
 
 
 def score_candidate(candidate, usage, now):
     """Return (score, usage note, drop reason, pressure).
 
-    pressure is None, or {until, windows}: the time every window ahead of pace
-    is relieved (None when one has no reset time), and those windows.
+    pressure is None, or {until, length, windows}: the time every window ahead
+    of pace is relieved (None when one has no reset time), the length of the
+    window relieved last, and those windows.
     """
     quota = candidate["quota"]
     if quota == "none":
@@ -255,10 +276,13 @@ def score_candidate(candidate, usage, now):
             pressured.append(p)
     pressure = None
     if pressured:
-        reliefs = [relief for relief, _ in pressured]
+        last = None
+        if all(relief is not None for relief, _, _ in pressured):
+            last = max(pressured, key=lambda p: p[0])
         pressure = {
-            "until": None if None in reliefs else max(reliefs),
-            "windows": [f"{quota} {note}" for _, note in pressured],
+            "until": last and last[0],
+            "length": last and last[1],
+            "windows": [f"{quota} {note}" for _, _, note in pressured],
         }
     if not scores:
         return 1.0, "no current limits", None, None
@@ -271,12 +295,16 @@ def score_candidate(candidate, usage, now):
     return s, note, None, pressure
 
 
-def backpressure(pressures):
+def backpressure(pressures, rng):
     """Return the backpressure object when every candidate is under pressure."""
     if not pressures or None in pressures:
         return None
-    known = [p["until"] for p in pressures if p["until"] is not None]
-    until = min(known).replace(microsecond=0).isoformat() if known else None
+    known = [p for p in pressures if p["until"] is not None]
+    until = None
+    if known:
+        first = min(known, key=lambda p: p["until"])
+        spread = rng.uniform(0, JITTER_SHARE * (first["length"] or 0))
+        until = (first["until"] + timedelta(seconds=spread)).replace(microsecond=0).isoformat()
     message = "Approaching usage quota: recommend stopping work"
     message += f" until {until}." if until else "."
     message += (" This is advice only: ignore it unless you were explicitly asked"
@@ -296,6 +324,8 @@ def main():
                         help="never choose these candidates (repeatable)")
     parser.add_argument("--prefer", action="append", default=[], metavar="NAME_OR_KIND",
                         help="tilt the choice toward these candidates (repeatable)")
+    parser.add_argument("--check", action="store_true",
+                        help="report backpressure without choosing a candidate")
     parser.add_argument("--config", type=Path, default=CONFIG_PATH, help=argparse.SUPPRESS)
     parser.add_argument("--usage-file", help=argparse.SUPPRESS)
     parser.add_argument("--seed", type=int, help=argparse.SUPPRESS)
@@ -334,16 +364,23 @@ def main():
             "usage": note,
         })
 
+    rng = random.Random(args.seed)
     if not considered:
         emit_judgment("no candidate is available under these constraints",
                       candidates_from=source, dropped=dropped)
+    if args.check:
+        emit({
+            "backpressure": backpressure(pressures, rng),
+            "candidates_from": source,
+            "candidates": considered,
+            "dropped": dropped,
+        })
     live = [c for c in considered if c["weight"] > 0]
     if not live:
         emit_judgment("every available candidate is at its usage limit",
-                      backpressure=backpressure(pressures),
+                      backpressure=backpressure(pressures, rng),
                       candidates_from=source, candidates=considered, dropped=dropped)
 
-    rng = random.Random(args.seed)
     chosen = live[0] if len(live) == 1 else rng.choices(live, weights=[c["weight"] for c in live])[0]
 
     if len(considered) == 1:
@@ -360,7 +397,7 @@ def main():
         "kind": chosen["kind"],
         "model": chosen["model"],
         "reason": reason,
-        "backpressure": backpressure(pressures),
+        "backpressure": backpressure(pressures, rng),
         "candidates_from": source,
         "candidates": considered,
         "dropped": dropped,
