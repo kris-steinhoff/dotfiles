@@ -1,0 +1,163 @@
+#!/usr/bin/env python3
+"""Behavior tests for launch-agent-in-pane without starting live agents."""
+
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+import tomllib
+import unittest
+
+
+SKILL_DIR = Path(__file__).parents[1]
+SCRIPT = SKILL_DIR / "scripts" / "launch-agent-in-pane"
+if not SCRIPT.exists():
+    SCRIPT = SKILL_DIR / "scripts" / "executable_launch-agent-in-pane"
+
+
+FAKE_HERDR = r'''#!/usr/bin/env python3
+import json
+import os
+import sys
+
+args = sys.argv[1:]
+with open(os.environ["FAKE_HERDR_LOG"], "a") as log:
+    log.write(json.dumps(args) + "\n")
+
+if args[:2] == ["agent", "list"]:
+    result = {"agents": []}
+elif args[:2] == ["agent", "start"]:
+    result = {}
+else:
+    print(f"unexpected fake Herdr call: {args}", file=sys.stderr)
+    sys.exit(2)
+
+print(json.dumps({"result": result}))
+'''
+
+
+class LauncherTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.home = self.root / "home"
+        self.home.mkdir()
+        self.marker = self.root / "shell-marker"
+        self.instructions = (
+            f'A "quoted" line.\n\nDo not run $(touch {self.marker}). '
+            "\\ stays literal. —\x7f\n"
+        )
+        self.instructions_path = self.home / "project-instructions.md"
+        self.instructions_path.write_text(self.instructions)
+        self.fake_bin = self.root / "bin"
+        self.fake_bin.mkdir()
+        self.herdr = self.fake_bin / "herdr"
+        self.herdr.write_text(FAKE_HERDR)
+        self.herdr.chmod(0o755)
+        self.log = self.root / "herdr.log"
+
+    def launch(self, kind="codex", *extra):
+        env = os.environ.copy()
+        env.update(
+            {
+                "FAKE_HERDR_LOG": str(self.log),
+                "HERDR_ENV": "1",
+                "HOME": str(self.home),
+                "PATH": f"{self.fake_bin}{os.pathsep}{env['PATH']}",
+            }
+        )
+        return subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT),
+                "--pane-id",
+                "w1:p1",
+                "--kind",
+                kind,
+                *extra,
+            ],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+
+    def calls(self):
+        if not self.log.exists():
+            return []
+        return [json.loads(line) for line in self.log.read_text().splitlines()]
+
+    def start_call(self):
+        return next(call for call in self.calls() if call[:2] == ["agent", "start"])
+
+    def test_codex_gets_selected_instructions_as_one_config_argument(self):
+        result = self.launch(
+            "codex",
+            "--developer-instructions-file",
+            "~/project-instructions.md",
+            "--model",
+            "test-model",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        start = self.start_call()
+        self.assertIn("--no-daemon", start)
+        self.assertNotIn("--approve-for-me", start)
+        self.assertNotIn("danger-full-access", start)
+        config_index = start.index("-c")
+        config = start[config_index + 1]
+        self.assertTrue(config.startswith("developer_instructions="))
+        self.assertEqual(tomllib.loads(config)["developer_instructions"], self.instructions)
+        self.assertFalse(self.marker.exists())
+
+    def test_codex_without_selected_instructions_keeps_only_no_daemon(self):
+        result = self.launch()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        start = self.start_call()
+        native_args = start[start.index("--") + 1 :]
+        self.assertEqual(native_args, ["--no-daemon"])
+
+    def test_other_kind_rejects_developer_instructions_file(self):
+        result = self.launch(
+            "claude", "--developer-instructions-file", str(self.instructions_path)
+        )
+
+        self.assertEqual(result.returncode, 2, result.stderr)
+        output = json.loads(result.stdout)
+        self.assertEqual(output["status"], "needs_judgment")
+        self.assertIn("only codex", output["reason"])
+        self.assertFalse(any(call[:2] == ["agent", "start"] for call in self.calls()))
+
+    def test_persona_rejects_developer_instructions_file(self):
+        result = self.launch(
+            "codex",
+            "--persona",
+            "coordinator",
+            "--developer-instructions-file",
+            str(self.instructions_path),
+        )
+
+        self.assertEqual(result.returncode, 2, result.stderr)
+        output = json.loads(result.stdout)
+        self.assertEqual(output["status"], "needs_judgment")
+        self.assertIn("would replace persona coordinator", output["reason"])
+        self.assertFalse(any(call[:2] == ["agent", "start"] for call in self.calls()))
+
+    def test_missing_developer_instructions_file_stops_before_launch(self):
+        self.instructions_path.unlink()
+        result = self.launch(
+            "codex", "--developer-instructions-file", str(self.instructions_path)
+        )
+
+        self.assertEqual(result.returncode, 2, result.stderr)
+        output = json.loads(result.stdout)
+        self.assertEqual(output["status"], "needs_judgment")
+        self.assertIn("cannot read developer instructions", output["reason"])
+        self.assertFalse(any(call[:2] == ["agent", "start"] for call in self.calls()))
+
+
+if __name__ == "__main__":
+    unittest.main()

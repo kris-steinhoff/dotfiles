@@ -54,6 +54,7 @@ prompts and names cannot inject.
 import argparse
 import json
 import os
+from pathlib import Path
 import re
 import subprocess
 import sys
@@ -86,7 +87,8 @@ NAME_FLAGS = {
 # commands and hooks in a shared app-server daemon, which carries the
 # environment of whichever pane first started it, so every Codex session would
 # report that pane's HERDR_PANE_ID instead of its own. --no-daemon keeps the
-# app server inside this pane's process.
+# app server inside this pane's process. Approval behavior stays in managed
+# config; a launcher flag would override future config choices.
 KIND_ARGS = {
     "codex": ["--no-daemon"],
 }
@@ -205,6 +207,32 @@ def name_args(kind, name):
     return [NAME_FLAGS[kind], name]
 
 
+def developer_instructions_args(kind, path, pane_id):
+    """A caller-supplied Codex developer-instructions file.
+
+    Each override is returned as separate argv elements. The instruction text
+    is encoded as a TOML basic string; it is never interpolated into a shell.
+    """
+    if not path:
+        return []
+    if kind != "codex":
+        emit_judgment(
+            f"kind {kind} does not support --developer-instructions-file; only codex does",
+            kind=kind, pane_id=pane_id,
+        )
+    instructions_path = Path(path).expanduser()
+    try:
+        instructions = instructions_path.read_text()
+    except (OSError, UnicodeError) as error:
+        emit_judgment(
+            f"cannot read developer instructions at {instructions_path}: {error}",
+            kind="codex", pane_id=pane_id,
+        )
+    # JSON's escapes are a subset of TOML's, except that JSON leaves DEL bare.
+    value = json.dumps(instructions, ensure_ascii=False).replace("\x7f", "\\u007f")
+    return ["-c", f"developer_instructions={value}"]
+
+
 def report_instructions(kind, name, report_to_pane, report_to_session):
     """How the launched agent reaches whoever dispatched it, by kind.
 
@@ -246,6 +274,10 @@ def main():
     parser.add_argument("--model", help="model hint, e.g. opus")
     parser.add_argument("--persona", help="persona to launch, e.g. coordinator (claude/codex only)")
     parser.add_argument("--name", help="agent name base, e.g. nxc-162 (claude: also its session name)")
+    parser.add_argument(
+        "--developer-instructions-file",
+        help="file to inject through Codex's developer_instructions config override",
+    )
     parser.add_argument("--seed-prompt", help="prompt to deliver after launch")
     parser.add_argument("--report-to-pane", help="pane the launched agent should report back to")
     parser.add_argument(
@@ -261,6 +293,15 @@ def main():
         emit_judgment(
             f"kind {args.kind} does not support personas; only "
             f"{', '.join(sorted(PERSONA_FLAGS))} do",
+            kind=args.kind, persona=args.persona, pane_id=args.pane_id,
+        )
+
+    # A Codex persona profile carries its whole prompt in developer_instructions,
+    # which the file's -c override would replace without a word.
+    if args.persona and args.developer_instructions_file:
+        emit_judgment(
+            "--developer-instructions-file would replace persona "
+            f"{args.persona}'s developer_instructions; pass one or the other",
             kind=args.kind, persona=args.persona, pane_id=args.pane_id,
         )
 
@@ -292,6 +333,9 @@ def main():
         start = ["agent", "start", name, "--kind", args.kind, "--pane", args.pane_id]
         extra = (
             KIND_ARGS.get(args.kind, [])
+            + developer_instructions_args(
+                args.kind, args.developer_instructions_file, args.pane_id
+            )
             + model_args(args.kind, args.model)
             + persona_args(args.kind, args.persona)
         )

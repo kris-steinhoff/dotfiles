@@ -10,7 +10,7 @@ description: The clone-per-stream worktree layout — a plain project folder hol
 
 A way to lay out one project's checkouts so every branch gets its own worktree, a sandboxed agent in any of them can commit, and Herdr's sidebar groups the work the way you think about it. This skill holds the rules, and its script does the setup.
 
-A project opts in with a line in its own `AGENTS.md` saying it uses this layout and to load this skill before touching worktrees there. The same file carries what this skill can't know about the project: where the primary was cloned from and its remote, how it names branches and work streams, and any setup a new clone or worktree needs, such as installing dependencies or hooks.
+A project opts in with a line in its own `AGENTS.md` saying it uses this layout and to load this skill before touching worktrees there. The same file carries what this skill can't know about the project: where the primary was cloned from and its remote, how it names branches and work streams, and any setup a new clone or worktree needs, such as installing dependencies or hooks. Codex starts `AGENTS.md` discovery at the Git/project root, so it does not automatically load a file in the plain parent folder from `repo/` or a linked worktree. When launching Codex, pass that parent file through `launch-agent-in-pane --developer-instructions-file <path>`.
 
 ## Shape
 
@@ -22,7 +22,7 @@ A project opts in with a line in its own `AGENTS.md` saying it uses this layout 
     └── .worktrees/<branch>/   worktrees of the work stream
 ```
 
-- **Every repo is an ordinary clone.** The primary, `repo/`, sits on the default branch. Sessions that work across the project, such as a driver, run there, so they have a checkout and load the repo's own skills along with the project's `AGENTS.md`.
+- **Every repo is an ordinary clone.** The primary, `repo/`, sits on the default branch. Sessions that work across the project, such as a driver, run there, so they have a checkout and load the repo's own skills. Parent-folder instructions reach Codex through the launcher rule above rather than default discovery.
 - **A work stream is its own clone, not a worktree of the primary.** It holds one body of work that spans several branches, such as an epic and its stories, a milestone, or a feature built in parts, and its root sits on that stream's active branch. It is a local clone of the primary, so it hardlinks objects and takes almost no disk, with `origin` pointed at the same remote. Herdr clusters workspaces by repo, so a work stream's worktrees group under their own row only because it is its own repo. A single branch needs only a worktree of the primary.
 - **Worktrees nest in their clone's `.worktrees/`,** each named for its branch, with `/` replaced by `-`. The clone's `.git/info/exclude` lists `/.worktrees/`, so they stay out of its `git status` without anything committed for it.
 - **One level deep.** A work stream has worktrees, not work streams of its own.
@@ -59,7 +59,12 @@ Re-running converges, and finishes a build that failed partway. Every step but t
 
 ## Working in a clone
 
-With the clone's config set as above, the git an agent needs works inside the sandbox, from the clone root and from a nested worktree: commit, fetch, merge, `git switch -c` from `origin/*`, `git worktree add` and `remove`, and a bare `git push`. `git branch -D` succeeds with a warning about the config lock. Anything that writes config fails, so never add `--set-upstream` or `-u` to a push, and don't set config from a session; when something truly needs a config change, it is the user's to make outside the sandbox.
+With the clone's config set as above, ordinary Git work is available to both Claude and Codex, but their sandboxes reach the clone's Git metadata differently:
+
+- Claude can commit, fetch, merge, create branches, manage worktrees, and push from inside its sandbox. `git branch -D` succeeds with a warning about the config lock.
+- Codex's `workspace-write` sandbox protects both a checkout's `.git` entry and the resolved Git directory as read-only. It requests scoped escalation for Git commands that write metadata, and the managed `approval_policy = "on-request"` plus `approvals_reviewer = "auto_review"` config routes eligible requests through automatic review. `launch-agent-in-pane` does not override that policy with `--approve-for-me`. Keep file edits and routine tests inside `workspace-write`; `danger-full-access` is not needed just to make Git work.
+
+Neither kind changes clone config from a session. Never add `--set-upstream` or `-u` to a push; when something truly needs a config change, it is the user's to make outside the sandbox.
 
 ## Herdr
 
@@ -73,14 +78,14 @@ Herdr's sidebar has one kind of object, the **workspace**. A **parent workspace*
 
 ## Sandbox
 
-These are Claude Code sandbox behaviors the layout relies on or runs into.
+These are the sandbox behaviors the layout relies on or runs into.
 
-- **A worktree can write its clone's git data.** A linked worktree's commits, refs, and index live in its clone's `.git/`, outside the worktree, and Claude Code's sandbox lets a session in a linked worktree write its main repo's `.git` on its own. A worktree needs no sandbox settings of its own to commit or fetch.
+- **Claude can write its clone's Git data directly.** A linked worktree's commits, refs, and index live in its clone's `.git/`, outside the worktree, and Claude Code's sandbox lets a session in a linked worktree write its main repo's `.git` on its own. A Claude worktree needs no sandbox settings of its own to commit or fetch.
 - **`.git/config` and `.git/hooks` are read-only** to every sandboxed session, in its own clone, in that clone's worktrees, and in any clone below its directory. That is why making a clone and installing hooks run outside the sandbox, and why the clone's config is set once at clone time.
 - **Trust carries per repo.** Claude Code files a worktree's trust under its main repo, so only a clone itself and its first worktree show the "trust this folder" prompt.
 - **A worktree that moves keeps absolute paths** in anything it built, such as a virtualenv, so rebuild those after `git worktree move`.
 
-Codex's `workspace-write` sandbox makes every `.git` read-only, so git writes fail in a Codex session in either kind of checkout. This layout has no Codex handling yet.
+Codex's protected-path rule also follows a linked worktree's `.git` pointer to the clone's shared Git directory. Adding that directory as another writable root does not bypass the protection. The supported path is a scoped escalation for the Git command, normally reviewed automatically under the managed Codex approval settings.
 
 ## Teardown
 
