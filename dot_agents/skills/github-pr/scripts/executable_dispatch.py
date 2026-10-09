@@ -55,10 +55,6 @@ def repo_root(path):
     proc = run(["git", "-C", path, "rev-parse", "--show-toplevel"])
     if proc.returncode == 0:
         return proc.stdout.strip()
-    # A bare-backed repo directory has no work tree, but git and gh both run from it.
-    bare = run(["git", "-C", path, "rev-parse", "--is-bare-repository"])
-    if bare.returncode == 0 and bare.stdout.strip() == "true":
-        return os.path.realpath(path)
     judgment(f"{path!r} is not a git checkout")
 
 

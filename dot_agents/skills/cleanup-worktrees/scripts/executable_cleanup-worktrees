@@ -17,9 +17,9 @@ more, it considers only those. Some worktrees are always kept:
 
   - the primary checkout, and a bare repo's own entry
   - a locked worktree (`git worktree lock`)
-  - the checkout of the repo's HEAD branch or origin's default branch, since in
-    a bare-backed layout `git branch -d` would otherwise delete the very branch
-    the bare repo's HEAD names
+  - the checkout of the repo's HEAD branch or origin's default branch, so a
+    sweep never deletes the local default branch, as it would in a clone whose
+    own root is on another branch
 
 A worktree with an open Herdr workspace is removed with `herdr worktree remove
 --force`, which also closes the workspace; one with no workspace is removed

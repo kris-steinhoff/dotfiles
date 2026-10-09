@@ -10,11 +10,11 @@ handles name collisions itself, so no caller runs a check-then-retry loop:
   2. Else if a worktree already exists on that branch but is NOT ours (no marker,
      or another tool's checkout), auto-suffix (-2, -3, ...) to the next free name
      and create fresh.
-  3. Else create fresh on the requested name (checking out an existing bare
+  3. Else create fresh on the requested name (checking out an existing local
      branch if one is there, so source preparation -> create-worktree chains cleanly).
 
-With --path, the caller picks where the checkout goes (a bare-backed container
-wants <container>/<branch>). A path is occupied if anything exists there or git
+With --path, the caller picks where the checkout goes (the worktree layout
+wants <clone>/.worktrees/<branch>). A path is occupied if anything exists there or git
 still has a worktree registered there. A branch collision suffixes branch and
 path together (foo at <dir>/foo becomes foo-2 at <dir>/foo-2). When only the
 path is occupied, only the path is suffixed and the branch is kept (pr-254 at
@@ -33,7 +33,7 @@ and is a different repo from the workspace's, that is needs-judgment rather
 than checking one repo and creating in another.
 
 `herdr worktree create` only runs from a repo's parent workspace (the one on
-its primary checkout, or on a bare-backed container). From a linked-worktree
+its primary checkout). From a linked-worktree
 workspace (one on a linked git worktree checkout), or with --cwd on a linked
 checkout even when no workspace is open for it, herdr refuses with
 linked_worktree_source before touching git. The script lets herdr be the judge

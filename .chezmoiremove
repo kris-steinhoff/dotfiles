@@ -120,3 +120,7 @@
 .agents/skills/resolve-task
 .claude/skills/resolve-task
 .gemini/config/plugins/kris-steinhoff/skills/resolve-task
+
+# worktree-layout moved from bare repos to ordinary clones, and its
+# create-bare-repo script was replaced by create-clone.
+.agents/skills/worktree-layout/scripts/create-bare-repo

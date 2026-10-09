@@ -53,7 +53,7 @@ For a completed, clean worktree whose PR has moved, `prepare` safely resets only
 
 For `dispatch`, run the generic `create-worktree` primitive on the returned `head_branch`, with no alternate branch and no base. Pass `--label "Review #<n> <title>"` so the worktree reads as its PR in Herdr's sidebar, using the PR's title verbatim, or a few-word summary of it when the title is too long to scan. Verify its returned `branch` is exactly `head_branch`; otherwise stop and report the collision.
 
-In a bare-backed repo directory (its `.git` is a file reading `gitdir: ./.bare`; see the `worktree-layout` skill), the review worktree sits flat inside that directory, so also pass `--workspace <the repo directory's workspace>` and `--path <repo directory>/<head_branch with "/" replaced by "-">`. For a head branch `feat/rate-limit-headers`, that is `<repo directory>/feat-rate-limit-headers`.
+In a project that uses the `worktree-layout` skill, the review worktree nests in the clone's `.worktrees/`, so also pass `--path <clone>/.worktrees/<head_branch with "/" replaced by "-">`. For a head branch `feat/rate-limit-headers`, that is `<clone>/.worktrees/feat-rate-limit-headers`.
 
 Immediately claim the worktree before launching:
 

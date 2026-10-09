@@ -20,7 +20,7 @@ scripts/cleanup-worktrees [--repo <path>] [--worktree <path-or-workspace-id>]...
 
 A worktree goes when its tree is clean (no uncommitted or untracked changes) and no live agent occupies its Herdr workspace. Its commits don't have to be pushed or merged: the branch outlives the checkout. After removal the branch is deleted with `git branch -d`, which refuses one that isn't fully merged, and the script leaves that branch in place without treating it as an error. It never force-deletes a branch.
 
-It always keeps the primary checkout, a locked worktree, the caller's own worktree and workspace, and the checkout of the repo's `HEAD` or origin's default branch. That last one matters in a bare-backed repo directory, where the default branch is an ordinary worktree and `git branch -d` would otherwise delete the branch the bare repo's `HEAD` names.
+It always keeps the primary checkout, a locked worktree, the caller's own worktree and workspace, and the checkout of the repo's `HEAD` or origin's default branch. That last one matters in a clone whose root is on another branch, such as a work stream's, where the default branch can be an ordinary worktree and `git branch -d` would otherwise delete it.
 
 A worktree with an open workspace is removed with `herdr worktree remove --force`, which closes the workspace and ends anything running in its panes. One with no workspace is removed with `git worktree remove`, or pruned when its directory is already gone.
 

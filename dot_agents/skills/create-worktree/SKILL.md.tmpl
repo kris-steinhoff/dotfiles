@@ -18,10 +18,10 @@ Load once per session; takes no `args`. Run the script above directly via Bash f
 
 Requires `HERDR_ENV=1`; it drives the `herdr` CLI. `--repo` is the git repo the collision and re-run checks run against. It defaults to the `--workspace`'s repo root when that is given, else the current directory.
 
-Two optional flags place a worktree somewhere other than Herdr's default location, such as flat inside a bare-backed container (a directory holding the bare repo in `.bare/` and a `.git` file pointing at it). Without them, behavior is unchanged.
+Two optional flags place a worktree somewhere other than Herdr's default location, such as nested in the clone's own `.worktrees/` directory. Without them, behavior is unchanged.
 
-- `--workspace <id>` has Herdr create from that workspace rather than from `--repo`'s directory. It normally names the repo's **parent workspace**, the one on its primary checkout; for a bare-backed container that is the container's own workspace. Passing a `--repo` that is a different repo from the workspace's is refused as needs-judgment, since the script would otherwise check one repo and create in another.
-- `--path <path>` is where the checkout goes, typically `<container>/<branch>`. A relative path resolves against the current directory.
+- `--workspace <id>` has Herdr create from that workspace rather than from `--repo`'s directory. It normally names the repo's **parent workspace**, the one on its primary checkout. Passing a `--repo` that is a different repo from the workspace's is refused as needs-judgment, since the script would otherwise check one repo and create in another.
+- `--path <path>` is where the checkout goes, typically `<clone>/.worktrees/<branch>`. A relative path resolves against the current directory.
 
 ## What it does
 
@@ -31,7 +31,7 @@ Collisions and re-runs are handled without a caller loop:
 
 - A worktree already on the exact branch **that carries our marker** is our own prior creation, so it is reused (`created: false`).
 - A worktree already on that branch that is **not** ours is a real collision, so the branch is auto-suffixed (`-2`, `-3`, ...) to the next free name and created fresh.
-- Otherwise it creates fresh on the requested branch, checking out an existing bare branch if one is there. This lets a source-preparation workflow create the branch before handing placement here.
+- Otherwise it creates fresh on the requested branch, checking out an existing local branch if one is there. This lets a source-preparation workflow create the branch before handing placement here.
 
 With `--path`, the path takes part in both rules:
 

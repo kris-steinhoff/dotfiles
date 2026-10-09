@@ -13,8 +13,7 @@ Each record is inspect-worktree-shaped plus `ours` and `stale`:
 
 `stale` is true when the worktree has been idle at least `--stale-after` minutes
 (default 1440 = 24h) and has no live agent. The primary checkout (the entry whose
-path is the repo root) and a bare repo's own entry (a bare-backed container's
-.bare/) are skipped — neither is ever a teardown candidate.
+path is the repo root) and a bare repo's own entry are skipped — neither is ever a teardown candidate.
 
 The per-worktree logic duplicates inspect-worktree on purpose: the primitives are
 flat atoms that don't call each other (see the PRD's Composition and ownership).
