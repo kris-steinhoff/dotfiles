@@ -1,4 +1,7 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# ///
 """Choose which agent kind (and model) to launch for a piece of work.
 
 A Herdr dispatch primitive. Candidates are declared per machine in

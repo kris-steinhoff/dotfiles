@@ -19,6 +19,8 @@ Two signals, strongest first:
 Only ever reads. Changing a file is never this script's job.
 """
 
+from __future__ import annotations
+
 import re
 import sys
 from pathlib import Path

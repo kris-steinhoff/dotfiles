@@ -120,6 +120,8 @@ The executable bit lives only on the canonical copy (the `executable_` prefix is
 
 The Gemini surface is a plugin, not a plain skills directory. `dot_gemini/config/plugins/kris-steinhoff/plugin.json` declares it, and the skill directories live in that plugin's `skills/` subdirectory.
 
+A skill's Python scripts must run on the `python3` that agents actually get, which inside the Claude Code sandbox is macOS's own `/usr/bin/python3`, 3.9. A script that runs on 3.9 keeps the plain `#!/usr/bin/env python3` shebang; `X | None` in an annotation needs `from __future__ import annotations` for that. A script that needs anything newer, such as `tomllib` (3.11), runs through uv instead, as `choose-agent` does: `#!/usr/bin/env -S uv run --script` with a PEP 723 block declaring `requires-python = ">=3.11"`, so uv supplies an interpreter it already has. Its path is stable, so uv's cached environment is reused across runs, unlike the `modify_` script described below.
+
 To add a skill:
 
 1. Write `dot_agents/skills/<name>/SKILL.md.tmpl` with the hook above, using `chezmoi add` for any scripts (it applies the `executable_` prefix to nested scripts such as `scripts/` helpers, which a manual copy would miss). This alone is enough for Codex and OpenCode.

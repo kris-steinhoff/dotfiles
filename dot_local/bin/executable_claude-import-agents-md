@@ -18,6 +18,8 @@ ignored by) the repo. Outside a git repo, it only looks at the current
 directory.
 """
 
+from __future__ import annotations
+
 import os
 import subprocess
 import sys
