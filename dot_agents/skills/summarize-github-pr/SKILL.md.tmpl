@@ -1,6 +1,6 @@
 ---
 name: summarize-github-pr
-description: Shows one GitHub pull request's metadata in the same shape every time, so a person can tell at a glance which PR it is — number, title, URL, and author; each review so far with its type and comment count; and the PR's size and the PR it is stacked on. Read-only, and it doesn't describe what the PR changes. Pass the PR number; print what it returns to the user verbatim.
+description: Shows one GitHub pull request's metadata in the same shape every time, so a person can tell at a glance which PR it is — number, title, URL, and author; when it was marked ready and the PR it is stacked on; each review so far with its type and comment count; and the PR's size and its base and head branches. Read-only, and it doesn't describe what the PR changes. Pass the PR number; print what it returns to the user verbatim.
 {{- with get . "custom" }}
 {{ . }}
 {{- end }}
@@ -12,9 +12,9 @@ Show one pull request's metadata so a person can tell which PR it is and where i
 
 Run `scripts/summary.py <n>` by its full path from the skill directory, in the working directory: `gh` finds the repository from the checkout, or from `GH_REPO`. Under a sandbox that proxies network access, it reaches `api.github.com`. It prints markdown:
 
-- a table of the PR's number and title, over its author and URL
+- a table of the PR's number and title, over its author and URL, over when it was marked ready (or opened, if it was never a draft; `Draft` while it still is one) and the PR it is stacked on when its base is another open PR's branch
 - one bullet per review so far, with the reviewer, the review's type, and how many comments it started
-- the PR's size, and the PR it is stacked on when its base is another open PR's branch
+- the PR's size, and its base branch ← head branch
 
 Then copy that output, every line of it, into your reply as markdown. The script's output reaches only you, so the user sees the summary only when you copy it. For a PR it looks like this:
 
@@ -22,10 +22,11 @@ Then copy that output, every line of it, into your reply as markdown. The script
 | **#254** Add rate-limit headers to the public API |
 | --- |
 | **Ada Lovelace** · https://github.com/example/service/pull/254 |
+| Ready Thu, Oct 8, 14:03 · stacked on #251 |
 
 - Grace Hopper: requested changes, 3 comments
 
-12 files, +340/−58 · stacked on #251
+12 files, +340/−58 · 251-retry-budget ← 254-rate-limit-headers
 ```
 
 The table, bullets, and size line are the summary. A sentence that tells the user what they say, such as "PR #254 by Ada Lovelace changes 12 files and has one round of requested changes", is not: it is the failure this skill exists to prevent, because the user tells PRs apart by the fixed shape and a sentence doesn't scan. Don't add to it, reword it, shorten it, or turn anything in it into a link. This skill describes nothing about what the PR changes, and changes nothing on GitHub.
