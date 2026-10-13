@@ -28,7 +28,7 @@ scripts/dispatch.py release --pr-number <n> [--repo <path>]
 scripts/dispatch.py ready [--repo <path>] [--limit <n>]
 ```
 
-It returns `{items: [...]}` for open, non-draft PRs in the current repository matching `review-requested:@me -author:@me`. Each item contains `number`, `title`, `url`, `base_branch`, `head_branch`, and `head_sha`. An empty list is success: report that nothing is waiting and stop.
+It returns `{items: [...]}` for open, non-draft PRs in the current repository matching `review-requested:@me -author:@me`. Each item contains `number`, `title`, `url`, `author` (the author's full name, or their login when they have none), `base_branch`, `head_branch`, and `head_sha`. An empty list is success: report that nothing is waiting and stop.
 
 ## Prepare each PR
 
@@ -51,7 +51,7 @@ For a completed, clean worktree whose PR has moved, `prepare` safely resets only
 
 ## Create and launch
 
-For `dispatch`, run the generic `create-worktree` primitive on the returned `head_branch`, with no alternate branch and no base. Pass `--label "Review #<n> <title>"` so the worktree reads as its PR in Herdr's sidebar, using the PR's title verbatim, or a few-word summary of it when the title is too long to scan. Verify its returned `branch` is exactly `head_branch`; otherwise stop and report the collision.
+For `dispatch`, run the generic `create-worktree` primitive on the returned `head_branch`, with no alternate branch and no base. Pass `--label "Review #<n> <author>"`, such as `Review #254 Ada Lovelace`, so the worktree reads as its PR in Herdr's sidebar while staying short enough not to be cut off; the reviewer's opening summary carries the title. Verify its returned `branch` is exactly `head_branch`; otherwise stop and report the collision.
 
 In a project that uses the `worktree-layout` skill, the review worktree nests in the clone's `.worktrees/`, so also pass `--path <clone>/.worktrees/<head_branch with "/" replaced by "-">`. For a head branch `feat/rate-limit-headers`, that is `<clone>/.worktrees/feat-rate-limit-headers`.
 

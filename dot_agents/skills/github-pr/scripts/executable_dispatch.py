@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 MARKER_NAME = ".herdr-dispatch.json"
 MARKER_TAG = "herdr-dispatch"
 SEARCH = "is:open -is:draft review-requested:@me -author:@me"
-GH_FIELDS = "number,title,url,baseRefName,headRefName,headRefOid"
+GH_FIELDS = "number,title,url,author,baseRefName,headRefName,headRefOid"
 
 
 class DispatchError(Exception):
@@ -63,10 +63,13 @@ def now():
 
 
 def pr_item(raw):
+    author = raw.get("author") or {}
     return {
         "number": raw.get("number"),
         "title": raw.get("title", ""),
         "url": raw.get("url", ""),
+        # The author's full name, or their login when they have none (a bot).
+        "author": author.get("name") or author.get("login", ""),
         "base_branch": raw.get("baseRefName", ""),
         "head_branch": raw.get("headRefName", ""),
         "head_sha": raw.get("headRefOid", ""),
