@@ -23,8 +23,8 @@ refuses (needs-judgment, with a specific reason) when any of these hold:
      $HERDR_WORKSPACE_ID).
 
 Past the gate (checks clean, or `--force`), it always passes `--force` to the
-underlying `herdr worktree remove`: our own checks are the real safety
-validation, so herdr's generic checks would only add friction.
+underlying `herdr worktree remove` or `git worktree remove`: our own checks are
+the real safety validation, so their generic checks would only add friction.
 
 Idempotent: a path git doesn't list and that no longer exists on disk is
 already removed, a success. A path git doesn't list that still exists is
@@ -43,9 +43,10 @@ Requires HERDR_ENV=1: the removal itself drives the `herdr` CLI.
 Exit codes (shared across the Herdr dispatch primitives):
   0  success. The JSON result object is printed to stdout.
   2  needs judgment. An expected situation the script cannot resolve
-     mechanically (not running inside Herdr, or an unsafe removal without
-     --force, a path that isn't a worktree, or a record left prunable). stdout is JSON, {"status": "needs_judgment", "reason": ...} plus
-     any known partial fields. The caller's cue to apply judgment or ask.
+     mechanically (not running inside Herdr, an unsafe removal without
+     --force, a path that isn't a worktree, or a record left prunable).
+     stdout is JSON, {"status": "needs_judgment", "reason": ...} plus any
+     known partial fields. The caller's cue to apply judgment or ask.
   1  real error (an unexpected git/herdr failure). Diagnostics go to stderr.
 
 All subprocesses are invoked as argv lists, never a shell string.

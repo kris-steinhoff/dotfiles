@@ -27,7 +27,7 @@ Unless `--force` is given, it refuses (exit 2, with a specific reason) when any 
 3. A live agent still occupies a pane in the worktree's workspace.
 4. It is the caller's own active workspace (`open_workspace_id == $HERDR_WORKSPACE_ID`).
 
-Past the gate (checks clean, or `--force`), it always passes `--force` to the underlying `herdr worktree remove` — our own checks are the real safety validation, so herdr's generic checks would only add friction.
+Past the gate (checks clean, or `--force`), it always passes `--force` to the underlying `herdr worktree remove` or `git worktree remove` — our own checks are the real safety validation, so their generic checks would only add friction.
 
 Idempotent: a path git doesn't list and that is gone from disk is already removed, a success. A path git doesn't list that still exists is refused instead, because it's a caller mistake rather than a finished removal: a folder holding worktrees (the reason lists them), or a folder that was never a worktree. The repository's main checkout is refused too.
 
