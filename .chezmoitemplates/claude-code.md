@@ -9,7 +9,9 @@ Use AskUserQuestion for every multiple-choice question, including small ones in 
 - Put the option you recommend first and end its label with "(Recommended)".
 - Put the context in the question text and the option descriptions rather than in prose before the call, so each question reads on its own. Use `preview` when options are concrete artifacts to compare, such as layouts or code snippets.
 - Don't add an "Other" option; the tool adds one itself.
-- A lone yes/no can stay in prose. When it comes alongside other questions, put it in the same call as a two-option question.
+- Outside Herdr, a lone yes/no can stay in prose. When it comes alongside other questions, put it in the same call as a two-option question.
+
+Inside Herdr (`HERDR_ENV=1`), whenever you stop because something waits on the user (a decision, an answer, or a manual step only they can take), ask through AskUserQuestion, even a lone yes/no. Herdr marks a session sitting in that prompt as blocked in its sidebar, while a question asked in prose ends the turn and looks the same as an agent that is done. For a yes/no, offer the two answers; for a manual step, offer `Done` and a way out such as `Skip it`; for input with no natural options, such as a value to paste, offer the likely choices and let the tool's free-text option carry the rest. Don't end a turn in Herdr with a question in prose.
 
 ### Sandbox-excluded commands
 
