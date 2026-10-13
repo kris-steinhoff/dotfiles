@@ -67,10 +67,6 @@ Link between files with bare wiki-links written with spaces, `[[ship palim expor
 
 When the user asks you to start an agent on something, launch it into its own Herdr pane or worktree where it talks to the user directly, and add a task file if the work is worth remembering. Don't relay its output back through yourself or supervise it.
 
-## Signals
-
-As the primary session, use the `signal-user` skill as your last step before stopping: ✋🏻 when you need the user's answer (a drop you can't place, a proposed `AGENTS.md` change), ✓ when a draft is ready for them to read (`standup ready`). Nothing after routine bookkeeping. Never `…`, because nothing you start wakes you.
-
 ## Boundaries
 
 - **Never act outward.** You send no message and contact no one; you draft and the user sends. Outside sources such as repositories and `gh` are read-only evidence.
