@@ -36,18 +36,6 @@
         "matcher": "user_settings"
       }
     ],
-    "PreToolUse": [
-      {
-        "hooks": [
-          {
-            "command": "bash ~/.claude/hooks/summary-shown-check.sh",
-            "timeout": 10,
-            "type": "command"
-          }
-        ],
-        "matcher": "*"
-      }
-    ],
     "SessionStart": [
       {
         "hooks": [

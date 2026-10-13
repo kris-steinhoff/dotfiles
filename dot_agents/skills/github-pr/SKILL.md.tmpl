@@ -20,9 +20,9 @@ This skill may be invoked directly, by any agent, or repeatedly with `/loop 5m /
 
 ## Open with the summary
 
-A `review <n>` session conducting its review, and every `respond <n>` session, opens with the PR's summary. Several of these sessions run at once, and the summary is how the user tells which PR a pane is about.
+Several of these sessions run at once, and the PR's summary is how the user tells which PR a pane is about. A dispatched `review <n>` session gets it before the review starts: the dispatcher sends `/summarize-github-pr <n>` as the session's first prompt (see [references/queue.md](references/queue.md)), so don't run it again.
 
-Before reading anything else about the PR, run the `summarize-github-pr` skill. Your first message to the user is its output copied line for line, the table, bullets, and size line as markdown, and nothing else; status lines come after it, in later messages. Describing the PR in a sentence instead (its number, author, size, or reviews in prose) does not count, however accurate: that paraphrase is exactly what has gone wrong before. Add nothing to the summary except to note workflow status that has gone wrong, such as a checkout that doesn't match.
+A `respond <n>` session, and a `review <n>` the user started in its worktree by hand, opens with the summary itself: before reading anything else about the PR, run the `summarize-github-pr` skill and send its output, every line as markdown, as your first message.
 
 ## `review ready`: dispatch the queue
 

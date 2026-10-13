@@ -51,7 +51,7 @@ For a completed, clean worktree whose PR has moved, `prepare` safely resets only
 
 ## Create and launch
 
-For `dispatch`, run the generic `create-worktree` primitive on the returned `head_branch`, with no alternate branch and no base. Pass `--label "Review #<n> <author>"`, such as `Review #254 Ada Lovelace`, so the worktree reads as its PR in Herdr's sidebar while staying short enough not to be cut off; the reviewer's opening summary carries the title. Verify its returned `branch` is exactly `head_branch`; otherwise stop and report the collision.
+For `dispatch`, run the generic `create-worktree` primitive on the returned `head_branch`, with no alternate branch and no base. Pass `--label "Review #<n> <author>"`, such as `Review #254 Ada Lovelace`, so the worktree reads as its PR in Herdr's sidebar while staying short enough not to be cut off; the summary that opens the reviewer's session carries the title. Verify its returned `branch` is exactly `head_branch`; otherwise stop and report the collision.
 
 In a project that uses the `worktree-layout` skill, the review worktree nests in the clone's `.worktrees/`, so also pass `--path <clone>/.worktrees/<head_branch with "/" replaced by "-">`. For a head branch `feat/rate-limit-headers`, that is `<clone>/.worktrees/feat-rate-limit-headers`.
 
@@ -61,15 +61,18 @@ Immediately claim the worktree before launching:
 scripts/dispatch.py mark --worktree <path> --pr-number <n> --head-sha <sha> --status prepared --pane-id <pane> --workspace-id <workspace>
 ```
 
-Seed the reviewer with this outcome, filling in the actual values:
+Use a Claude agent named `review-<n>` in the worktree pane. For a new pane, start it with the `launch-agent-in-pane` primitive and no seed prompt. If a completed worktree was refreshed and its prior Claude agent still occupies the pane, reuse that agent; do not create another worktree or agent merely to redeliver the prompts. Do not thread report-back—the review remains interactive in its own pane.
 
-```text
-Run `/github-pr review <n>` on this PR against `<base_branch>`. Work interactively with Kris here through finding triage and final posting confirmation.
+Then send the agent two prompts with the `herdr` skill, in order, addressed to the `agent_name` the launch returned (it may carry a suffix). The first shows the PR's summary as a turn of its own, and `--wait` holds the second until that turn is over:
+
+```bash
+herdr agent prompt <agent_name> "/summarize-github-pr <n>" --wait --timeout 120000
+herdr agent prompt <agent_name> "Run \`/github-pr review <n>\` on this PR against \`<base_branch>\`. Work interactively with Kris here through finding triage and final posting confirmation."
 ```
 
-Use a Claude agent named `review-<n>` in the worktree pane. For a new pane, use the `launch-agent-in-pane` primitive. If a completed worktree was refreshed and its prior Claude agent still occupies the pane, use the `herdr` skill to prompt that existing agent with the new seed instead; do not create another worktree or agent merely to redeliver it. Do not thread report-back—the review remains interactive in its own pane.
+The order matters. An agent prints the summary as its final message when the summary is the whole turn, but run in the middle of a longer turn, it narrates past the summary instead of showing it. So the summary can't be part of the review prompt.
 
-After the seed is successfully delivered, record the active pass and agent name:
+After the second prompt is delivered, record the active pass and agent name:
 
 ```bash
 scripts/dispatch.py mark --worktree <path> --pr-number <n> --head-sha <sha> --status active --pane-id <pane> --workspace-id <workspace> --agent-name <name>

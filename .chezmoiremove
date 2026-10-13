@@ -124,3 +124,7 @@
 # worktree-layout moved from bare repos to ordinary clones, and its
 # create-bare-repo script was replaced by create-clone.
 .agents/skills/worktree-layout/scripts/create-bare-repo
+# The summary-shown-check hook was retired when review sessions began showing
+# the PR summary as a turn of their own; without this it lingers on machines
+# that already applied it.
+.claude/hooks/summary-shown-check.sh
