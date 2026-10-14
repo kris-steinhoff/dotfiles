@@ -6,7 +6,8 @@ handles name collisions itself, so no caller runs a check-then-retry loop:
 
   1. If a worktree already exists on the exact requested branch AND carries this
      tool's provenance marker (<path>/.herdr-dispatch.json), it is our own prior
-     creation, so reuse it and return created=false.
+     creation, so reuse it and return created=false. If its Herdr workspace was
+     closed, reopen one on it with `herdr worktree open` (reopened=true).
   2. Else if a worktree already exists on that branch but is NOT ours (no marker,
      or another tool's checkout), auto-suffix (-2, -3, ...) to the next free name
      and create fresh.
@@ -398,6 +399,30 @@ def create_fresh(repo, branch, base, label, workspace, path):
             "branch": branch, "created": True}
 
 
+def reopen(repo, existing, branch, label, workspace):
+    """Open a Herdr workspace on our existing worktree whose workspace was
+    closed, returning its workspace id. Like create, open runs from the repo's
+    parent workspace, so a linked-worktree source retries from there."""
+    def attempt(source_workspace):
+        args = ["worktree", "open", "--path", existing, "--no-focus"]
+        args += ["--workspace", source_workspace] if source_workspace else ["--cwd", repo]
+        if label:
+            args += ["--label", label]
+        return herdr_json(args)
+
+    try:
+        result = attempt(workspace)
+    except HerdrError as error:
+        if error.code != "linked_worktree_source":
+            raise
+        result = attempt(resolve_parent(workspace, repo, branch, None))
+    workspace_id = (first_value(collect_dicts(result), "workspace_id", "open_workspace_id")
+                    or workspace_id_for_path(repo, existing))
+    if not workspace_id:
+        raise HerdrError(f"worktree open on {existing} returned no workspace id")
+    return workspace_id
+
+
 def main():
     parser = argparse.ArgumentParser(description="Create a git + Herdr worktree on a branch.")
     parser.add_argument("--branch", required=True, help="branch to create or check out")
@@ -425,14 +450,16 @@ def main():
         existing = worktree_path_for_branch(repo, args.branch)
         if existing and marker_is_ours(existing):
             workspace_id = workspace_id_for_path(repo, existing)
-            if not workspace_id:
-                raise HerdrError(f"found our worktree at {existing} but no Herdr workspace for it")
+            reopened = not workspace_id
+            if reopened:
+                workspace_id = reopen(repo, existing, args.branch, args.label, args.workspace)
             emit_success({
                 "workspace_id": workspace_id,
                 "path": existing,
                 "pane_id": shell_pane_id(workspace_id),
                 "branch": args.branch,
                 "created": False,
+                "reopened": reopened,
             })
 
         branch = args.branch

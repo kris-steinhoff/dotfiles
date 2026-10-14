@@ -235,6 +235,46 @@ def dirty(worktree):
     return bool(checked(["git", "status", "--porcelain"], cwd=worktree))
 
 
+def herdr_result(*args):
+    proc = run(["herdr", *args])
+    if proc.returncode != 0:
+        return None
+    try:
+        return json.loads(proc.stdout).get("result")
+    except ValueError:
+        return None
+
+
+def reviewer_alive(state):
+    """Whether the pass's recorded reviewer still runs in Herdr: True, False,
+    or None when Herdr can't be asked. None counts as alive everywhere, so a
+    Herdr hiccup never relaunches a reviewer that is still working."""
+    if os.environ.get("HERDR_ENV") != "1":
+        return None
+    name = state.get("agent_name")
+    if name and run(["herdr", "agent", "get", name]).returncode == 0:
+        return True
+    workspace = state.get("workspace_id")
+    listed = herdr_result("workspace", "list")
+    if not isinstance(listed, dict) or not isinstance(listed.get("workspaces"), list):
+        return None
+    open_ids = {w.get("workspace_id") for w in listed["workspaces"] if isinstance(w, dict)}
+    if workspace not in open_ids:
+        return False
+    agents = herdr_result("agent", "list")
+    if isinstance(agents, dict):
+        agents = agents.get("agents")
+    if not isinstance(agents, list):
+        return None
+    return any(isinstance(a, dict) and a.get("workspace_id") == workspace for a in agents)
+
+
+def orphaned(state):
+    """An active pass whose reviewer is gone: its agent and workspace closed,
+    or its workspace open with no agent left in it."""
+    return state.get("status") == "active" and reviewer_alive(state) is False
+
+
 def action_payload(action, item, **extra):
     return {"action": action, **item, **extra}
 
@@ -269,6 +309,24 @@ def command_prepare(args):
                 emit(action_payload("complete", item, worktree=path))
             if recorded_status == "prepared":
                 emit(action_payload("dispatch", item, worktree=path, refreshed=False))
+            if orphaned(state):
+                # Its reviewer died mid-pass. Relaunch at the same head, but only
+                # onto a clean checkout still at the head it was reviewing.
+                head = checked(["git", "rev-parse", "HEAD"], cwd=path)
+                if dirty(path) or head != wanted:
+                    judgment(
+                        f"PR #{args.pr_number}'s reviewer is gone, but its worktree has local "
+                        "changes or a different HEAD, so it can't be relaunched as is",
+                        pr_number=args.pr_number,
+                        head_branch=branch,
+                        worktree=path,
+                    )
+                state.update({"status": "prepared", "prepared_at": now()})
+                for key in ("pane_id", "workspace_id", "agent_name"):
+                    state.pop(key, None)
+                marker["github_pr_review"] = state
+                write_marker(path, marker)
+                emit(action_payload("dispatch", item, worktree=path, refreshed=False, relaunched=True))
             emit(action_payload("already_active", item, worktree=path))
 
         if recorded_status != "complete":
@@ -383,6 +441,10 @@ def cleanup_verdict(entry, state, queued):
     number = state["pr_number"]
     path = entry["path"]
     if state.get("status") != "complete":
+        if orphaned(state):
+            if number in queued:
+                return "keep", "its reviewer is gone; the next prepare relaunches it"
+            return "keep", "its reviewer is gone and review is no longer requested"
         return "keep", "the review pass has not reached a terminal decision"
     if number in queued:
         return "keep", "review is requested again, so the next prepare refreshes it"

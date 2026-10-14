@@ -29,7 +29,7 @@ It creates the git worktree and the Herdr workspace on `--branch`, stamps a prov
 
 Collisions and re-runs are handled without a caller loop:
 
-- A worktree already on the exact branch **that carries our marker** is our own prior creation, so it is reused (`created: false`).
+- A worktree already on the exact branch **that carries our marker** is our own prior creation, so it is reused (`created: false`). If its Herdr workspace was closed, a new one is opened on it with `herdr worktree open` (`reopened: true`), from the repo's parent workspace when needed, as for a fresh create.
 - A worktree already on that branch that is **not** ours is a real collision, so the branch is auto-suffixed (`-2`, `-3`, ...) to the next free name and created fresh.
 - Otherwise it creates fresh on the requested branch, checking out an existing local branch if one is there. This lets a source-preparation workflow create the branch before handing placement here.
 
@@ -52,10 +52,11 @@ From a parent workspace or a primary checkout, none of this applies and Herdr is
 
 ## Output (stdout, JSON)
 
-`{ workspace_id, path, pane_id, branch, created }`
+`{ workspace_id, path, pane_id, branch, created, reopened }`
 
 - `branch` is the final name after any collision suffix, and `path` the final checkout path.
 - `created` is `false` only when it converged onto our own existing worktree; `true` when a fresh worktree was created this run.
+- `reopened` is `true` when that existing worktree had no open workspace and this run opened one; it is present only when `created` is `false`.
 
 ## Exit codes
 
