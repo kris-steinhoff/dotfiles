@@ -18,7 +18,7 @@ Every check runs before anything is posted, and --dry-run runs only the checks.
 The batch is refused when the PR's head is no longer `head_sha` (it was written
 against code that has since moved), when an inline comment anchors to a line
 that is not a RIGHT-side position in the diff (the reviews API would reject the
-whole review), when a reply targets anything but a thread's first comment, when
+whole review) or to a file GitHub gives no patch for, when a reply targets anything but a thread's first comment, when
 a thread to resolve was not started by me, or when a cited commit is not on the
 PR. `header` is required and prepended verbatim to every message posted; this
 script requires attribution but does not decide its text.
@@ -34,38 +34,47 @@ import argparse
 import json
 import sys
 
-from pr_api import gh, pr_commits, pr_view, repo_slug, resolve_thread, review_threads, viewer_login
+from pr_api import gh, pr_commits, pr_view, repo_slug, resolve_thread, rest_list, review_threads, viewer_login
 
 EVENTS = {"APPROVE", "REQUEST_CHANGES", "COMMENT"}
+FILES_API_CAP = 3000  # the most files GitHub's PR files API lists
 
 
-def anchorable_lines(pr):
+def anchorable_lines(slug, pr):
     """Map each changed path to the set of RIGHT-side line numbers in the PR diff.
 
     A line is anchorable only if it is an added (+) or context ( ) line inside a
-    hunk, the positions GitHub accepts an inline comment on. `gh pr diff` diffs
-    the PR against its actual base (baseRefName), so stacked PRs resolve against
-    the immediate base, not the trunk.
+    hunk, the positions GitHub accepts an inline comment on. The lines come from
+    the PR files API rather than `gh pr diff`, which GitHub refuses outright for a
+    PR of more than 300 files. Like the diff, each file's patch is against the
+    PR's actual base (baseRefName), so stacked PRs resolve against the immediate
+    base, not the trunk.
+
+    Returns (lines, unpatched, listed): `unpatched` holds the paths GitHub lists
+    without a patch (a binary or very large file, or any file once a large PR's
+    total diff passes GitHub's limit), and `listed` is how many files the API
+    returned, which GitHub caps at 3000.
     """
-    diff = gh("pr", "diff", str(pr)).stdout
+    files = rest_list(f"repos/{slug}/pulls/{pr}/files")
     lines = {}
-    path = None
-    right = 0
-    for line in diff.splitlines():
-        if line.startswith("+++ "):
-            target = line[4:].strip()
-            path = None if target == "/dev/null" else target[2:] if target.startswith("b/") else target
-        elif line.startswith("@@"):
-            # @@ -l,s +r,s @@  — start the RIGHT counter at r
-            plus = line.split("+", 1)[1]
-            right = int(plus.split(",", 1)[0].split(" ", 1)[0])
-        elif path is not None and line.startswith("+") and not line.startswith("+++"):
-            lines.setdefault(path, set()).add(right)
-            right += 1
-        elif path is not None and line.startswith(" "):
-            lines.setdefault(path, set()).add(right)
-            right += 1
-    return lines
+    unpatched = set()
+    for f in files:
+        if f.get("patch") is None:
+            unpatched.add(f["filename"])
+            continue
+        anchorable = lines.setdefault(f["filename"], set())
+        right = 0
+        # split("\n"), not splitlines(), which also breaks on form feeds and
+        # other separators that can sit inside a line of code.
+        for line in f["patch"].split("\n"):
+            if line.startswith("@@"):
+                # @@ -l,s +r,s @@  — start the RIGHT counter at r
+                plus = line.split("+", 1)[1]
+                right = int(plus.split(",", 1)[0].split(" ", 1)[0])
+            elif line.startswith(("+", " ")):
+                anchorable.add(right)
+                right += 1
+    return lines, unpatched, len(files)
 
 
 def check(batch):
@@ -107,10 +116,18 @@ def check(batch):
         problems.append(f"PR head is {head[:12]}, not head_sha {str(batch.get('head_sha'))[:12]}: "
                         "the batch was written against code that has moved")
 
-    valid = anchorable_lines(pr) if comments else {}
+    valid, unpatched, listed = anchorable_lines(slug, pr) if comments else ({}, set(), 0)
     for c in comments:
-        if c["line"] not in valid.get(c["path"], set()):
-            problems.append(f"anchor {c['path']}:{c['line']} is not a RIGHT-side position in the diff")
+        anchor = f"{c['path']}:{c['line']}"
+        if c["path"] in unpatched:
+            problems.append(f"anchor {anchor} can't be checked: GitHub gives no patch for {c['path']} "
+                            "(binary, too large, or past where GitHub stops diffing a large PR); "
+                            "post this finding in the review body")
+        elif c["path"] not in valid and listed >= FILES_API_CAP:
+            problems.append(f"anchor {anchor} can't be checked: GitHub lists only the PR's first "
+                            f"{FILES_API_CAP} files, and {c['path']} is not among them")
+        elif c["line"] not in valid.get(c["path"], set()):
+            problems.append(f"anchor {anchor} is not a RIGHT-side position in the diff")
 
     threads = review_threads(slug, pr) if (replies or resolve) else []
     me = viewer_login() if resolve else None

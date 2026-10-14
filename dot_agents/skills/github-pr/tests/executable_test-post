@@ -1,0 +1,83 @@
+#!/bin/bash
+set -euo pipefail
+
+skill_dir="$(cd "$(dirname "$0")/.." && pwd)"
+script="$skill_dir/scripts/post.py"
+[ -f "$script" ] || script="$skill_dir/scripts/executable_post.py"
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/test-post.XXXXXX")"
+trap 'rm -rf "$tmp"' EXIT
+head_sha=0123456789abcdef0123456789abcdef01234567
+
+# A fake gh answering the reads post.py makes for an inline-comment dry run.
+# The files listing is $FAKE_GH_FILES, one JSON object per line, as the real
+# `gh api --paginate --jq '.[] | tojson'` prints it. `gh pr diff` answers as
+# GitHub does for a PR of more than 300 files, so any fallback to it fails.
+cat >"$tmp/gh" <<EOF_GH
+#!/bin/bash
+case "\$1 \$2" in
+"repo view") echo owner/repo ;;
+"pr view") printf '{"headRefOid":"$head_sha"}\n' ;;
+"pr diff")
+	echo 'could not find pull request diff: HTTP 406: Sorry, the diff exceeded the maximum number of files (300).' >&2
+	exit 1
+	;;
+"api repos/owner/repo/pulls/7/files") cat "\$FAKE_GH_FILES" ;;
+*)
+	echo "fake gh: unexpected call: \$*" >&2
+	exit 1
+	;;
+esac
+EOF_GH
+chmod +x "$tmp/gh"
+export PATH="$tmp:$PATH"
+export FAKE_GH_FILES="$tmp/files.jsonl"
+
+# Two hunks of app.py: lines 10-12 are context, 11 added, 12 context after a
+# removal; lines 40-41 a second hunk. lib.bin has no patch, as GitHub lists a
+# binary or oversized file. A context line holds a form feed, which must not
+# split the line and shift the count.
+python3 - "$FAKE_GH_FILES" <<'EOF_FILES'
+import json, sys
+patch = "@@ -10,3 +10,3 @@ def f():\n \tx = 1\f\n+\ty = 2\n-\ty = 3\n \treturn x\n@@ -40,1 +40,2 @@\n a\n+b"
+with open(sys.argv[1], "w") as out:
+    for f in ({"filename": "app.py", "patch": patch}, {"filename": "lib.bin"}):
+        out.write(json.dumps(f) + "\n")
+EOF_FILES
+
+failures=0
+dry_run() { # name, expected exit, expected output substring, comments JSON
+	local out status=0
+	printf '{"pr":7,"head_sha":"%s","header":"h","event":"COMMENT","body":"b","comments":%s}\n' \
+		"$head_sha" "$4" >"$tmp/batch.json"
+	out="$(python3 "$script" --dry-run "$tmp/batch.json" 2>&1)" || status=$?
+	if [ "$status" -ne "$2" ] || [[ "$out" != *"$3"* ]]; then
+		echo "FAIL $1: exit $status, wanted $2 and output containing '$3':" >&2
+		echo "$out" >&2
+		failures=$((failures + 1))
+	else
+		echo "ok $1"
+	fi
+}
+
+dry_run "anchors on added, context, and second-hunk lines pass" 0 "all checks passed" \
+	'[{"path":"app.py","line":10,"body":"x"},{"path":"app.py","line":11,"body":"x"},{"path":"app.py","line":12,"body":"x"},{"path":"app.py","line":41,"body":"x"}]'
+dry_run "a line outside every hunk is refused" 1 "anchor app.py:13 is not a RIGHT-side position" \
+	'[{"path":"app.py","line":13,"body":"x"}]'
+dry_run "a file the PR doesn't change is refused" 1 "anchor other.py:1 is not a RIGHT-side position" \
+	'[{"path":"other.py","line":1,"body":"x"}]'
+dry_run "a file listed without a patch is reported as uncheckable" 1 "anchor lib.bin:1 can't be checked: GitHub gives no patch" \
+	'[{"path":"lib.bin","line":1,"body":"x"}]'
+
+# At the files API's 3000-file cap, a path missing from the listing may be one
+# GitHub didn't list rather than one the PR doesn't change.
+python3 - "$FAKE_GH_FILES" <<'EOF_FILES'
+import json, sys
+with open(sys.argv[1], "w") as out:
+    for i in range(3000):
+        out.write(json.dumps({"filename": f"f{i}.py", "patch": "@@ -0,0 +1 @@\n+x"}) + "\n")
+EOF_FILES
+dry_run "a path beyond the 3000-file listing is reported as uncheckable" 1 "GitHub lists only the PR's first 3000 files" \
+	'[{"path":"zzz.py","line":1,"body":"x"}]'
+
+[ "$failures" -eq 0 ] || exit 1
+echo "all tests passed"
