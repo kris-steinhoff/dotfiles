@@ -18,9 +18,9 @@ Every check runs before anything is posted, and --dry-run runs only the checks.
 The batch is refused when the PR's head is no longer `head_sha` (it was written
 against code that has since moved), when an inline comment anchors to a line
 that is not a RIGHT-side position in the diff (the reviews API would reject the
-whole review) or to a file GitHub gives no patch for, when a reply targets anything but a thread's first comment, when
-a thread to resolve was not started by me, or when a cited commit is not on the
-PR. `header` is required and prepended verbatim to every message posted; this
+whole review) or to a file GitHub gives no patch for, when a reply targets
+anything but a thread's first comment, when a thread to resolve was not started
+by me, or when a cited commit is not on the PR. `header` is required and prepended verbatim to every message posted; this
 script requires attribution but does not decide its text.
 
 Order of posting: the review, then thread replies, then the conversation
