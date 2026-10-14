@@ -74,6 +74,7 @@
     "enabled": true,
     "excludedCommands": [
       "xcodebuild *",
+      "xcrun simctl *",
       "xcrun xcresulttool *"
     ],
     "filesystem": {
