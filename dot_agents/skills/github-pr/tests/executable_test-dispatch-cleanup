@@ -1,0 +1,65 @@
+#!/bin/bash
+set -euo pipefail
+
+skill_dir="$(cd "$(dirname "$0")/.." && pwd)"
+script="$skill_dir/scripts/dispatch.py"
+[ -f "$script" ] || script="$skill_dir/scripts/executable_dispatch.py"
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/test-dispatch-cleanup.XXXXXX")"
+trap 'rm -rf "$tmp"' EXIT
+repo="$(cd "$tmp" && pwd -P)/repo"
+
+# A fake gh with no review requests, and a fake Herdr with no workspaces, so
+# remove-worktree falls back to `git worktree remove`.
+mkdir "$tmp/bin"
+printf '#!/bin/bash\necho "[]"\n' >"$tmp/bin/gh"
+printf '#!/bin/bash\necho %s\n' "'{\"result\":{}}'" >"$tmp/bin/herdr"
+chmod +x "$tmp/bin/gh" "$tmp/bin/herdr"
+export PATH="$tmp/bin:$PATH" HERDR_ENV=1
+
+git init -q -b main "$repo"
+git -C "$repo" -c user.name=t -c user.email=t@t commit -q --allow-empty -m base
+echo .herdr-dispatch.json >>"$repo/.git/info/exclude"
+
+# One finished review pass per PR, set up as `prepare` leaves it: an exact-head
+# branch claimed by the helper, the PR's fetched head, and a marked worktree.
+review() { # number, status
+	local branch="pr-$1" wt="$repo/.worktrees/pr-$1"
+	git -C "$repo" branch "$branch" main
+	git -C "$repo" update-ref "refs/github-pr-review/$1/head" "$(git -C "$repo" rev-parse main)"
+	git -C "$repo" symbolic-ref "refs/github-pr-review/$1/branch" "refs/heads/$branch"
+	git -C "$repo" worktree add -q "$wt" "$branch"
+	printf '{"created_by":"herdr-dispatch","github_pr_review":{"pr_number":%s,"status":"%s","head_sha":"%s"}}\n' \
+		"$1" "$2" "$(git -C "$repo" rev-parse main)" >"$wt/.herdr-dispatch.json"
+}
+review 7 complete
+review 8 complete
+touch "$repo/.worktrees/pr-8/local-work" # uncommitted work keeps PR 8's worktree
+
+failures=0
+check() { # name, condition...
+	if "${@:2}"; then echo "ok $1"; else
+		echo "FAIL $1" >&2
+		failures=$((failures + 1))
+	fi
+}
+no_branch() { ! git -C "$repo" rev-parse -q --verify "refs/heads/$1" >/dev/null; }
+item() { python3 -c 'import json,sys; d={i["pr_number"]:i for i in json.load(sys.stdin)["items"]}; print(d[int(sys.argv[1])].get(sys.argv[2]))' "$@"; }
+
+out="$(cd "$repo" && python3 "$script" cleanup)"
+check "without --apply, cleanup only classifies" [ -d "$repo/.worktrees/pr-7" ]
+check "a finished clean pass is marked remove" [ "$(item 7 action <<<"$out")" = remove ]
+check "a pass with local work is kept" [ "$(item 8 action <<<"$out")" = keep ]
+
+out="$(cd "$repo" && python3 "$script" cleanup --apply)"
+check "--apply removes the worktree marked remove" [ ! -e "$repo/.worktrees/pr-7" ]
+check "--apply reports it removed and released" [ "$(item 7 removed <<<"$out")/$(item 7 released <<<"$out")" = True/True ]
+check "--apply deletes the exact-head branch" no_branch pr-7
+check "--apply drops the helper's refs" [ -z "$(git -C "$repo" for-each-ref refs/github-pr-review/7)" ]
+check "--apply leaves a kept worktree alone" [ -e "$repo/.worktrees/pr-8/local-work" ]
+check "--apply reports nothing done to a kept worktree" [ "$(item 8 removed <<<"$out")" = None ]
+
+[ "$failures" -eq 0 ] || {
+	echo "$out" >&2
+	exit 1
+}
+echo "all tests passed"

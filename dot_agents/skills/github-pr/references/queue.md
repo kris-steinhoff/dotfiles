@@ -9,18 +9,12 @@ Under a sandbox that proxies network access, the helper's `gh` calls reach `api.
 Each pass starts by removing review worktrees that no longer need a reviewer:
 
 ```bash
-scripts/dispatch.py cleanup [--repo <path>]
+scripts/dispatch.py cleanup --apply [--repo <path>]
 ```
 
-It returns `{items: [...]}`, one per dispatch-created review worktree in the repository, each with `action` (`remove` or `keep`), `reason`, `pr_number`, `head_branch`, `worktree`, `workspace_id`, and `agent_name`. A worktree is marked `remove` when its pass is complete, its review is not requested again, and its checkout is clean and still at the reviewed head. The review's outcome does not matter: an approval, a request for changes, and a pass finished without posting are all done with their worktree. A PR that needs another look comes back through a fresh review request, and the next `prepare` builds a new worktree for it; the re-review reads my earlier findings from GitHub, not from the old checkout. A pass still in progress, a review requested again, or local work in the checkout keeps the worktree. So does a pass whose reviewer is gone (its Herdr workspace closed, or its agent exited), which the helper checks with Herdr; its reason says so, and the next `prepare` relaunches it while review is still requested. Report those as needing a reviewer, not as mid-review.
+Run it as its own command, with nothing chained before or after it. It returns `{items: [...]}`, one per dispatch-created review worktree in the repository, each with `action` (`remove` or `keep`), `reason`, `pr_number`, `head_branch`, `worktree`, `workspace_id`, and `agent_name`. A worktree is marked `remove` when its pass is complete, its review is not requested again, and its checkout is clean and still at the reviewed head. The review's outcome does not matter: an approval, a request for changes, and a pass finished without posting are all done with their worktree. A PR that needs another look comes back through a fresh review request, and the next `prepare` builds a new worktree for it; the re-review reads my earlier findings from GitHub, not from the old checkout. A pass still in progress, a review requested again, or local work in the checkout keeps the worktree. So does a pass whose reviewer is gone (its Herdr workspace closed, or its agent exited), which the helper checks with Herdr; its reason says so, and the next `prepare` relaunches it while review is still requested. Report those as needing a reviewer, not as mid-review.
 
-For each `remove` item, run the `remove-worktree` primitive with `--worktree <worktree> --repo <repo> --force`. The force is expected: the finished reviewer may still idle in its pane, and the exact-head branch has no upstream, and `cleanup` has already checked everything those gates protect. Then drop the PR's local branch and the helper's private refs:
-
-```bash
-scripts/dispatch.py release --pr-number <n> [--repo <path>]
-```
-
-`release` deletes the branch only when its commits are on the PR's fetched head, so a needs-judgment response means it holds work found nowhere else; leave it and report it. Never remove a `keep` item, and never remove a worktree this helper did not create. Report each removal in the pass summary.
+With `--apply`, the helper acts on each `remove` item as soon as it has checked it. It removes the worktree through the `remove-worktree` primitive with `--force`, which closes its Herdr workspace and the finished reviewer idling there; the force is expected, because the exact-head branch has no upstream and the check just made covers everything that gate protects. It then deletes the PR's local branch and the helper's private refs, but only when the branch's commits are on the PR's fetched head. Each acted-on item gains `removed` and `released`, and a `problem` when either failed: a branch left behind holds work found nowhere else, so leave it and report it. Never remove a `keep` item yourself, and never remove a worktree this helper did not create. Report each removal in the pass summary. Without `--apply`, `cleanup` only classifies, which is how to look before acting; `scripts/dispatch.py release --pr-number <n>` remains for releasing one PR's branch by hand.
 
 ## Enumerate
 

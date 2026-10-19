@@ -13,6 +13,7 @@ import subprocess
 import sys
 import tempfile
 from datetime import datetime, timezone
+from pathlib import Path
 
 
 MARKER_NAME = ".herdr-dispatch.json"
@@ -23,6 +24,13 @@ GH_FIELDS = "number,title,url,author,baseRefName,headRefName,headRefOid"
 
 class DispatchError(Exception):
     pass
+
+
+class Judgment(Exception):
+    def __init__(self, reason, **partial):
+        super().__init__(reason)
+        self.reason = reason
+        self.partial = partial
 
 
 def run(argv, cwd=None):
@@ -458,6 +466,39 @@ def cleanup_verdict(entry, state, queued):
     return "remove", "the review pass is complete"
 
 
+def remove_worktree_script():
+    # The remove-worktree skill sits beside this one in the canonical skills
+    # directory; resolve() follows the per-harness symlinks back to it.
+    scripts = Path(__file__).resolve().parents[2] / "remove-worktree" / "scripts"
+    for name in ("remove-worktree", "executable_remove-worktree"):
+        if (scripts / name).is_file():
+            return str(scripts / name)
+    raise DispatchError(f"remove-worktree script not found in {scripts}")
+
+
+def remove_finished(repo, item):
+    """Remove one worktree cleanup just marked `remove`, then release its branch.
+
+    The force covers only what cleanup_verdict has already checked: the
+    exact-head branch has no upstream, and the finished reviewer may still idle
+    in its pane. Returns the fields to add to the item.
+    """
+    proc = run([remove_worktree_script(), "--worktree", item["worktree"], "--repo", repo, "--force"])
+    if proc.returncode != 0:
+        lines = proc.stdout.strip().splitlines()
+        try:
+            reason = json.loads(lines[-1]).get("reason")
+        except (IndexError, ValueError, AttributeError):
+            reason = None
+        return {"removed": False, "released": False,
+                "problem": reason or proc.stderr.strip() or f"remove-worktree exited {proc.returncode}"}
+    try:
+        release_branch(repo, item["pr_number"])
+    except (Judgment, DispatchError) as error:
+        return {"removed": True, "released": False, "problem": str(error)}
+    return {"removed": True, "released": True}
+
+
 def command_cleanup(args):
     repo = repo_root(args.repo)
     candidates = []
@@ -475,30 +516,30 @@ def command_cleanup(args):
     items = []
     for entry, state in candidates:
         action, reason = cleanup_verdict(entry, state, queued)
-        items.append(
-            {
-                "action": action,
-                "reason": reason,
-                "pr_number": state["pr_number"],
-                "head_branch": entry.get("branch", ""),
-                "worktree": entry["path"],
-                "workspace_id": state.get("workspace_id"),
-                "agent_name": state.get("agent_name"),
-            }
-        )
+        item = {
+            "action": action,
+            "reason": reason,
+            "pr_number": state["pr_number"],
+            "head_branch": entry.get("branch", ""),
+            "worktree": entry["path"],
+            "workspace_id": state.get("workspace_id"),
+            "agent_name": state.get("agent_name"),
+        }
+        if args.apply and action == "remove":
+            item.update(remove_finished(repo, item))
+        items.append(item)
     emit({"items": items})
 
 
-def command_release(args):
-    repo = repo_root(args.repo)
-    number = args.pr_number
+def release_branch(repo, number):
+    """Delete a removed review's local branch and this helper's refs, or raise Judgment."""
     claim = claimed_branch(repo, number)
     if not claim:
-        judgment(f"PR #{number} has no branch claimed by this helper", pr_number=number)
+        raise Judgment(f"PR #{number} has no branch claimed by this helper", pr_number=number)
     branch = claim.removeprefix("refs/heads/")
     checkout = worktree_for_branch(repo, branch)
     if checkout:
-        judgment(
+        raise Judgment(
             f"branch {branch!r} is still checked out; remove its worktree first",
             pr_number=number,
             head_branch=branch,
@@ -511,7 +552,7 @@ def command_release(args):
         # Delete only commits fetched from the PR; anything else exists nowhere but here.
         on_pr = fetched and run(["git", "merge-base", "--is-ancestor", tip, fetched], cwd=repo).returncode == 0
         if not on_pr:
-            judgment(
+            raise Judgment(
                 f"branch {branch!r} holds commits that are not on PR #{number}'s fetched head",
                 pr_number=number,
                 head_branch=branch,
@@ -521,7 +562,14 @@ def command_release(args):
     checked(["git", "symbolic-ref", "--delete", claim_ref(number)], cwd=repo, label="drop branch claim")
     if fetched:
         checked(["git", "update-ref", "-d", head_ref, fetched], cwd=repo, label="drop fetched PR head")
-    emit({"released": True, "pr_number": number, "head_branch": branch})
+    return {"released": True, "pr_number": number, "head_branch": branch}
+
+
+def command_release(args):
+    try:
+        emit(release_branch(repo_root(args.repo), args.pr_number))
+    except Judgment as j:
+        judgment(j.reason, **j.partial)
 
 
 def command_complete(args):
@@ -564,6 +612,8 @@ def parser():
 
     cleanup = sub.add_parser("cleanup", help="classify completed review worktrees for removal")
     cleanup.add_argument("--repo", default=os.getcwd())
+    cleanup.add_argument("--apply", action="store_true",
+                         help="remove each worktree marked remove and release its branch")
     cleanup.set_defaults(func=command_cleanup)
 
     release = sub.add_parser("release", help="delete a removed review's local branch and refs")
