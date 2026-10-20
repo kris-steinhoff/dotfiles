@@ -5,9 +5,10 @@
 # ///
 """Show a live summary of current AI subscription usage.
 
-Reads the local Claude Code and Codex sign-ins, then queries their respective
-usage endpoints. It currently supports Claude and ChatGPT (via Codex), and
-renders whichever limit windows each account reports.
+Reads the local Claude Code and Codex sign-ins and any OpenRouter keys in the
+environment, then queries their respective usage endpoints. It supports Claude,
+ChatGPT (via Codex), and OpenRouter, and renders whichever limit windows each
+account reports.
 
 On a terminal it refreshes in place until interrupted. `--once` prints a
 single snapshot and exits. `--json` prints each provider's raw payload, and
@@ -57,6 +58,10 @@ KEYCHAIN_SERVICE = "Claude Code-credentials"  # macOS Keychain entry name
 # `/api/codex/usage` spelling is for the newer internal deployment.
 CHATGPT_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage"
 CODEX_AUTH_PATH = Path.home() / ".codex" / "auth.json"
+# The key endpoint reports the calling key's spend and budgets. The balance
+# endpoint accepts only a management key, so it reads a second variable.
+OPENROUTER_KEY_URL = "https://openrouter.ai/api/v1/key"
+OPENROUTER_CREDITS_URL = "https://openrouter.ai/api/v1/credits"
 STATE_DIR = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "state") / "ai-usage"
 
 BAR_WIDTH = 26
@@ -155,6 +160,21 @@ def load_chatgpt_oauth() -> dict:
     return tokens
 
 
+def load_openrouter_keys() -> dict:
+    """Read OpenRouter's keys from the environment; either one alone is enough."""
+    keys = {
+        "api_key": os.environ.get("OPENROUTER_API_KEY"),
+        "management_key": os.environ.get("OPENROUTER_MANAGEMENT_KEY"),
+    }
+    if not any(keys.values()):
+        raise UsageError(
+            "Could not find OpenRouter keys.",
+            "Set OPENROUTER_API_KEY, and OPENROUTER_MANAGEMENT_KEY to show the balance.",
+            credentials_missing=True,
+        )
+    return keys
+
+
 # --------------------------------------------------------------------------- #
 # API
 # --------------------------------------------------------------------------- #
@@ -181,64 +201,66 @@ def parse_retry_after(value: str | None) -> float | None:
     return max(0.0, delta)
 
 
-def fetch_usage(token: str) -> dict:
-    req = urllib.request.Request(
-        CLAUDE_USAGE_URL,
-        headers={
-            "Authorization": f"Bearer {token}",
-            "anthropic-beta": OAUTH_BETA,
-            "User-Agent": "claude-usage-cli",
-            "Accept": "application/json",
-        },
-    )
+def get_json(url: str, headers: dict, api: str, auth_hint: str) -> dict:
+    """GET a usage endpoint, turning every failure into a UsageError the same way."""
+    req = urllib.request.Request(url, headers={"Accept": "application/json", **headers})
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
             return json.loads(resp.read())
     except urllib.error.HTTPError as e:
         if e.code in (401, 403):
-            raise UsageError(
-                f"{e.code} {e.reason}",
-                hint="Open Claude Code once to refresh the stored token, then try again.",
-                status=e.code,
-            )
+            raise UsageError(f"{e.code} {e.reason}", hint=auth_hint, status=e.code)
         if e.code == 429:
             retry = parse_retry_after(e.headers.get("Retry-After"))
             raise UsageError(f"{e.code} {e.reason}", retry_after=retry, status=e.code)
         raise UsageError(f"{e.code} {e.reason}", status=e.code)
     except urllib.error.URLError as e:
-        raise UsageError(f"Could not reach the Claude usage API: {e.reason}")
+        raise UsageError(f"Could not reach the {api} usage API: {e.reason}")
     except TimeoutError:
-        raise UsageError("Timed out contacting the Claude usage API.")
+        raise UsageError(f"Timed out contacting the {api} usage API.")
+
+
+def fetch_usage(token: str) -> dict:
+    return get_json(
+        CLAUDE_USAGE_URL,
+        {"Authorization": f"Bearer {token}", "anthropic-beta": OAUTH_BETA, "User-Agent": "claude-usage-cli"},
+        "Claude",
+        "Open Claude Code once to refresh the stored token, then try again.",
+    )
 
 
 def fetch_chatgpt_usage(oauth: dict) -> dict:
     """Fetch the same Codex allowance snapshot shown by ChatGPT."""
-    headers = {
-        "Authorization": f"Bearer {oauth['access_token']}",
-        "User-Agent": "ai-usage-cli",
-        "Accept": "application/json",
-    }
+    headers = {"Authorization": f"Bearer {oauth['access_token']}", "User-Agent": "ai-usage-cli"}
     if oauth.get("account_id"):
         headers["ChatGPT-Account-Id"] = oauth["account_id"]
-    req = urllib.request.Request(CHATGPT_USAGE_URL, headers=headers)
-    try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            return json.loads(resp.read())
-    except urllib.error.HTTPError as e:
-        if e.code in (401, 403):
-            raise UsageError(
-                f"{e.code} {e.reason}",
-                hint="Open Codex once to refresh the stored token, then try again.",
-                status=e.code,
-            )
-        if e.code == 429:
-            retry = parse_retry_after(e.headers.get("Retry-After"))
-            raise UsageError(f"{e.code} {e.reason}", retry_after=retry, status=e.code)
-        raise UsageError(f"{e.code} {e.reason}", status=e.code)
-    except urllib.error.URLError as e:
-        raise UsageError(f"Could not reach the ChatGPT usage API: {e.reason}")
-    except TimeoutError:
-        raise UsageError("Timed out contacting the ChatGPT usage API.")
+    return get_json(
+        CHATGPT_USAGE_URL, headers, "ChatGPT", "Open Codex once to refresh the stored token, then try again.",
+    )
+
+
+def fetch_openrouter_usage(keys: dict) -> dict:
+    """Fetch the API key's spend and budgets, and the balance when a management key is set.
+
+    Both answers go in one payload, `key` and `credits`, each present only when
+    its key is. A failure of either fails the whole fetch, as for any provider.
+    """
+    data = {}
+    if keys.get("api_key"):
+        data["key"] = get_json(
+            OPENROUTER_KEY_URL,
+            {"Authorization": f"Bearer {keys['api_key']}", "User-Agent": "ai-usage-cli"},
+            "OpenRouter",
+            "Check that OPENROUTER_API_KEY holds a current OpenRouter API key.",
+        ).get("data") or {}
+    if keys.get("management_key"):
+        data["credits"] = get_json(
+            OPENROUTER_CREDITS_URL,
+            {"Authorization": f"Bearer {keys['management_key']}", "User-Agent": "ai-usage-cli"},
+            "OpenRouter",
+            "OPENROUTER_MANAGEMENT_KEY must be a management key; an ordinary API key can't read the balance.",
+        ).get("data") or {}
+    return data
 
 
 # --------------------------------------------------------------------------- #
@@ -412,6 +434,74 @@ def build_chatgpt_windows(data: dict) -> list[Window]:
     return windows
 
 
+# What enforces each OpenRouter budget, kept short because the label column is
+# shared with the other providers' panels.
+BUDGET_SCOPES = {
+    "key_limit": "Key limit",
+    "api_key": "Key",
+    "workspace_default_key": "Key",
+    "member": "Member",
+    "workspace_default_member": "Member",
+    "workspace": "Workspace",
+}
+# A month has no fixed length, so a monthly budget reports none.
+BUDGET_SECONDS = {"daily": 24 * HOUR, "weekly": WEEK_SECONDS}
+
+
+def build_openrouter_windows(data: dict) -> list[Window]:
+    """Adapt OpenRouter's prepaid credits to the shared display model.
+
+    OpenRouter has no subscription windows. The account balance becomes a bar
+    of credits left, each budget enforced on the API key becomes a dollar bar
+    that resets on its own interval, and the free-model request allowance gets
+    a bar once the day has used any of it.
+    """
+    windows: list[Window] = []
+    credits = data.get("credits") or {}
+    if isinstance(credits.get("total_credits"), (int, float)):
+        windows.append(
+            Window(
+                label="Credits · balance",
+                percent=None,
+                used_dollars=credits.get("total_usage") or 0.0,
+                limit_dollars=credits["total_credits"],
+                show_remaining=True,
+                key="balance",
+            )
+        )
+    key = data.get("key") or {}
+    for budget in key.get("budgets") or []:
+        if not isinstance(budget, dict) or not isinstance(budget.get("limit_usd"), (int, float)):
+            continue
+        interval = budget.get("reset_interval")
+        scope = budget.get("scope")
+        windows.append(
+            Window(
+                label=f"{BUDGET_SCOPES.get(scope, 'Budget')} · {interval or 'total'}",
+                percent=None,
+                used_dollars=budget.get("spend_usd") or 0.0,
+                limit_dollars=budget["limit_usd"],
+                resets_at=budget.get("resets_at"),
+                key=f"budget:{scope}:{interval or 'total'}",
+                window_seconds=BUDGET_SECONDS.get(interval),
+            )
+        )
+    free = key.get("free_model_daily_requests") or {}
+    if free.get("limit") and free.get("used"):
+        # The allowance is counted per UTC day.
+        tomorrow = datetime.now(timezone.utc).date() + timedelta(days=1)
+        windows.append(
+            Window(
+                label="Free models · day",
+                percent=100.0 * free["used"] / free["limit"],
+                resets_at=datetime(tomorrow.year, tomorrow.month, tomorrow.day, tzinfo=timezone.utc).isoformat(),
+                key="free_model_daily",
+                window_seconds=24 * HOUR,
+            )
+        )
+    return windows
+
+
 # --------------------------------------------------------------------------- #
 # Rendering
 # --------------------------------------------------------------------------- #
@@ -460,6 +550,8 @@ def amount_text(w: Window) -> Text:
     if w.is_dollar:
         used = w.used_dollars or 0.0
         limit = w.limit_dollars or 0.0
+        if w.show_remaining:
+            return Text(f"${limit - used:,.2f} left", style=f"bold {color}")
         return Text(f"${used:,.2f} / ${limit:,.2f}", style=color)
     if w.show_remaining:
         return Text(f"{100.0 - w.pct:.0f}% left", style=f"bold {color}")
@@ -517,6 +609,17 @@ def extra_usage_line(data: dict) -> Text | None:
         parts.append(text, style="white")
     else:
         parts.append("enabled", style="white")
+    return parts
+
+
+def openrouter_spend_line(data: dict) -> Text | None:
+    """Summarize the API key's spend by period, which shows even with no budget to draw."""
+    key = data.get("key")
+    if not key:
+        return None
+    periods = (("usage_daily", "today"), ("usage_weekly", "this week"), ("usage_monthly", "this month"))
+    parts = Text("Spend  ", style="cyan")
+    parts.append(" · ".join(f"${key.get(field) or 0:,.2f} {period}" for field, period in periods), style="white")
     return parts
 
 
@@ -579,12 +682,14 @@ def build_panel(
     title: str = "Claude Usage",
     account: Text | None = None,
     window_builder=build_windows,
+    summary=extra_usage_line,
 ) -> Panel:
     windows = window_builder(data)
     body: list = []
 
     if not windows:
-        body.append(Align.center(Text("No active usage windows reported.", style="grey62")))
+        line = summary(data)
+        body.append(line if line is not None else Align.center(Text("No active usage windows reported.", style="grey62")))
     else:
         updated = updated_cell(updated_at, fresh_age)
 
@@ -629,7 +734,7 @@ def build_panel(
         # The synthesized spend window already shows this data, so only add the
         # extra-usage summary when spend was not rendered as a window.
         if not any(w.label == "Credits · monthly" for w in windows):
-            extra = extra_usage_line(data)
+            extra = summary(data)
             if extra is not None:
                 body.append(Text(""))
                 body.append(extra)
@@ -682,15 +787,22 @@ def wait_for_key(fd: int | None, timeout: float) -> str:
     return ""
 
 
-SERVICE_TITLES = {"claude": "Claude Usage", "chatgpt": "ChatGPT Usage"}
+SERVICE_TITLES = {"claude": "Claude Usage", "chatgpt": "ChatGPT Usage", "openrouter": "OpenRouter Usage"}
+WINDOW_BUILDERS = {
+    "claude": build_windows,
+    "chatgpt": build_chatgpt_windows,
+    "openrouter": build_openrouter_windows,
+}
 
 
 def fetch_service(service: str) -> tuple[dict, dict]:
     if service == "claude":
         oauth = load_oauth()
         return oauth, fetch_usage(oauth["accessToken"])
-    oauth = load_chatgpt_oauth()
-    return oauth, fetch_chatgpt_usage(oauth)
+    if service == "chatgpt":
+        oauth = load_chatgpt_oauth()
+        return oauth, fetch_chatgpt_usage(oauth)
+    return {}, fetch_openrouter_usage(load_openrouter_keys())
 
 
 # --------------------------------------------------------------------------- #
@@ -808,6 +920,12 @@ def load_service(service: str, max_age: float, force: bool = False) -> Cached:
         try:
             oauth, data = fetch_service(service)
         except UsageError as e:
+            # Sign-in is this caller's own fact, and OpenRouter's keys live in
+            # its environment, so a caller without them would otherwise hide
+            # the service from every caller that has them. Nothing was fetched,
+            # so there is no backoff to share either.
+            if e.credentials_missing:
+                return replace(entry, error=e)
             retry_at = None
             if e.status == 429:
                 # Clamp 0.0/None to the default so a bogus Retry-After near
@@ -839,7 +957,12 @@ def service_panel(
         return build_panel(
             data, account, footer, updated_at=updated_at, fresh_age=fresh_age, label_width=label_width,
         )
-    plan = (data.get("plan_type") or "ChatGPT").replace("_", " ")
+    if service == "chatgpt":
+        plan = (data.get("plan_type") or "ChatGPT").replace("_", " ")
+        summary = extra_usage_line
+    else:
+        plan = "free tier" if (data.get("key") or {}).get("is_free_tier") else "prepaid"
+        summary = openrouter_spend_line
     return build_panel(
         data,
         footer=footer,
@@ -848,7 +971,8 @@ def service_panel(
         label_width=label_width,
         title=SERVICE_TITLES[service],
         account=Text(plan, style="magenta"),
-        window_builder=build_chatgpt_windows,
+        window_builder=WINDOW_BUILDERS[service],
+        summary=summary,
     )
 
 
@@ -857,7 +981,7 @@ def build_dashboard(services: list[str], entries: dict[str, Cached], now: float)
         window.label
         for service in services
         if entries[service].data is not None
-        for window in (build_windows if service == "claude" else build_chatgpt_windows)(entries[service].data)
+        for window in WINDOW_BUILDERS[service](entries[service].data)
     ]
     label_width = max((Text(label).cell_len for label in labels), default=None)
     panels: list[Panel] = []
@@ -940,7 +1064,7 @@ def windows_json(service: str, entry: Cached) -> dict:
         status = "ok"
     windows = []
     if entry.data is not None:
-        built = build_windows(entry.data) if service == "claude" else build_chatgpt_windows(entry.data)
+        built = WINDOW_BUILDERS[service](entry.data)
         windows = [
             {
                 "key": w.key,
@@ -973,8 +1097,8 @@ def die_on(service: str, error: UsageError) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Show current AI subscription usage.")
     parser.add_argument(
-        "--service", choices=("claude", "chatgpt"), action="append",
-        help="show only this service (repeatable; default: both)",
+        "--service", choices=tuple(SERVICE_TITLES), action="append",
+        help="show only this service (repeatable; default: all)",
     )
     parser.add_argument(
         "--json", nargs="?", const="raw", choices=("raw", "windows"),
@@ -988,7 +1112,7 @@ def main() -> None:
              "(default: 300 / 5 minutes, minimum: 5)",
     )
     args = parser.parse_args()
-    services = args.service or ["claude", "chatgpt"]
+    services = args.service or list(SERVICE_TITLES)
     interval = max(5, args.interval)
 
     if args.json == "windows":
