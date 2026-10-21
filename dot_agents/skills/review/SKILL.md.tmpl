@@ -1,6 +1,6 @@
 ---
 name: review
-description: Routes review of a proposed implementation through one suitable available reviewer and normalizes its findings as Blocker, Follow-up, or Nit without editing code. Use for local implementations or other proposed code changes. When subagents are available and the review is substantial enough to benefit from isolation, callers should run this skill in a subagent with a self-contained brief containing the intent and change scope.
+description: Routes review of a proposed implementation through one suitable available reviewer and normalizes its findings as Blocker, Follow-up, or Nit without editing code. Use for local implementations or other proposed code changes. When subagents are available and the review is substantial enough to benefit from isolation, callers should run this skill in a subagent that starts without the caller's conversation, with a self-contained brief containing the intent and change scope.
 {{- with get . "custom" }}
 {{ . }}
 {{- end }}
@@ -15,6 +15,12 @@ Review a proposed implementation by routing it through one capable review mechan
 Use a reviewer named by the caller when one was specified. Otherwise choose one suitable specialized reviewer available in the harness, such as a native code-review command or an installed review skill. If none is available, perform the review directly. Use one reviewer only unless the caller explicitly requests additional passes, and do not re-invoke this `review` skill recursively.
 
 Give the selected reviewer the implementation intent, change scope, classification model, Nit policy, and output contract below. When a direct invocation does not specify a change scope, infer the current working-tree or branch diff and state that assumption. A delegated invocation should already contain a self-contained brief.
+
+## Keep the reviewer independent
+
+A reviewer that has read the case for a change tends to check that case rather than look for what it missed. So a delegated reviewer starts without the implementer's conversation: a subagent with a fresh context, not a fork of the current one (in Codex, `spawn_agent` with `fork_turns: "none"`; in Claude Code, a new agent rather than a fork). Its brief carries the intent in the user's own words, including any concerns they named, and the change scope. It leaves out the implementer's reasoning, its account of why the change is enough, and the results of its own checks, so the reviewer reaches those conclusions on its own or doesn't.
+
+When the review runs inline in the implementer's own session, say so under `Verification`, since that review was not independent.
 
 ## Scope and boundaries
 
