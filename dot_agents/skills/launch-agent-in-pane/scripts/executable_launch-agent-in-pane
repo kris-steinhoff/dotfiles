@@ -33,8 +33,8 @@ not a silent drop. Model and persona may both be given — a persona sets its ow
 model via frontmatter/profile, and an explicit `--model` overrides it; both pass
 through.
 
-Adding an agent kind is a MODEL_FLAGS table entry, nothing else. Most kinds take
-`--model <hint>`; gemini and codex take `-m <hint>`.
+Adding an agent kind is a KINDS entry, plus a MODEL_FLAGS entry when it does not
+take `--model <hint>` (gemini and codex take `-m <hint>`).
 
 Requires HERDR_ENV=1: it drives the `herdr` CLI.
 
@@ -59,7 +59,7 @@ import re
 import subprocess
 import sys
 
-KINDS = ["claude", "codex", "gemini", "copilot", "opencode"]
+KINDS = ["claude", "codex", "gemini", "copilot", "opencode", "pi"]
 
 # Turn a short model hint (e.g. "opus") into the agent CLI's flag. Most kinds
 # accept --model; gemini and codex use -m. Extend the table to add a kind.
