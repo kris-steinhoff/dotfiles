@@ -34,11 +34,11 @@ The queue mode removes finished review worktrees, then dispatches or refreshes r
 
 ## `review <n>`: dispatch or conduct the review
 
-Resolve the PR. If the current checkout is not its recorded exact-head-branch review worktree, read [references/queue.md](references/queue.md) and run that document's prepare, create, mark, and launch flow for this PR alone, then stop; the launched reviewer continues interactively in its pane. If the current checkout is the recorded worktree for this PR and head SHA, conduct the review here.
+Resolve the PR. If the current checkout is not its recorded exact-head-branch review worktree, read [references/queue.md](references/queue.md) and run that document's prepare, create, mark, and launch flow for this PR alone, then stop; the launched reviewer continues interactively in its pane. If the current checkout is the recorded review worktree for this PR, conduct the review here, starting with the head check in [Keep up with the head](#keep-up-with-the-head), because the PR may have moved since dispatch.
 
 Read the PR title, author, body, base branch, current head SHA, and changed files, and run `scripts/feedback.py <n>` for my prior reviews and the threads I started. On a re-review, include unresolved prior findings in the review brief so the reviewer verifies them against the current code and does not duplicate findings that still stand.
 
-Invoke the shared `review` skill once with a self-contained brief containing:
+Invoke the shared `review` skill once per head with a self-contained brief containing:
 
 - the PR's stated intent and base branch
 - the change scope (`<base>...HEAD` in this checkout)
@@ -55,7 +55,19 @@ Triage follows [Triage with the user](#triage-with-the-user), with the review's 
 
 Render the confirmed review into a batch with one inline comment per included finding where possible, replies on the threads of still-open prior findings, and `resolve` for the verified fixes. Prefix each finding body with `[Blocker]` or `[Follow-up]`.
 
-When the workflow reaches a terminal decision (successfully posted, or the user explicitly decides to finish without posting), record the pass complete with `scripts/dispatch.py complete`. Leave it active if posting failed or the user has not finished triage, so a changed PR head is deferred rather than replacing the checkout underneath an unfinished review.
+When the workflow reaches a terminal decision (successfully posted, or the user explicitly decides to finish without posting), record the pass complete with `scripts/dispatch.py complete`. Leave it active if posting failed or the user has not finished triage, so `review ready` never replaces the checkout underneath an unfinished review.
+
+### Keep up with the head
+
+The author may push while the pass is open, and a review formed against older code can't post. So check the head when the pass starts, before triage's first question, and before the final confirmation:
+
+```bash
+scripts/dispatch.py advance --pr-number <n>
+```
+
+Run it from the review worktree; under a sandbox that proxies network access, it reaches `api.github.com` and `github.com`. It fetches the PR's current head and, when the head has moved, resets this clean checkout onto it and records the new head in the pass. Don't move the branch any other way: git refuses to fetch into a branch that is checked out, and the pass's record must follow the checkout. It returns `advanced: false` when nothing moved, and needs-judgment when the checkout has local changes, which goes to the user.
+
+When it advances at the start, review the new head as usual. When it advances later, tell the user in a line that the head moved and what the new commits do, then review again before going on: invoke the shared `review` skill with the same brief plus the commits since `previous_head` (`previous_head..HEAD`, or a diff between the two heads when `rewritten` says it was a force-push) and this pass's findings so far with the user's rulings. Triage only what is new or materially changed. A finding the user already ruled on that still stands keeps its ruling, and one the new commits fix drops out; name the dropped ones in triage's count line, such as `1 Follow-up; the hero height one is fixed by 066422b`.
 
 ## `respond <n>`: reply as the author
 
@@ -97,13 +109,13 @@ Render the confirmed batch with this exact header, so every posted message is at
 {{ includeTemplate ".chezmoitemplates/posting-attribution.md" . | trim }}
 ```
 
-Set `head_sha` to the head the content was formed against. Run `scripts/post.py --dry-run batch.json` and resolve every problem it reports. If the PR's head has moved, do not post content formed against the stale code: tell the user a new pass is needed and, in a review pass, leave it active so `review ready` reports the stale head rather than changing the checkout underneath the current session. Only then run `scripts/post.py batch.json`. If a step fails after part of the batch landed, retry only with the remainder batch the poster prints, never the original. Do not fall back to hand-built `gh` posting if the script fails. Posting is the only external mutation this skill performs, and only after the confirmation above.
+Set `head_sha` to the head the content was formed against. Run `scripts/post.py --dry-run batch.json` and resolve every problem it reports. If the PR's head has moved, do not post content formed against the stale code. In a review, go back through [Keep up with the head](#keep-up-with-the-head) and confirm again. In `respond`, read the new commits, revise any draft they change (a new commit may fix what a reply was about to decline), and confirm again. Only then run `scripts/post.py batch.json`. If a step fails after part of the batch landed, retry only with the remainder batch the poster prints, never the original. Do not fall back to hand-built `gh` posting if the script fails. Posting is the only external mutation this skill performs, and only after the confirmation above.
 
 ## Boundaries
 
 - Do not edit the PR's source in any mode.
 - Do not request or report Nits.
 - Do not launch more than one active review pass for the same PR head.
-- Do not update an active review worktree when the PR head changes; report it as stale and let a later `review ready` run refresh it after the pass completes.
+- Move an active review worktree to a new PR head only from its own pass, with `scripts/dispatch.py advance`; `review ready` reports it as stale and leaves it alone.
 - Do not remove a review worktree except through `review ready`'s cleanup step, or when the user separately asks.
 - Resolve only threads I started, and only in a review.

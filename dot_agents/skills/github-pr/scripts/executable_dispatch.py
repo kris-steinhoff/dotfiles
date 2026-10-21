@@ -147,7 +147,7 @@ def verified_metadata(repo, number):
         fetched = fetch_head(repo, number)
     if fetched != item["head_sha"]:
         judgment(
-            f"PR #{number} moved while it was being prepared; retry on the next queue pass",
+            f"PR #{number} moved while its head was being fetched; retry",
             pr_number=number,
             reported_head=item["head_sha"],
             fetched_head=fetched,
@@ -312,16 +312,12 @@ def command_prepare(args):
             )
 
         recorded_status = state.get("status", "prepared" if interrupted_creation else "active")
-        if current == wanted:
-            if recorded_status == "complete":
-                emit(action_payload("complete", item, worktree=path))
-            if recorded_status == "prepared":
-                emit(action_payload("dispatch", item, worktree=path, refreshed=False))
+        if recorded_status == "active":
             if orphaned(state):
-                # Its reviewer died mid-pass. Relaunch at the same head, but only
-                # onto a clean checkout still at the head it was reviewing.
+                # Its reviewer died mid-pass. Relaunch it at the PR's current head,
+                # but only from a clean checkout still at the head it was reviewing.
                 head = checked(["git", "rev-parse", "HEAD"], cwd=path)
-                if dirty(path) or head != wanted:
+                if dirty(path) or head != state.get("head_sha", current):
                     judgment(
                         f"PR #{args.pr_number}'s reviewer is gone, but its worktree has local "
                         "changes or a different HEAD, so it can't be relaunched as is",
@@ -329,15 +325,17 @@ def command_prepare(args):
                         head_branch=branch,
                         worktree=path,
                     )
-                state.update({"status": "prepared", "prepared_at": now()})
+                if head != wanted:
+                    checked(["git", "reset", "--hard", wanted], cwd=path, label="refresh orphaned review worktree")
+                state.update({"head_sha": wanted, "status": "prepared", "prepared_at": now()})
                 for key in ("pane_id", "workspace_id", "agent_name"):
                     state.pop(key, None)
                 marker["github_pr_review"] = state
                 write_marker(path, marker)
-                emit(action_payload("dispatch", item, worktree=path, refreshed=False, relaunched=True))
-            emit(action_payload("already_active", item, worktree=path))
-
-        if recorded_status != "complete":
+                emit(action_payload("dispatch", item, worktree=path, refreshed=head != wanted, relaunched=True))
+            if current == wanted:
+                emit(action_payload("already_active", item, worktree=path))
+            # Its live reviewer moves the checkout itself, with `advance`.
             emit(
                 action_payload(
                     "stale",
@@ -347,15 +345,23 @@ def command_prepare(args):
                     active_head=state.get("head_sha", current),
                 )
             )
+
+        if current == wanted:
+            if recorded_status == "complete":
+                emit(action_payload("complete", item, worktree=path))
+            emit(action_payload("dispatch", item, worktree=path, refreshed=False))
+
+        # A completed pass, or a prepared one whose launch never happened, at an
+        # old head: move it to the new one.
         if dirty(path):
             judgment(
-                f"completed review worktree for PR #{args.pr_number} is dirty and cannot be refreshed",
+                f"review worktree for PR #{args.pr_number} is dirty and cannot be refreshed",
                 pr_number=args.pr_number,
                 head_branch=branch,
                 worktree=path,
             )
 
-        checked(["git", "reset", "--hard", wanted], cwd=path, label="refresh completed review worktree")
+        checked(["git", "reset", "--hard", wanted], cwd=path, label="refresh review worktree")
         state.update(
             {
                 "pr_number": args.pr_number,
@@ -580,6 +586,50 @@ def command_complete(args):
     command_mark(args)
 
 
+def command_advance(args):
+    """Move a live pass's own worktree to the PR's current head.
+
+    Git refuses to fetch into a branch that is checked out, so the reviewer
+    can't pull the new head into its branch directly; the helper fetches it to
+    its private ref and resets the clean checkout onto it instead.
+    """
+    root, marker, state, head = assert_review_worktree(args.worktree, args.pr_number)
+    if state.get("status") == "complete":
+        judgment(
+            f"PR #{args.pr_number}'s pass is complete; a new review request starts a new one",
+            pr_number=args.pr_number,
+            worktree=root,
+        )
+    item = verified_metadata(root, args.pr_number)
+    wanted = item["head_sha"]
+    result = {"pr_number": args.pr_number, "head_sha": wanted, "worktree": root}
+    if head == wanted:
+        emit({"advanced": False, **result})
+    branch = checked(["git", "branch", "--show-current"], cwd=root)
+    if branch != item["head_branch"]:
+        judgment(
+            f"worktree is on {branch!r}, not PR #{args.pr_number}'s head branch {item['head_branch']!r}",
+            worktree=root,
+            pr_number=args.pr_number,
+        )
+    if dirty(root):
+        judgment(
+            f"review worktree for PR #{args.pr_number} has local changes, so it can't move to the new head",
+            worktree=root,
+            pr_number=args.pr_number,
+            previous_head=head,
+            pr_head=wanted,
+        )
+    # A force-push leaves the old head off the new history, so a diff between
+    # the two heads is all that compares them.
+    rewritten = run(["git", "merge-base", "--is-ancestor", head, wanted], cwd=root).returncode != 0
+    checked(["git", "reset", "--hard", wanted], cwd=root, label="advance review worktree")
+    state.update({"head_sha": wanted, "advanced_at": now()})
+    marker["github_pr_review"] = state
+    write_marker(root, marker)
+    emit({"advanced": True, "previous_head": head, "rewritten": rewritten, **result})
+
+
 def parser():
     root = argparse.ArgumentParser(description=__doc__)
     sub = root.add_subparsers(dest="command", required=True)
@@ -609,6 +659,11 @@ def parser():
     complete.add_argument("--pr-number", type=int, required=True)
     complete.add_argument("--head-sha", required=True)
     complete.set_defaults(func=command_complete)
+
+    advance = sub.add_parser("advance", help="move a live pass's worktree to the PR's current head")
+    advance.add_argument("--worktree", default=os.getcwd())
+    advance.add_argument("--pr-number", type=int, required=True)
+    advance.set_defaults(func=command_advance)
 
     cleanup = sub.add_parser("cleanup", help="classify completed review worktrees for removal")
     cleanup.add_argument("--repo", default=os.getcwd())
