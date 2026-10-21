@@ -16,10 +16,10 @@ would clobber that state on every apply and force re-trusting projects and hooks
 A modify_ script instead receives the current file on stdin and its stdout
 becomes the new file. We parse with tomlkit (which preserves the layout of
 everything it does not touch), set only the settings we manage (model, the
-project doc fallback, approval behavior, [features], [agents] -- the last
-templated on agentBudget), and write the whole document back. Everything Codex
-wrote round-trips verbatim, so applies stay idempotent and nothing is silently
-dropped, whatever new keys Codex may add.
+project doc fallback, approval behavior, [features], the sandbox's writable
+roots, [agents] -- the last templated on agentBudget), and write the whole
+document back. Everything Codex wrote round-trips verbatim, so applies stay
+idempotent and nothing is silently dropped, whatever new keys Codex may add.
 """
 
 import sys
@@ -42,6 +42,18 @@ doc["approvals_reviewer"] = "auto_review"
 features = tomlkit.table()
 features["hooks"] = True
 doc["features"] = features
+
+# The shared package caches, the same ones Claude Code's sandbox may write, so
+# repository gates run on warm caches instead of refilling a temp cache over a
+# network the sandbox withholds. Only this key is managed; anything else in the
+# table (network_access, say) stays as the machine has it.
+if "sandbox_workspace_write" not in doc:
+    doc["sandbox_workspace_write"] = tomlkit.table()
+doc["sandbox_workspace_write"]["writable_roots"] = [
+    "{{ .chezmoi.homeDir }}/.cache/uv",
+    "{{ .chezmoi.homeDir }}/.local/share/uv/tools",
+    "{{ .chezmoi.homeDir }}/.npm/_cacache",
+]
 
 agents = tomlkit.table()
 agents["max_concurrent_threads_per_session"] = {{ if $generous }}4{{ else }}2{{ end }}
