@@ -90,14 +90,16 @@ Render the confirmed replies into a batch with no review: `thread_replies` for i
 
 ## Triage with the user
 
-Open triage with a one-line count of the items, such as `2 Blockers and 3 Follow-ups`, then ask the first item's question.
+Open triage with a one-line count of the items, such as `2 Blockers and 3 Follow-ups`, then ask about them.
 
-Walk through every item individually. Ask only whether that item should be included; do not ask for an overall verdict yet.
+Every item gets its own question and its own ruling, but the questions go out together, Blockers first. Asking one item per prompt ("Follow-up 1 of 5", wait, "Follow-up 2 of 5", …) costs the user a round trip per finding and gains nothing, because findings rarely depend on each other. Ask only whether each item should be included; do not ask for an overall verdict yet.
 
-- With a structured question UI, offer `Include`, `Exclude`, and `Other`. `Other` opens discussion or lets the user rewrite or reclassify the item.
-- Without one, ask: `Should this be included?` A bare yes includes it, a bare no excludes it, and a fuller answer opens discussion.
+- With a structured question UI, use as few calls as it allows: AskUserQuestion takes four questions per call, so five items take two calls. Offer `Include` and `Exclude`; the UI's own free-text option opens discussion or lets the user rewrite or reclassify the item.
+- Without one, number the items and ask `Include?` after each, so a reply like `1y 2n 3y` settles the batch and a fuller answer on any item opens discussion of it.
 
-Keep the question concise: what the item is and its concrete consequence. Do not put the full technical body or file coordinates in the question unless the user asks to discuss it. Preserve each ruling as you proceed.
+Hold an item back for a later round only when its question depends on another item's ruling: two findings with one root cause, where excluding or rewriting one changes what the other should say, or a reply whose stance turns on how another item is settled. Ask the item it depends on first, then the dependent one, worded for that ruling. When findings are that entangled, asking them as one item is often simpler.
+
+Keep each question concise: what the item is and its concrete consequence. Do not put the full technical body or file coordinates in the question unless the user asks to discuss it. Preserve each ruling as you proceed; when the user opens discussion on one item of a batch, settle it and keep the rulings the rest of the batch already gave.
 
 After triage, show everything that will post and explicitly ask for confirmation before posting. Open the confirmation with the summary's table (number and title, author and URL, ready time and stack) copied from the opening summary, so the user can see which PR it is posting to. If the user declines, revise or stop as directed. Never infer posting approval from the earlier per-item rulings.
 
