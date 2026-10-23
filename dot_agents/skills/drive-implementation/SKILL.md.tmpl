@@ -1,6 +1,6 @@
 ---
 name: drive-implementation
-description: "Drive a body of implementation work to completion from one conversation. Takes a tracker epic or story key, or a plan file, builds the dependency graph of units, and keeps work moving: starts unblocked units as implementer agents in their own worktrees, investigates upcoming units so questions reach the user in batches before they block, reviews finished units and lands them the way the project's flow says, and stops only when nothing can move without the user's answer. Invoke as `/drive-implementation REF` to start or resume a run. Requires HERDR_ENV=1."
+description: "Drive a body of implementation work to completion from one conversation. Takes a tracker epic or story key, a beads epic ID, or a plan file, builds the dependency graph of units, and keeps work moving: starts unblocked units as implementer agents in their own worktrees, investigates upcoming units so questions reach the user in batches before they block, reviews finished units and lands them the way the project's flow says, and stops only when nothing can move without the user's answer. Invoke as `/drive-implementation REF` to start or resume a run. Requires HERDR_ENV=1."
 {{- with get . "custom" }}
 {{ . }}
 {{- end }}
@@ -22,7 +22,12 @@ The skill owns the loop, the state, and the contract with the agents it starts. 
 
 - **A tracker epic key** (`NXC-694`). The units are its child stories, with dependencies from issue links such as "is blocked by", and from story text when the links are missing.
 - **A tracker story key** (`NXC-702`). One unit, or its subtasks if it has them.
+- **A beads epic ID** (`proj-6a6`), for a project that keeps its plan in beads (`bd`). The units are the epic's children (`bd children <epic> --json`), of any type, and their dependencies are beads dependencies (`bd dep list`), which are the graph: don't infer others from the text. `bd ready --parent <epic>` lists what can start, as a check on your own graph. A closed child is done or dropped, whichever its close reason says. When the epic carries an external ref, such as the tracker key it mirrors, show that next to the ID when talking to the user.
 - **A plan file** (`plan.md`, `docs/plans/foo.md`). The units are its tasks, in its order unless it states dependencies. The plan's own tracker, such as checkboxes or a status table, is part of the contract: keep it current as units finish.
+
+Whatever holds the ref is the run's tracker: the issue tracker, beads, or the plan file. A tracker move is any change to it that the project's instructions call for, such as moving a story's status, claiming and closing a bead, or ticking a plan's checkbox, and those instructions say which moves the driver makes and when. The plan behind a ref can change mid-run, with units added, split, superseded, or closed, so the units are re-read on every reconcile rather than taken once at the start.
+
+Read the tracker's machine output, such as `--json`, and don't assume stdout carries nothing else: a tool may print warnings there, as `bd` does without its `beads.role` config. Take the value you need, such as the JSON document or the ID `bd create -q` prints, and ignore stray lines.
 
 How many agents run at once is your call, made agent by agent: the dependency graph says what could run, and whether two particular agents should run together depends on whether they touch the same code, what each needs from the machine, and anything the repository's instructions say about scarce resources. A researcher only reads, so it rarely contends with anything; implementers and experimenters build and run tests. One at a time is the safe answer when you're unsure.
 
@@ -47,7 +52,7 @@ Everything lives in one directory:
 └── log.md        decisions, the user's answers, pending questions, a dated journal
 ```
 
-`<id>` is the lowercased tracker key (`nxc-694`), or for a plan file the repository directory name plus the file stem (`nexus-plan`). Write state before the first unit starts and after every event that changes it. The directory must be writable under the sandbox; if it isn't, say so and stop rather than keeping state somewhere else.
+`<id>` is the lowercased tracker key (`nxc-694`), the bead ID for a beads epic (`proj-6a6`), or for a plan file the repository directory name plus the file stem (`nexus-plan`). Write state before the first unit starts and after every event that changes it. The directory must be writable under the sandbox; if it isn't, say so and stop rather than keeping state somewhere else.
 
 `state.json`:
 
@@ -112,7 +117,7 @@ A unit has at most one live agent at a time, recorded in `agent` with its `agent
 
 Each pass does these in order, then stops or goes again.
 
-1. **Reconcile.** Read `state.json`. Fetch if there is a remote. Check each in-flight unit against reality: is its worktree or tab there, is its agent alive (`herdr agent get <agent>`, which sees agents of every kind), what state is its PR in, has the tracker moved. Fix the state to match, and note anything surprising in the log.
+1. **Reconcile.** Read `state.json`. Fetch if there is a remote. Check each in-flight unit against reality: is its worktree or tab there, is its agent alive (`herdr agent get <agent>`, which sees agents of every kind), what state is its PR in, has the tracker moved. Re-read the ref's units and fold in any added, split, superseded, or closed since the last pass. Fix the state to match, and note anything surprising in the log.
 2. **Catch up with the remote.** If the integration branch has fallen behind its upstream, or behind the mainline it was cut from, bring it current before anything else lands on it, and tell each in-flight implementer and experimenter that its base moved. Do it the way the repository's conventions say. Where they're silent, merge rather than rebase: in-flight units were cut from the integration branch's history, and rewriting it would orphan them.
 3. **Handle reports.** Work through what agents have sent since the last pass (see Agents). An implementer's "done" goes to review; a researcher's or experimenter's findings go into the log and settle the unit as `investigated` or `blocked_on_user`; a question gets an answer from you if the state or the repository answers it, otherwise it joins the batch for the user; a blocker may reorder the graph.
 4. **Start what's unblocked.** For each `investigated` unit whose dependencies are all `merged`, as long as it can run alongside what's already running: launch its implementer (see Starting an agent). Start in dependency order, then tracker key order.
@@ -122,7 +127,7 @@ Each pass does these in order, then stops or goes again.
 
 ## Agents
 
-Every agent you start takes one unit in one role. It is a plain agent session of whatever kind `choose-agent` picked, not a coordinator: it does the work itself. Its name is the unit key, lowercased, with the role as a suffix, such as `nxc-703-implementer`. The role decides where it runs and when it ends:
+Every agent you start takes one unit in one role. It is a plain agent session of whatever kind `choose-agent` picked, not a coordinator: it does the work itself. Its name is the unit key, lowercased, with the role as a suffix, such as `nxc-703-implementer`. Herdr allows only letters, digits, `-`, and `_` in a name, so turn anything else into `-`: bead `proj-6a6.1` gives `proj-6a6-1-implementer`. The role decides where it runs and when it ends:
 
 | Role         | Runs in                                                       | Does                                                       | Ends                |
 | ------------ | ------------------------------------------------------------- | ---------------------------------------------------------- | ------------------- |
@@ -180,7 +185,7 @@ Such an agent's message arrives typed into your own prompt, where it looks like 
 2. Restore the sidebar order after creating a worktree. Unless the user or repository specifies another order, run `herdr-reorder-worktrees list`, find the new workspace's repository group, sort every linked worktree in that group by label using a case-insensitive comparison and workspace ID as the tie-breaker, then pass the complete ordered ID list to `herdr-reorder-worktrees order`. Use IDs from the listing rather than labels. If this presentation-only step fails, log the reason and continue; it does not block the agent's work.
 3. Pick the kind and model (see Agent kinds).
 4. For a worktree, run the repository's per-worktree setup for that kind, such as installing dependencies and writing any sandbox settings the worktree needs to commit.
-5. Launch the agent with `launch-agent-in-pane --pane-id <pane> --kind <kind> [--model <model>] --name <unit key, lowercased>-<role> --report-to-pane $HERDR_PANE_ID --report-to-session <your session name> --seed-prompt <seed>`. Use the `agent_name` it returns; it may have been suffixed.
+5. Launch the agent with `launch-agent-in-pane --pane-id <pane> --kind <kind> [--model <model>] --name <agent name> --report-to-pane $HERDR_PANE_ID --report-to-session <your session name> --seed-prompt <seed>`. Use the `agent_name` it returns; it may have been suffixed.
 6. Record the agent, its role, kind, and model, its worktree and branch or its tab, and the unit's new status in the state: `implementing` for an implementer, `investigating` otherwise. Make whatever tracker move the repository's instructions attach to a unit starting, if any, when an implementer starts.
 
 If the launch returns `agent_not_ready`, the pane is probably at a trust prompt. Tell the user once, and when they've accepted it deliver the seed with `herdr agent prompt`.
