@@ -102,7 +102,8 @@
         "~/Library/org.swift.swiftpm",
         "~/.local/state/ai-usage",
         "~/Documents/Chief of Staff/inbox",
-        "~/.herdr/worktrees"
+        "~/.herdr/worktrees",
+        "~/.dolt"
       ],
       "denyRead": [
         "~/.ssh/agent",

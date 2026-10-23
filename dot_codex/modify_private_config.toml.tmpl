@@ -53,6 +53,7 @@ doc["sandbox_workspace_write"]["writable_roots"] = [
     "{{ .chezmoi.homeDir }}/.cache/uv",
     "{{ .chezmoi.homeDir }}/.local/share/uv/tools",
     "{{ .chezmoi.homeDir }}/.npm/_cacache",
+    "{{ .chezmoi.homeDir }}/.dolt",
 ]
 
 agents = tomlkit.table()
