@@ -16,7 +16,8 @@ A project opts in with a line in its own `AGENTS.md` saying it uses this layout 
 
 ```
 <project>/                     plain folder, not a repo: the project's AGENTS.md
-├── repo/                      the primary: a clone on the default branch
+├── .beads/                    the plan's database, only in a project using beads
+├── repo/                     the primary: a clone on the default branch
 │   └── .worktrees/<branch>/   worktrees of the primary
 └── <stream>/                  a work stream: a clone on that stream's active branch
     └── .worktrees/<branch>/   worktrees of the work stream
@@ -38,12 +39,12 @@ One scheme that works, for a project whose tracker links branches by a key prefi
 `scripts/create-clone` makes the primary and every work stream; only the source differs. The primary clones from the remote's HTTPS URL or an existing checkout, and a work stream from the primary, which hardlinks objects.
 
 ```bash
-scripts/create-clone --path <dir> --from <checkout|url> [--branch <name>] [--base <ref>] [--origin <url>] [--label <text>] [--setup <command>] [--no-workspace]
+scripts/create-clone --path <dir> --from <checkout|url> [--branch <name>] [--base <ref>] [--origin <url>] [--label <text>] [--beads <db dir>] [--setup <command>] [--no-workspace]
 ```
 
 **It has to run outside the sandbox,** because Claude Code's sandbox write-protects `.git/config` and `.git/hooks` in every clone a session works in, so `git clone` and hook installation both fail there. A sandboxed agent never runs it: give the user the exact command, with the script's full path and every flag filled in, to run with `!` before it, and read its JSON line from their output. Pass the project's one-time clone setup, such as `--setup "make hooks"`, so it runs in the same unsandboxed step.
 
-It prints one line of JSON, `{ path, branch, default_branch, origin, workspace_id, pane_id, created }`, and exits `0` on success, `2` when it needs judgment (`<dir>` is occupied by something other than a clone, or `--from` isn't a git repo; stdout is `{"status": "needs_judgment", "reason": ...}`), or `1` on a git, setup, or herdr failure, with diagnostics on stderr. `created` is `false` when it converged on an existing clone, and `workspace_id` and `pane_id` are `null` when no workspace was opened.
+It prints one line of JSON, `{ path, branch, default_branch, origin, workspace_id, pane_id, created }`, and exits `0` on success, `2` when it needs judgment (`<dir>` is occupied by something other than a clone, `--from` isn't a git repo, or `--beads` names no directory; stdout is `{"status": "needs_judgment", "reason": ...}`), or `1` on a git, setup, or herdr failure, with diagnostics on stderr. `created` is `false` when it converged on an existing clone, and `workspace_id` and `pane_id` are `null` when no workspace was opened.
 
 What it does:
 
@@ -52,8 +53,9 @@ What it does:
 3. Checks out `--branch`, defaulting to origin's default branch. It starts from `origin/<branch>` when that exists, tracking it, and otherwise from `--base`, defaulting to `origin/<default>`, with no upstream. The local branch the clone copied from the source is deleted.
 4. Sets `branch.autoSetupMerge=false` and `push.default=current`, and unsets `push.autoSetupRemote`. A sandboxed session can't write `.git/config`, and these keep everyday git from trying to: a branch cut from `origin/<default>` records no upstream, and a bare `git push` pushes to the same-named branch without one.
 5. Adds `/.worktrees/` to `.git/info/exclude`.
-6. Runs `--setup` in the clone.
-7. Opens the clone as a Herdr parent workspace with `--label`, unless `--no-workspace` is passed or `HERDR_ENV` isn't `1`.
+6. With `--beads`, links the clone to the project's beads database (see [Beads](#beads)).
+7. Runs `--setup` in the clone.
+8. Opens the clone as a Herdr parent workspace with `--label`, unless `--no-workspace` is passed or `HERDR_ENV` isn't `1`.
 
 Re-running converges, and finishes a build that failed partway. Every step but the checkout is safe to repeat and always runs. The checkout runs only on a clone the script made and hasn't finished, tracked in its config as `create-clone.state`, so a re-run never moves or deletes branches in an established clone.
 
@@ -87,6 +89,24 @@ These are the sandbox behaviors the layout relies on or runs into.
 
 Codex's protected-path rule also follows a linked worktree's `.git` pointer to the clone's shared Git directory. Adding that directory as another writable root does not bypass the protection. The supported path is a scoped escalation for the Git command, normally reviewed automatically under the managed Codex approval settings.
 
+## Beads
+
+This applies only to a project whose `AGENTS.md` says it keeps its plan in beads (`bd`). The project's file gives its own parts, such as the issue prefix and who may write; these are the parts the layout decides.
+
+- **One database for the whole project, in the plain folder:** `<project>/.beads`. It outlives any clone, and it can hold dependencies across work streams, which a database per clone could not.
+- **Each clone links to it** with a one-line `.beads/redirect` file holding the database's absolute path. Worktrees need nothing of their own: beads finds the database through git's common directory, so a worktree uses its clone's link.
+- **Linking is part of making a clone.** `create-clone --beads <project>/.beads` writes the redirect, adds `/.beads/` to `.git/info/exclude`, and sets `beads.role=maintainer`. That last one is a config write, so it belongs in the unsandboxed step, and without it bd prints a warning on stdout on every command, which breaks parsing output such as `bd create -q`. To link an existing clone, re-run `create-clone` on it with `--beads`.
+- **Initialize the database once, in the plain folder, never in a clone.** A plain `bd init` in a folder that isn't a repo runs `git init` there and writes `AGENTS.md`, `CLAUDE.md`, `.claude/`, `.codex/`, and `.agents/`, overwriting the project's own `AGENTS.md`. The safe form writes nothing outside `.beads/` but a lock file:
+
+  ```bash
+  mkdir <project>/.beads
+  BEADS_DIR=<project>/.beads bd init --stealth -p <prefix> --non-interactive
+  ```
+
+  Never run `bd init`, `bd setup`, `bd hooks`, or `bd onboard` inside a clone or worktree.
+
+- **Sandbox:** beads runs embedded Dolt, which writes `~/.dolt`; both Claude's and Codex's sandboxes allow it. A warning during init about `~/.config/bd/config.yaml` ("failed to set no-git-ops") is harmless. Writers in several worktrees at once work through the embedded database. The database sits outside every worktree, so a Codex session needs escalation to write to it; which agents write at all is the project's choice.
+
 ## Teardown
 
-Only when the user asks. Removal is fail-closed: refuse, and give the reason, when a worktree has uncommitted work, when a clone has local commits or branches that aren't on the remote, or when a live agent is running there. For a work stream, check every local branch in its clone, because those branches exist nowhere else until pushed. Removing a work stream closes its workspace and its worktrees' workspaces, then removes the folder.
+Only when the user asks. Removal is fail-closed: refuse, and give the reason, when a worktree has uncommitted work, when a clone has local commits or branches that aren't on the remote, or when a live agent is running there. For a work stream, check every local branch in its clone, because those branches exist nowhere else until pushed. Removing a work stream closes its workspace and its worktrees' workspaces, then removes the folder. In a project using beads, that removes only the clone's redirect; the plan stays in `<project>/.beads`.

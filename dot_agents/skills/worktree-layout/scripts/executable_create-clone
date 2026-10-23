@@ -21,12 +21,16 @@ Each is an ordinary clone with its worktrees nested in its own .worktrees/.
      bare `git push` must push to the same-named branch without one.
   6. Add /.worktrees/ to .git/info/exclude, so nested worktrees stay out of
      git status.
-  7. Run --setup in the clone, such as "make hooks".
-  8. Open the clone as a Herdr parent workspace with --label, unless
+  7. With --beads <db dir>, link the clone to the project's beads database:
+     write .beads/redirect holding the database's absolute path, add /.beads/
+     to .git/info/exclude, and set beads.role=maintainer, without which bd
+     prints a warning on stdout on every command.
+  8. Run --setup in the clone, such as "make hooks".
+  9. Open the clone as a Herdr parent workspace with --label, unless
      --no-workspace or not inside Herdr.
 
 Re-running converges, and finishes a build that failed partway. Steps 2, 3,
-and 5-8 are safe to repeat and always run, so a re-run with a corrected
+and 5-9 are safe to repeat and always run, so a re-run with a corrected
 --origin takes effect. Step 4 runs only on a clone this script made and hasn't
 finished, tracked in its config as create-clone.state (cloned, then done), so a
 re-run never moves or deletes branches in an established clone. A <path> that
@@ -37,8 +41,8 @@ clone, so this runs outside it: the user runs it, not a sandboxed session.
 
 Exit codes (shared across the dispatch primitives):
   0  success. The JSON result object is printed to stdout.
-  2  needs judgment: <path> is occupied by something else or is a file, or
-     --from is not a git repo. stdout is {"status": "needs_judgment", "reason": ...}.
+  2  needs judgment: <path> is occupied by something else or is a file,
+     --from is not a git repo, or --beads names no beads database. stdout is {"status": "needs_judgment", "reason": ...}.
   1  real error (a git, setup, or herdr failure). Diagnostics on stderr.
 
 Subprocesses are invoked as argv lists, except --setup, which is the user's
@@ -54,6 +58,7 @@ import sys
 
 STATE_KEY = "create-clone.state"
 EXCLUDE = "/.worktrees/"
+BEADS_EXCLUDE = "/.beads/"
 
 
 class Failure(Exception):
@@ -186,6 +191,18 @@ def origin_default(repo):
     return match.group(1) if match else None
 
 
+def exclude(repo, pattern):
+    """Add `pattern` to the clone's .git/info/exclude unless it is there."""
+    path = os.path.join(git(repo, "rev-parse", "--absolute-git-dir"), "info", "exclude")
+    text = open(path, encoding="utf-8").read() if os.path.exists(path) else ""
+    if pattern not in text.splitlines():
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "a", encoding="utf-8") as handle:
+            if text and not text.endswith("\n"):
+                handle.write("\n")
+            handle.write(pattern + "\n")
+
+
 def configure(repo, origin):
     """The steps that are safe to repeat: origin, fetch, branch defaults, exclude."""
     if origin:
@@ -194,14 +211,17 @@ def configure(repo, origin):
     git(repo, "config", "branch.autoSetupMerge", "false")
     git(repo, "config", "push.default", "current")
     run(["git", "-C", repo, "config", "--unset-all", "push.autoSetupRemote"])
-    exclude = os.path.join(git(repo, "rev-parse", "--absolute-git-dir"), "info", "exclude")
-    lines = open(exclude, encoding="utf-8").read().splitlines() if os.path.exists(exclude) else []
-    if EXCLUDE not in lines:
-        os.makedirs(os.path.dirname(exclude), exist_ok=True)
-        with open(exclude, "a", encoding="utf-8") as handle:
-            if lines and lines[-1] != "":
-                handle.write("\n")
-            handle.write(EXCLUDE + "\n")
+    exclude(repo, EXCLUDE)
+
+
+def link_beads(repo, db):
+    """Point the clone at the project's beads database. Its worktrees find the
+    database through the clone, since beads resolves it from git's common dir."""
+    os.makedirs(os.path.join(repo, ".beads"), exist_ok=True)
+    with open(os.path.join(repo, ".beads", "redirect"), "w", encoding="utf-8") as handle:
+        handle.write(db + "\n")
+    exclude(repo, BEADS_EXCLUDE)
+    git(repo, "config", "beads.role", "maintainer")
 
 
 def settle_branch(repo, branch, base):
@@ -232,16 +252,22 @@ def main():
                                        "(default: origin/<default branch>)")
     parser.add_argument("--origin", help="origin URL (default: the source's origin, or the URL cloned)")
     parser.add_argument("--label", help="Herdr workspace label")
+    parser.add_argument("--beads", metavar="DB_DIR",
+                        help="link the clone to this beads database, such as <project>/.beads")
     parser.add_argument("--setup", help="shell command to run in the clone afterwards, such as 'make hooks'")
     parser.add_argument("--no-workspace", action="store_true", help="don't open a Herdr workspace")
     args = parser.parse_args()
 
     path = os.path.abspath(args.path)
     source = args.source if is_url(args.source) else os.path.abspath(args.source)
+    beads = os.path.abspath(os.path.expanduser(args.beads)) if args.beads else None
 
     try:
         if os.path.lexists(path) and not os.path.isdir(path):
             emit_judgment(f"{path} exists and is not a directory", path=path)
+        if beads and not os.path.isdir(beads):
+            emit_judgment(f"--beads {beads} is not a directory; initialize the project's "
+                          "database first", path=path)
 
         created = False
         origin = https(args.origin) if args.origin else None
@@ -274,6 +300,9 @@ def main():
             branch = args.branch or default
             settle_branch(path, branch, args.base or f"origin/{default or branch}")
             git(path, "config", STATE_KEY, "done")
+
+        if beads:
+            link_beads(path, beads)
 
         if args.setup:
             proc = subprocess.run(["sh", "-c", args.setup], cwd=path, stdout=sys.stderr)
