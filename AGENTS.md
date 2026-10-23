@@ -39,10 +39,12 @@ Claude Code rewrites `~/.claude/settings.json` with its own key ordering wheneve
 
 Both sides are kept sorted the same way so ordering never causes a spurious diff:
 
-- `dot_claude/private_settings.json` (the checked-in source) is sorted by the local `sort-claude-settings-json` pre-commit hook (`jq -S`).
+- `dot_claude/private_settings.json.tmpl` (the checked-in source) must render in `jq -S` order, which the local `sort-claude-settings-json` pre-commit hook checks by rendering it with `chezmoi execute-template`. It checks rather than fixes, because a template isn't JSON that `jq` can rewrite.
 - `~/.claude/settings.json` (the live file) is kept sorted by a `ConfigChange` hook, `dot_claude/hooks/executable_sort-settings-json.sh`, which re-sorts it with the same `jq -S` after every change.
 
 A `chezmoi apply` warning on this file should now only mean a real value changed, not just key order.
+
+The source is a template for one reason: a machine can add its own sandbox write paths. A list named `claudeSandboxAllowWrite` under `[data]` in the machine's chezmoi config is appended to `sandbox.filesystem.allowWrite`. This is how a work project's paths reach the sandbox without being written into these dotfiles, for example a beads database in a project folder that sessions in every clone and worktree need to lock. User settings are the right level for that rather than a project's `.claude/settings.local.json`, because a worktree session loads its own checkout's settings, not its clone's. `.chezmoi.toml.tmpl` carries the list forward, so a later `chezmoi init` doesn't drop it.
 
 ## Codex config.toml machine-local state
 

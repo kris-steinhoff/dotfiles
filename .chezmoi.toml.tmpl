@@ -2,3 +2,6 @@
 {{- $agentBudget := promptChoiceOnce . "agentBudget" "Agent budget" $agentBudgetChoices "conservative" -}}
 [data]
 agentBudget = {{ $agentBudget | quote }}
+{{- with get . "claudeSandboxAllowWrite" }}
+claudeSandboxAllowWrite = {{ toJson . }}
+{{- end }}

@@ -26,7 +26,7 @@ repos:
         additional_dependencies: ["prettier@3.3.3"]
         types: [markdown]
       - id: sort-claude-settings-json
-        name: sort Claude settings.json keys
-        entry: sh -c 'for f in "$@"; do jq -S . "$f" >"$f.tmp" && mv "$f.tmp" "$f"; done' --
+        name: check Claude settings.json keys are sorted
+        entry: sh -c 'for f in "$@"; do out=$(chezmoi execute-template <"$f") && [ "$out" = "$(printf "%s\n" "$out" | jq -S .)" ] || { echo "$f: keys not in jq -S order"; exit 1; }; done' --
         language: system
-        files: ^dot_claude/private_settings\.json$
+        files: ^dot_claude/private_settings\.json\.tmpl$

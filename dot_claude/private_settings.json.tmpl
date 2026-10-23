@@ -103,7 +103,8 @@
         "~/.local/state/ai-usage",
         "~/Documents/Chief of Staff/inbox",
         "~/.herdr/worktrees",
-        "~/.dolt"
+        "~/.dolt"{{ range get . "claudeSandboxAllowWrite" | default list }},
+        {{ toJson . }}{{ end }}
       ],
       "denyRead": [
         "~/.ssh/agent",
