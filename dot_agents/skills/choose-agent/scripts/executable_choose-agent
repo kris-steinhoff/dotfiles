@@ -97,7 +97,7 @@ DEFAULT_CANDIDATES = [
     {"name": "codex", "kind": "codex", "quota": "chatgpt", "weight": 60},
 ]
 
-QUOTAS = ("claude", "chatgpt", "none")
+QUOTAS = ("claude", "chatgpt", "openrouter", "none")
 
 # A window at or past this share used rules its candidate out until it resets.
 CUTOFF_PERCENT = 90.0
@@ -258,7 +258,9 @@ def score_candidate(candidate, usage, now):
     if not isinstance(entry, dict):
         return 1.0, "usage unknown", None, None
     status = entry.get("status")
-    if status == "signed_out":
+    # ai-usage reads OpenRouter's keys from the environment, not the agent's
+    # own login, so a missing key there says nothing about whether it can run.
+    if status == "signed_out" and quota != "openrouter":
         return None, None, f"not signed in to {quota}", None
     if status not in ("ok", "stale"):
         return 1.0, "usage unknown", None, None
@@ -271,6 +273,10 @@ def score_candidate(candidate, usage, now):
         s = window_score(window, now)
         if s is None:
             continue
+        # An OpenRouter budget caps spending rather than expiring unused, so
+        # spare budget near its reset is no reason to send work there.
+        if quota == "openrouter":
+            s = min(s, 1.0)
         scores.append(s)
         if binding is None or s < binding[0]:
             binding = (s, window)
