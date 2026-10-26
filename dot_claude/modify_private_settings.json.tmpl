@@ -1,0 +1,57 @@
+#!/usr/bin/env python3
+"""chezmoi modify_ script for ~/.claude/settings.json.
+
+Other tools write into this file: Orca and Herdr install their agent-state
+hooks here, and Claude Code itself adds keys such as accepted-prompt flags. A
+plain template would wipe all of that on every apply, so this script receives
+the live file on stdin and writes back the managed settings
+(.chezmoitemplates/claude-settings.json.tmpl) merged over it:
+
+- A managed top-level key replaces the live value wholesale, as the template
+  did. A live key the template doesn't have is kept.
+- Hooks merge per hook group. Groups running any managed command are replaced
+  by the managed groups; every other group is another tool's and is kept in
+  place, after ours. A managed hook taken out of the template goes into
+  RETIRED_COMMANDS, or this script would keep it as someone else's.
+
+The output is in `jq -S` order, the order the ConfigChange hook keeps the live
+file in, so an apply never shows a diff for key order alone.
+"""
+
+import json
+import sys
+
+MANAGED = json.loads(r'''
+{{- template "claude-settings.json.tmpl" . -}}
+''')
+
+# Hook commands this file once managed and has since handed off or dropped.
+RETIRED_COMMANDS = {
+    # Herdr's integration install writes and maintains its own entry.
+    "bash ~/.claude/hooks/herdr-agent-state.sh session",
+}
+
+
+def commands(group):
+    return {hook.get("command") for hook in group.get("hooks", [])}
+
+
+def merge_hooks(managed, live):
+    ours = RETIRED_COMMANDS.union(
+        *(commands(group) for groups in managed.values() for group in groups)
+    )
+    merged = {}
+    for event in sorted(set(managed) | set(live)):
+        foreign = [group for group in live.get(event, []) if not commands(group) & ours]
+        groups = managed.get(event, []) + foreign
+        if groups:
+            merged[event] = groups
+    return merged
+
+
+text = sys.stdin.read()
+settings = json.loads(text) if text.strip() else {}
+live_hooks = settings.get("hooks", {})
+settings.update(MANAGED)
+settings["hooks"] = merge_hooks(MANAGED.get("hooks", {}), live_hooks)
+sys.stdout.write(json.dumps(settings, indent=2, sort_keys=True, ensure_ascii=False) + "\n")
