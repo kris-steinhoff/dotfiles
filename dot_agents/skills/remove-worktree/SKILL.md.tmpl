@@ -1,6 +1,6 @@
 ---
 name: remove-worktree
-description: Deterministic dispatch teardown primitive that removes one worktree and closes its Herdr workspace. Destructive, so fail-closed: it refuses (needs-judgment, with a reason) a dirty tree, unpushed commits, a live agent, or the active workspace unless forced. Reach for it to tear down a dispatch-created worktree the user asked to remove, or directly when a user wants a worktree gone. Leaves branches untouched. Requires HERDR_ENV=1.
+description: "Deterministic dispatch teardown primitive that removes one worktree and closes its Herdr workspace. Destructive, so fail-closed: it refuses (needs-judgment, with a reason) a dirty tree, unpushed commits, a live agent, or the active workspace unless forced. Reach for it to tear down a dispatch-created worktree the user asked to remove, or directly when a user wants a worktree gone. Leaves branches untouched. Requires HERDR_ENV=1."
 {{- with get . "custom" }}
 {{ . }}
 {{- end }}
