@@ -9,7 +9,7 @@ trap 'rm -rf "$tmp"' EXIT
 repo="$(cd "$tmp" && pwd -P)/repo"
 
 # A fake gh with no review requests, and a fake Herdr with no workspaces, so
-# remove-worktree falls back to `git worktree remove`.
+# dispatch worktree remove falls back to `git worktree remove`.
 mkdir "$tmp/bin"
 printf '#!/bin/bash\necho "[]"\n' >"$tmp/bin/gh"
 printf '#!/bin/bash\necho %s\n' "'{\"result\":{}}'" >"$tmp/bin/herdr"

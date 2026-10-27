@@ -67,7 +67,7 @@ PY
 # delegation resets the run to zero, so a coordinator that hands off is never
 # nagged and a genuinely-inline stretch is nudged at most once, not repeatedly.
 if [ "$count" -eq "$THRESHOLD" ]; then
-  msg="[delegation check] ${count} inline file edits with no delegation since the last handoff. Per the coordinator persona, say in one sentence whether the next phase should go to an implementor (spin an isolated worktree with create-worktree if the only blocker is a shared working tree), or why inline is the right call here — then continue."
+  msg="[delegation check] ${count} inline file edits with no delegation since the last handoff. Per the coordinator persona, say in one sentence whether the next phase should go to an implementor (spin an isolated worktree with dispatch worktree create if the only blocker is a shared working tree), or why inline is the right call here — then continue."
   python3 - "$msg" <<'PY'
 import json, sys
 print(json.dumps({

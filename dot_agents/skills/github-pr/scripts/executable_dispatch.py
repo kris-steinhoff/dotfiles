@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Enumerate and prepare GitHub PR reviews for an idempotent Herdr workflow.
 
-The helper deliberately owns only deterministic local/GitHub state. Herdr
-placement and agent launch remain in their generic skills. Review state is
-stored inside create-worktree's existing .herdr-dispatch.json marker.
+The helper deliberately owns only deterministic local/GitHub state. Placement
+and agent launch remain in the dispatch skill. Review state is stored inside
+the .herdr-dispatch.json marker that `dispatch worktree create` stamps.
 """
 
 import argparse
@@ -472,14 +472,14 @@ def cleanup_verdict(entry, state, queued):
     return "remove", "the review pass is complete"
 
 
-def remove_worktree_script():
-    # The remove-worktree skill sits beside this one in the canonical skills
+def dispatch_script():
+    # The dispatch skill sits beside this one in the canonical skills
     # directory; resolve() follows the per-harness symlinks back to it.
-    scripts = Path(__file__).resolve().parents[2] / "remove-worktree" / "scripts"
-    for name in ("remove-worktree", "executable_remove-worktree"):
+    scripts = Path(__file__).resolve().parents[2] / "dispatch" / "scripts"
+    for name in ("dispatch", "executable_dispatch"):
         if (scripts / name).is_file():
             return str(scripts / name)
-    raise DispatchError(f"remove-worktree script not found in {scripts}")
+    raise DispatchError(f"dispatch script not found in {scripts}")
 
 
 def remove_finished(repo, item):
@@ -489,7 +489,8 @@ def remove_finished(repo, item):
     exact-head branch has no upstream, and the finished reviewer may still idle
     in its pane. Returns the fields to add to the item.
     """
-    proc = run([remove_worktree_script(), "--worktree", item["worktree"], "--repo", repo, "--force"])
+    proc = run([dispatch_script(), "worktree", "remove", "--worktree", item["worktree"],
+                "--repo", repo, "--force"])
     if proc.returncode != 0:
         lines = proc.stdout.strip().splitlines()
         try:
@@ -497,7 +498,7 @@ def remove_finished(repo, item):
         except (IndexError, ValueError, AttributeError):
             reason = None
         return {"removed": False, "released": False,
-                "problem": reason or proc.stderr.strip() or f"remove-worktree exited {proc.returncode}"}
+                "problem": reason or proc.stderr.strip() or f"dispatch worktree remove exited {proc.returncode}"}
     try:
         release_branch(repo, item["pr_number"])
     except (Judgment, DispatchError) as error:

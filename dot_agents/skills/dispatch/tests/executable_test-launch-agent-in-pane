@@ -15,9 +15,9 @@ import unittest
 
 
 SKILL_DIR = Path(__file__).parents[1]
-SCRIPT = SKILL_DIR / "scripts" / "launch-agent-in-pane"
+SCRIPT = SKILL_DIR / "scripts" / "herdr" / "launch-agent-in-pane"
 if not SCRIPT.exists():
-    SCRIPT = SKILL_DIR / "scripts" / "executable_launch-agent-in-pane"
+    SCRIPT = SKILL_DIR / "scripts" / "herdr" / "executable_launch-agent-in-pane"
 
 
 FAKE_HERDR = r'''#!/usr/bin/env python3

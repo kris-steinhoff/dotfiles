@@ -137,3 +137,21 @@
 .agents/skills/list-stale-worktrees
 .claude/skills/list-stale-worktrees
 .gemini/config/plugins/kris-steinhoff/skills/list-stale-worktrees
+# create-worktree, create-pane, create-tab, launch-agent-in-pane, and
+# remove-worktree became the one dispatch skill, whose scripts/herdr/ holds
+# their scripts. Without these they linger on machines that already applied them.
+.agents/skills/create-worktree
+.claude/skills/create-worktree
+.gemini/config/plugins/kris-steinhoff/skills/create-worktree
+.agents/skills/create-pane
+.claude/skills/create-pane
+.gemini/config/plugins/kris-steinhoff/skills/create-pane
+.agents/skills/create-tab
+.claude/skills/create-tab
+.gemini/config/plugins/kris-steinhoff/skills/create-tab
+.agents/skills/launch-agent-in-pane
+.claude/skills/launch-agent-in-pane
+.gemini/config/plugins/kris-steinhoff/skills/launch-agent-in-pane
+.agents/skills/remove-worktree
+.claude/skills/remove-worktree
+.gemini/config/plugins/kris-steinhoff/skills/remove-worktree

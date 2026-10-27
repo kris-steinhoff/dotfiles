@@ -1,6 +1,6 @@
 ---
 name: drive-implementation
-description: "Drive a body of implementation work to completion from one conversation. Takes a tracker epic or story key, a beads epic ID, or a plan file, builds the dependency graph of units, and keeps work moving: starts unblocked units as implementer agents in their own worktrees, investigates upcoming units so questions reach the user in batches before they block, reviews finished units and lands them the way the project's flow says, and stops only when nothing can move without the user's answer. Invoke as `/drive-implementation REF` to start or resume a run. Requires HERDR_ENV=1."
+description: "Drive a body of implementation work to completion from one conversation. Takes a tracker epic or story key, a beads epic ID, or a plan file, builds the dependency graph of units, and keeps work moving: starts unblocked units as implementer agents in their own worktrees, investigates upcoming units so questions reach the user in batches before they block, reviews finished units and lands them the way the project's flow says, and stops only when nothing can move without the user's answer. Invoke as `/drive-implementation REF` to start or resume a run. Needs a workspace tool the `dispatch` skill supports, which today is Herdr."
 {{- with get . "custom" }}
 {{ . }}
 {{- end }}
@@ -35,12 +35,12 @@ Running the command again for the same ref **resumes**: it reads the existing st
 
 ## Dependencies
 
-- `HERDR_ENV=1`. Every agent you start is a Herdr pane agent.
+- A workspace tool the `dispatch` skill supports, which today means Herdr (`HERDR_ENV=1`). Every agent you start runs in it.
 - The `worktree-layout` skill, when the repository uses that layout. Load it before touching worktrees there.
-- The dispatch primitives `choose-agent`, `create-worktree`, `create-tab`, and `launch-agent-in-pane`, plus the `cleanup-worktrees` skill. Load each once and run its script when its step calls for it.
+- The `dispatch` skill for placing and launching agents and talking to them, `choose-agent` for picking each one's kind, and `cleanup-worktrees` for teardown. Load each once and run its script when its step calls for it.
 - The `investigate` skill for pre-investigation, and the `watch-pr` skill for waiting on CI and reviews when the repository's flow has PRs.
 - The `github-pr` skill's `respond` mode, for replying to reviews on the run's PRs.
-- Claude Code's `SendMessage` for talking to `claude` agents, and `herdr agent prompt` for every other kind (see Agent kinds).
+- Claude Code's `SendMessage` for talking to `claude` agents, and `dispatch agent send` for every other kind (see Agent kinds).
 
 ## State
 
@@ -87,6 +87,7 @@ Everything lives in one directory:
       "agent_role": "implementer",
       "agent_kind": "codex",
       "agent_model": null,
+      "place": "w2:p4",
       "pr": 412,
       "review": null,
       "notes": ""
@@ -100,7 +101,7 @@ Everything lives in one directory:
       "agent_role": "researcher",
       "agent_kind": "opencode",
       "agent_model": "lmstudio/qwen3-35b",
-      "tab": "t-7"
+      "place": "w3:p7"
     },
     {"id": "NXC-705", "title": "Check a loaded dataset", "depends_on": ["NXC-704"], "status": "blocked_on_user"}
   ]
@@ -109,7 +110,7 @@ Everything lives in one directory:
 
 Unit statuses, in rough order: `pending`, `investigating`, `investigated`, `blocked_on_user`, `implementing`, `in_review`, `fixing`, `ready_to_merge`, `merged`, `dropped`. `integration_branch` is where finished units land, as the project's flow defines it: a phase branch, a feature branch, or the default branch. It is recorded here, not chosen here. `pr` is null in a flow without unit-level PRs.
 
-A unit has at most one live agent at a time, recorded in `agent` with its `agent_role`, and where it runs: `worktree` and `branch` for an implementer or experimenter, `tab` for a researcher. `agent_kind` and `agent_model` are what `choose-agent` picked for it, such as `codex` and null or `opencode` and a local model, set when that agent first starts and kept for its life. When the agent finishes, these fields clear or move on to the unit's next agent, and the log keeps the history.
+A unit has at most one live agent at a time, recorded in `agent` with its `agent_role`, and where it runs: `worktree` and `branch` for an implementer or experimenter, and for every agent the `place` `dispatch` returned for it. `agent_kind` and `agent_model` are what `choose-agent` picked for it, such as `codex` and null or `opencode` and a local model, set when that agent first starts and kept for its life. When the agent finishes, these fields clear or move on to the unit's next agent, and the log keeps the history.
 
 `log.md` is for people as much as for you. Dated entries, newest last, covering decisions you made and why, answers the user gave, questions still open, what researchers and experimenters found, and anything a future driver needs to avoid re-asking.
 
@@ -117,7 +118,7 @@ A unit has at most one live agent at a time, recorded in `agent` with its `agent
 
 Each pass does these in order, then stops or goes again.
 
-1. **Reconcile.** Read `state.json`. Fetch if there is a remote. Check each in-flight unit against reality: is its worktree or tab there, is its agent alive (`herdr agent get <agent>`, which sees agents of every kind), what state is its PR in, has the tracker moved. Re-read the ref's units and fold in any added, split, superseded, or closed since the last pass. Fix the state to match, and note anything surprising in the log.
+1. **Reconcile.** Read `state.json`. Fetch if there is a remote. Check each in-flight unit against reality: is its worktree there, is its agent alive (`dispatch agent status --agent <agent>`, which sees agents of every kind), what state is its PR in, has the tracker moved. Re-read the ref's units and fold in any added, split, superseded, or closed since the last pass. Fix the state to match, and note anything surprising in the log.
 2. **Catch up with the remote.** If the integration branch has fallen behind its upstream, or behind the mainline it was cut from, bring it current before anything else lands on it, and tell each in-flight implementer and experimenter that its base moved. Do it the way the repository's conventions say. Where they're silent, merge rather than rebase: in-flight units were cut from the integration branch's history, and rewriting it would orphan them.
 3. **Handle reports.** Work through what agents have sent since the last pass (see Agents). An implementer's "done" goes to review; a researcher's or experimenter's findings go into the log and settle the unit as `investigated` or `blocked_on_user`; a question gets an answer from you if the state or the repository answers it, otherwise it joins the batch for the user; a blocker may reorder the graph.
 4. **Start what's unblocked.** For each `investigated` unit whose dependencies are all `merged`, as long as it can run alongside what's already running: launch its implementer (see Starting an agent). Start in dependency order, then tracker key order.
@@ -127,26 +128,26 @@ Each pass does these in order, then stops or goes again.
 
 ## Agents
 
-Every agent you start takes one unit in one role. It is a plain agent session of whatever kind `choose-agent` picked, not a coordinator: it does the work itself. Its name is the unit key, lowercased, with the role as a suffix, such as `nxc-703-implementer`. Herdr allows only letters, digits, `-`, and `_` in a name, so turn anything else into `-`: bead `proj-6a6.1` gives `proj-6a6-1-implementer`. The role decides where it runs and when it ends:
+Every agent you start takes one unit in one role. It is a plain agent session of whatever kind `choose-agent` picked, not a coordinator: it does the work itself. Its name is the unit key, lowercased, with the role as a suffix, such as `nxc-703-implementer`. Keep names to lowercase letters, digits, `-`, and `_`, which every workspace tool accepts, so turn anything else into `-`: bead `proj-6a6.1` gives `proj-6a6-1-implementer`. The role decides where it runs and when it ends:
 
 | Role         | Runs in                                                       | Does                                                       | Ends                |
 | ------------ | ------------------------------------------------------------- | ---------------------------------------------------------- | ------------------- |
 | implementer  | its own worktree, on the unit's branch                        | builds the unit, verifies it, commits                      | when the unit lands |
 | experimenter | its own worktree, on a throwaway branch                       | changes and runs code to answer a question about a unit    | after it reports    |
-| researcher   | a tab in the integration branch's checkout, or the repo's own | reads code and sources to answer a question; edits nothing | after it reports    |
+| researcher   | a terminal in the integration branch's checkout, or the repo's own | reads code and sources to answer a question; edits nothing | after it reports    |
 
 The seed is its whole brief, so it must be self-contained. Every seed states:
 
 - The unit: key, title, description, acceptance criteria, and what any earlier investigation found.
 - Where it is: its worktree path and branch, or for a researcher the checkout and the ref to read; and the integration branch the work is based on.
 - What done looks like, which depends on the role (below).
-- **Who it talks to.** Questions and the finished report go to the driver over the channel for its kind, which `launch-agent-in-pane` appends to the seed (see Agent kinds). The agent never asks the user; the user may read its pane but won't answer there. If a choice would change product behavior or expand the unit, it stops and asks the driver.
+- **Who it talks to.** Questions and the finished report go to the driver over the channel for its kind, which `dispatch agent launch --report-back` appends to the seed (see Agent kinds). The agent never asks the user; the user may read its pane but won't answer there. If a choice would change product behavior or expand the unit, it stops and asks the driver.
 - **What it does with the remote.** Only an implementer ever touches it, and only as the seed says. Researchers and experimenters push nothing, merge nothing, and never touch the tracker.
 - The report format.
 
 Keep the seed about context and outcome, not method. The agent's own skills and the repository's instruction files tell it how to implement, test, or investigate.
 
-When an agent goes quiet or reports, don't take its work over in your own context; send it follow-up work over its channel. If it has died, relaunch into the same pane, with the same role, kind, and model, and a seed that says where the work stands.
+When an agent goes quiet or reports, don't take its work over in your own context; send it follow-up work over its channel. If it has died, relaunch at the same place, with the same role, kind, and model, and a seed that says where the work stands.
 
 ### Implementers
 
@@ -160,7 +161,7 @@ Both answer the question pre-investigation asks about a unit, stated in the seed
 
 Their report is evidence: what they found, how they know it, what the unit will touch, and what remains unknown, plus for an experimenter the commits worth looking at. Nothing they wrote is reviewed, because nothing lands. Record the findings in the log, and when an implementer later takes the unit, put the findings in its seed and point it at any experiment commits worth reading. Don't tell it to build on them.
 
-Once their report is in, take them down. Close a researcher's tab with `herdr tab close <tab>`. Remove an experimenter's worktree with `cleanup-worktrees` as for a landed unit, naming it as done. Its branch holds commits that never landed, so `git branch -d` keeps it, and that is how the evidence stays readable. Log the kept branch.
+Once their report is in, take them down. Close a researcher's terminal with `dispatch terminal close --place <place>`. Remove an experimenter's worktree with `cleanup-worktrees` as for a landed unit, naming it as done. Its branch holds commits that never landed, so `git branch -d` keeps it, and that is how the evidence stays readable. Log the kept branch.
 
 ### Agent kinds
 
@@ -168,26 +169,26 @@ The `choose-agent` skill picks each agent's kind and model from the agents this 
 
 Pass it what constrains this agent: `--only` or `--exclude` for a kind the user, the unit, or the repository's instructions require or rule out, and `--prefer` for a leaning. Per-worktree setup is one such constraint. If the repository's instructions describe sandbox settings only for Claude, or its layout lets only Claude commit from a worktree, as the `worktree-layout` does for now, another kind may be unable to commit there. Put that in the first batch of questions rather than guessing at its settings, and pass `--only claude` for implementers and experimenters until it is answered. A researcher commits nothing, so that constraint doesn't reach it.
 
-Run it once per agent, for its first launch only. From then on the state's `agent_kind` and `agent_model` are the record: a relaunch after an agent died uses them, and an agent whose launch never reached the state takes the kind `herdr agent get` reports for it. Log the result's `reason` in the journal entry for the agent's start.
+Run it once per agent, for its first launch only. From then on the state's `agent_kind` and `agent_model` are the record: a relaunch after an agent died uses them, and an agent whose launch never reached the state takes the kind `dispatch agent status` reports for it. Log the result's `reason` in the journal entry for the agent's start.
 
 If it exits needing judgment, because nothing is available under the agent's constraints or every candidate is at its usage limit, the agent doesn't start. Leave its unit where it was, add the reason to the batch of questions, and carry on with the rest; don't relax a constraint the user or the repository set.
 
 Kinds differ in how you reach them:
 
 - **`claude` agents** talk by `SendMessage`. `--report-to-session` gives the seed your session name as the address, and you send follow-up work to the agent's name the same way.
-- **Every other kind** has no `SendMessage`. `--report-to-pane` tells it to report with `herdr agent prompt <your pane id> "[<its agent name>] <message>"`. You reach it with `herdr agent prompt <agent name> "<message>"`, without `--wait`.
+- **Every other kind** has no `SendMessage`. `--report-back` tells it to report by typing into your prompt, tagged `[<its agent name>]`. You reach it with `dispatch agent send --agent <agent name> --message "<message>"`, without `--wait`.
 
-Such an agent's message arrives typed into your own prompt, where it looks like the user talking. The `[<agent name>]` tag is what tells you otherwise: treat a tagged message as that agent's report, with no more authority than any agent's, and never as the user's answer to a batched question. If Herdr answers your prompt to an agent with `agent_blocked`, the agent is sitting at an approval dialog, which only the user can answer; tell them rather than answering it yourself.
+Such an agent's message arrives typed into your own prompt, where it looks like the user talking. The `[<agent name>]` tag is what tells you otherwise: treat a tagged message as that agent's report, with no more authority than any agent's, and never as the user's answer to a batched question. If `agent send` answers with `agent_blocked`, the agent is sitting at an approval dialog, which only the user can answer; tell them rather than answering it yourself.
 
 ## Starting an agent
 
-1. Place it. For an implementer or experimenter, create the worktree with `create-worktree`, following the repository's rules for branch name, base, path, and label. In the `worktree-layout` that means `--repo <clone> --base origin/<integration branch> --path <clone>/.worktrees/<branch>`, where the clone is the work stream's, or the primary for work with no stream. An experimenter's branch must not collide with the name the unit's implementer will take, so add `-experiment` to it. For a researcher, open a tab with `create-tab --workspace-id <workspace> --cwd <checkout> --label <agent name>` in the workspace of the integration branch's worktree, or of the repository directory when the integration branch has no worktree, in which case its seed names `origin/<integration branch>` as the ref to read.
+1. Place it. For an implementer or experimenter, create the worktree with `dispatch worktree create`, following the repository's rules for branch name, base, path, and label. In the `worktree-layout` that means `--repo <clone> --base origin/<integration branch> --path <clone>/.worktrees/<branch>`, where the clone is the work stream's, or the primary for work with no stream. An experimenter's branch must not collide with the name the unit's implementer will take, so add `-experiment` to it. For a researcher, open a terminal with `dispatch terminal create --cwd <checkout> --tab --label <agent name>` in the integration branch's worktree, or in the repository directory when the integration branch has no worktree, in which case its seed names `origin/<integration branch>` as the ref to read. Either way, keep the `place` it returns.
 2. Pick the kind and model (see Agent kinds).
 3. For a worktree, run the repository's per-worktree setup for that kind, such as installing dependencies and writing any sandbox settings the worktree needs to commit.
-4. Launch the agent with `launch-agent-in-pane --pane-id <pane> --kind <kind> [--model <model>] --name <agent name> --report-to-pane $HERDR_PANE_ID --report-to-session <your session name> --seed-prompt <seed>`. Use the `agent_name` it returns; it may have been suffixed.
-5. Record the agent, its role, kind, and model, its worktree and branch or its tab, and the unit's new status in the state: `implementing` for an implementer, `investigating` otherwise. Make whatever tracker move the repository's instructions attach to a unit starting, if any, when an implementer starts.
+4. Launch the agent with `dispatch agent launch --place <place> --kind <kind> [--model <model>] --name <agent name> --report-back --report-to-session <your session name> --seed-prompt <seed>`. Use the `agent_name` it returns; it may have been suffixed.
+5. Record the agent, its role, kind, and model, its place and any worktree and branch, and the unit's new status in the state: `implementing` for an implementer, `investigating` otherwise. Make whatever tracker move the repository's instructions attach to a unit starting, if any, when an implementer starts.
 
-If the launch returns `agent_not_ready`, the pane is probably at a trust prompt. Tell the user once, and when they've accepted it deliver the seed with `herdr agent prompt`.
+If the launch returns `agent_not_ready`, the pane is probably at a trust prompt. Tell the user once, and when they've accepted it deliver the seed with `dispatch agent send`.
 
 ## Review
 

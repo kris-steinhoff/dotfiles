@@ -1,0 +1,231 @@
+#!/usr/bin/env python3
+"""Place work and launch agents in whichever workspace tool the session runs in.
+
+One entry point, `dispatch <noun> <verb>`, so a workflow says what it wants (a
+worktree on a branch, a terminal in a checkout, an agent launched there, a
+message to that agent) rather than how Herdr or Orca does it. The backend comes
+from the environment:
+
+  HERDR_ENV=1        Herdr, through the scripts in herdr/ and the herdr CLI
+  ORCA_PANE_KEY set  Orca, not implemented yet (needs judgment)
+
+A place is somewhere an agent can be launched, in whatever form the backend
+needs to find it again; under Herdr it is a pane id. Callers get one from
+`worktree create` or `terminal create`, pass it to `agent launch` or
+`terminal close`, and never look inside it.
+
+The Herdr scripts keep their own JSON results. This adds `place` to the results
+that create somewhere to launch and passes everything else through, exit code
+included, so the exit codes are theirs:
+
+  0  success. The JSON result is on stdout.
+  2  needs judgment. stdout is {"status": "needs_judgment", "reason": ...}.
+  1  real error. Diagnostics on stderr.
+
+All subprocesses are invoked as argv lists, never a shell string.
+"""
+
+import argparse
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+
+HERDR_SCRIPTS = Path(__file__).resolve().parent / "herdr"
+
+
+def emit_judgment(reason):
+    print(json.dumps({"status": "needs_judgment", "reason": reason}))
+    sys.exit(2)
+
+
+def emit_error(message):
+    print(f"dispatch: {message}", file=sys.stderr)
+    sys.exit(1)
+
+
+def backend():
+    if os.environ.get("HERDR_ENV") == "1":
+        return "herdr"
+    if os.environ.get("ORCA_PANE_KEY"):
+        emit_judgment("the Orca backend isn't implemented yet; use Orca's own orca-cli skill")
+    emit_judgment("no workspace tool is running (neither HERDR_ENV=1 nor ORCA_PANE_KEY is set)")
+
+
+def herdr_script(name):
+    for candidate in (name, f"executable_{name}"):
+        path = HERDR_SCRIPTS / candidate
+        if path.is_file():
+            return str(path)
+    emit_error(f"Herdr backend script {name} not found in {HERDR_SCRIPTS}")
+
+
+def run_script(argv, place_key=None):
+    """Run a backend script, add `place` to its success result, and exit as it did."""
+    proc = subprocess.run([sys.executable, *argv], capture_output=True, text=True)
+    sys.stderr.write(proc.stderr)
+    out = proc.stdout
+    if proc.returncode == 0 and place_key:
+        try:
+            result = json.loads(out.strip().splitlines()[-1])
+        except (IndexError, ValueError):
+            emit_error(f"{Path(argv[0]).name} returned non-JSON: {out[:200]}")
+        result["place"] = result.get(place_key)
+        out = json.dumps(result) + "\n"
+    sys.stdout.write(out)
+    sys.exit(proc.returncode)
+
+
+def run_herdr(args):
+    proc = subprocess.run(["herdr", *args], capture_output=True, text=True)
+    sys.stdout.write(proc.stdout)
+    sys.stderr.write(proc.stderr)
+    sys.exit(proc.returncode)
+
+
+def herdr_workspace_for(cwd):
+    """The open workspace whose checkout holds `cwd`, the innermost when checkouts
+    nest (a clone's .worktrees/ sit inside it), else the caller's own."""
+    proc = subprocess.run(["herdr", "workspace", "list"], capture_output=True, text=True)
+    if proc.returncode != 0:
+        emit_error(f"herdr workspace list failed: {proc.stderr.strip() or proc.stdout.strip()}")
+    try:
+        workspaces = json.loads(proc.stdout).get("result", {}).get("workspaces") or []
+    except (ValueError, AttributeError):
+        emit_error(f"herdr workspace list returned non-JSON: {proc.stdout[:200]}")
+    target = os.path.realpath(cwd)
+    best, best_len = None, -1
+    for workspace in workspaces:
+        checkout = (workspace.get("worktree") or {}).get("checkout_path")
+        if not checkout:
+            continue
+        checkout = os.path.realpath(checkout)
+        inside = target == checkout or target.startswith(checkout + os.sep)
+        if inside and len(checkout) > best_len:
+            best, best_len = workspace.get("workspace_id"), len(checkout)
+    return best or os.environ.get("HERDR_WORKSPACE_ID")
+
+
+def worktree_create(args):
+    argv = [herdr_script("create-worktree"), "--branch", args.branch]
+    for flag, value in (("--base", args.base), ("--path", args.path),
+                        ("--repo", args.repo), ("--label", args.label)):
+        if value:
+            argv += [flag, value]
+    run_script(argv, place_key="pane_id")
+
+
+def worktree_remove(args):
+    argv = [herdr_script("remove-worktree"), "--worktree", args.worktree]
+    if args.repo:
+        argv += ["--repo", args.repo]
+    if args.force:
+        argv.append("--force")
+    run_script(argv)
+
+
+def terminal_create(args):
+    workspace = herdr_workspace_for(args.cwd)
+    if not workspace:
+        emit_judgment(f"no Herdr workspace holds {args.cwd}, and the caller's own is unknown")
+    cwd = os.path.abspath(args.cwd)
+    if args.tab:
+        argv = [herdr_script("create-tab"), "--workspace-id", workspace, "--cwd", cwd]
+        if args.label:
+            argv += ["--label", args.label]
+    else:
+        argv = [herdr_script("create-pane"), "--workspace-id", workspace, "--cwd", cwd]
+    run_script(argv, place_key="pane_id")
+
+
+def terminal_close(args):
+    run_herdr(["pane", "close", args.place])
+
+
+def agent_launch(args):
+    argv = [herdr_script("launch-agent-in-pane"), "--pane-id", args.place, "--kind", args.kind]
+    for flag, value in (("--model", args.model), ("--persona", args.persona),
+                        ("--name", args.name), ("--seed-prompt", args.seed_prompt),
+                        ("--developer-instructions-file", args.developer_instructions_file),
+                        ("--report-to-session", args.report_to_session)):
+        if value:
+            argv += [flag, value]
+    if args.report_back:
+        pane = os.environ.get("HERDR_PANE_ID")
+        if not pane:
+            emit_judgment("--report-back needs the caller's pane, and HERDR_PANE_ID is not set")
+        argv += ["--report-to-pane", pane]
+    run_script(argv, place_key="pane_id")
+
+
+def agent_send(args):
+    command = ["agent", "prompt", args.agent, args.message]
+    if args.wait:
+        command += ["--wait", "--timeout", str(args.timeout)]
+    run_herdr(command)
+
+
+def agent_status(args):
+    run_herdr(["agent", "get", args.agent])
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        prog="dispatch",
+        description="Place work and launch agents in the session's workspace tool.")
+    nouns = parser.add_subparsers(dest="noun", required=True)
+
+    worktree = nouns.add_parser("worktree").add_subparsers(dest="verb", required=True)
+    p = worktree.add_parser("create", help="a worktree on a branch, ready to launch into")
+    p.add_argument("--branch", required=True, help="branch to create or check out")
+    p.add_argument("--base", help="base ref for a new branch")
+    p.add_argument("--path", help="where the checkout goes (default: the tool's own placement)")
+    p.add_argument("--repo", help="the repo to create it in (default: cwd)")
+    p.add_argument("--label", help="a short human name for the tool's UI")
+    p.set_defaults(handler=worktree_create)
+    p = worktree.add_parser("remove", help="remove one worktree, fail-closed")
+    p.add_argument("--worktree", required=True, help="the worktree's path")
+    p.add_argument("--repo", help="the repo it belongs to (default: cwd)")
+    p.add_argument("--force", action="store_true", help="override the safety refusal")
+    p.set_defaults(handler=worktree_remove)
+
+    terminal = nouns.add_parser("terminal").add_subparsers(dest="verb", required=True)
+    p = terminal.add_parser("create", help="a terminal in an existing checkout")
+    p.add_argument("--cwd", required=True, help="the checkout (or a directory in it)")
+    p.add_argument("--tab", action="store_true", help="a tab of its own rather than a split")
+    p.add_argument("--label", help="tab label, with --tab")
+    p.set_defaults(handler=terminal_create)
+    p = terminal.add_parser("close", help="close a terminal and whatever runs in it")
+    p.add_argument("--place", required=True)
+    p.set_defaults(handler=terminal_close)
+
+    agent = nouns.add_parser("agent").add_subparsers(dest="verb", required=True)
+    p = agent.add_parser("launch", help="start an agent at a place and seed it")
+    p.add_argument("--place", required=True)
+    p.add_argument("--kind", required=True, help="claude, codex, gemini, copilot, opencode, pi")
+    p.add_argument("--model", help="model hint, e.g. opus")
+    p.add_argument("--persona", help="persona to launch (claude and codex only)")
+    p.add_argument("--name", help="agent name base")
+    p.add_argument("--seed-prompt", help="prompt to deliver after launch")
+    p.add_argument("--developer-instructions-file", help="extra instructions file (codex only)")
+    p.add_argument("--report-back", action="store_true", help="the agent reports to this session")
+    p.add_argument("--report-to-session", help="for claude: report by SendMessage to this name")
+    p.set_defaults(handler=agent_launch)
+    p = agent.add_parser("send", help="send a launched agent a message")
+    p.add_argument("--agent", required=True)
+    p.add_argument("--message", required=True)
+    p.add_argument("--wait", action="store_true", help="wait until the agent's turn settles")
+    p.add_argument("--timeout", type=int, default=120000, help="with --wait, in milliseconds")
+    p.set_defaults(handler=agent_send)
+    p = agent.add_parser("status", help="whether a launched agent is alive, and its state")
+    p.add_argument("--agent", required=True)
+    p.set_defaults(handler=agent_status)
+
+    args = parser.parse_args()
+    backend()
+    args.handler(args)
+
+
+if __name__ == "__main__":
+    main()
