@@ -128,3 +128,12 @@
 # the PR summary as a turn of their own; without this it lingers on machines
 # that already applied it.
 .claude/hooks/summary-shown-check.sh
+# inspect-worktree and list-stale-worktrees were called by no workflow;
+# cleanup-worktrees --dry-run is the survey. Without these they linger on
+# machines that already applied them.
+.agents/skills/inspect-worktree
+.claude/skills/inspect-worktree
+.gemini/config/plugins/kris-steinhoff/skills/inspect-worktree
+.agents/skills/list-stale-worktrees
+.claude/skills/list-stale-worktrees
+.gemini/config/plugins/kris-steinhoff/skills/list-stale-worktrees

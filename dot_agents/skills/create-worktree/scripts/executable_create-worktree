@@ -60,7 +60,7 @@ Every created worktree is stamped with a marker file so teardown can later
 recognize it as dispatch-created, with no external registry. The marker is
 excluded via the repo's shared .git/info/exclude (not the worktree's own
 .gitignore, and not a repo-committed one), so it never makes a clean worktree
-look dirty to `git status` or to inspect-worktree/remove-worktree's safety
+look dirty to `git status` or to remove-worktree's and cleanup-worktrees' safety
 checks.
 
 Requires HERDR_ENV=1: it drives the `herdr` CLI.

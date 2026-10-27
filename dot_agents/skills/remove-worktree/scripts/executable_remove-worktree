@@ -34,9 +34,8 @@ deleted the checkout but left git's record behind (a sandbox that can't write
 the repo's .git/worktrees/ does this): git then lists it as prunable, and the
 record needs `git worktree prune` from somewhere that can.
 
-`--worktree` is a path or a Herdr workspace_id. The safety checks duplicate
-inspect-worktree's logic on purpose — the primitives are flat atoms that don't
-call each other (see the PRD's Composition and ownership).
+`--worktree` is a path or a Herdr workspace_id. The safety checks are
+its own; the primitives are flat atoms that don't call each other.
 
 Requires HERDR_ENV=1: the removal itself drives the `herdr` CLI.
 
