@@ -1,0 +1,257 @@
+#!/usr/bin/env python3
+"""Behavior tests for dispatch's Orca backend against a fake Orca and a real git repo."""
+
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+import unittest
+
+
+SKILL_DIR = Path(__file__).parents[1]
+SCRIPT = SKILL_DIR / "scripts" / "dispatch"
+if not SCRIPT.exists():
+    SCRIPT = SKILL_DIR / "scripts" / "executable_dispatch"
+
+
+# A fake orca that keeps its terminals in a JSON file. A worktree is any
+# directory that exists. Typing a kind's command into a terminal starts that
+# kind there, as Orca's own agent detection would report it.
+FAKE_ORCA = r'''#!/usr/bin/env python3
+import json
+import os
+import sys
+
+args = sys.argv[1:]
+if args and args[-1] == "--json":
+    args = args[:-1]
+with open(os.environ["FAKE_ORCA_LOG"], "a") as log:
+    log.write(json.dumps(args) + "\n")
+state_path = os.environ["FAKE_ORCA_STATE"]
+try:
+    with open(state_path) as handle:
+        state = json.load(handle)
+except OSError:
+    state = {"terminals": {}, "run": None, "next": 1}
+
+
+def flag(name):
+    return args[args.index(name) + 1] if name in args else None
+
+
+def reply(result=None, error=None):
+    with open(state_path, "w") as handle:
+        json.dump(state, handle)
+    if error:
+        print(json.dumps({"ok": False, "error": {"code": error, "message": error}}))
+        sys.exit(1)
+    print(json.dumps({"ok": True, "result": result or {}}))
+    sys.exit(0)
+
+
+def new_terminal(worktree_id):
+    handle = f"term_{state['next']}"
+    state["next"] += 1
+    state["terminals"][handle] = {"handle": handle, "worktreeId": worktree_id,
+                                  "connected": True, "agentIdentity": None}
+    return handle
+
+
+command = " ".join(args[:2])
+if command == "repo list":
+    reply({"repos": json.loads(os.environ["FAKE_ORCA_REPOS"])})
+if command == "worktree show":
+    path = flag("--worktree").removeprefix("path:")
+    if os.path.isdir(path) and not os.environ.get("FAKE_ORCA_HIDES"):
+        reply({"worktree": {"id": f"r1::{path}", "parentWorktreeId": None}})
+    reply(error="selector_not_found")
+if command == "worktree set":
+    reply({})
+if command == "terminal create":
+    reply({"terminal": {"handle": new_terminal(flag("--worktree").removeprefix("id:"))}})
+if command == "terminal split":
+    source = state["terminals"][flag("--terminal")]
+    reply({"split": {"handle": new_terminal(source["worktreeId"])}})
+if command == "terminal list":
+    wanted = flag("--worktree").removeprefix("id:")
+    reply({"terminals": [t for t in state["terminals"].values() if t["worktreeId"] == wanted]})
+if command == "terminal show":
+    record = state["terminals"].get(flag("--terminal"))
+    reply({"terminal": record}) if record else reply(error="terminal_handle_stale")
+if command == "terminal send":
+    record = state["terminals"][flag("--terminal")]
+    if os.environ.get("FAKE_ORCA_BLOCKED"):
+        reply(error="agent_prompt_blocked")
+    word = flag("--text").split()[0]
+    if not record["agentIdentity"] and word in ("claude", "codex"):
+        record["agentIdentity"] = word
+    reply({})
+if command == "terminal wait":
+    reply({"wait": {"satisfied": True}})
+if command == "terminal set-pane-title":
+    reply({})
+if command == "terminal close":
+    for record in state["terminals"].values():
+        if record["handle"] == flag("--terminal") or record["worktreeId"] == (flag("--worktree") or "").removeprefix("id:"):
+            record["connected"] = False
+    reply({})
+if command == "orchestration run-current":
+    reply({"run": state["run"]})
+if command == "orchestration run-create":
+    state["run"] = {"id": "run_1"}
+    reply({"run": state["run"]})
+print(f"unexpected fake Orca call: {args}", file=sys.stderr)
+sys.exit(2)
+'''
+
+
+class OrcaTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(os.path.realpath(self.temp.name))
+        self.repo = self.root / "repo"
+        git = ["git", "-c", "user.name=t", "-c", "user.email=t@t"]
+        subprocess.run(["git", "init", "-q", "-b", "main", str(self.repo)], check=True)
+        subprocess.run([*git, "-C", str(self.repo), "commit", "-q", "--allow-empty", "-m", "base"],
+                       check=True)
+        fake_bin = self.root / "bin"
+        fake_bin.mkdir()
+        orca = fake_bin / "orca"
+        orca.write_text(FAKE_ORCA)
+        orca.chmod(0o755)
+        self.log = self.root / "orca.log"
+        self.env = {
+            key: value for key, value in os.environ.items()
+            if not key.startswith(("HERDR_", "ORCA_"))
+        }
+        self.env.update({
+            "FAKE_ORCA_LOG": str(self.log),
+            "FAKE_ORCA_STATE": str(self.root / "orca.json"),
+            "FAKE_ORCA_REPOS": json.dumps([{"id": "r1", "path": str(self.repo),
+                                            "externalWorktreeVisibility": "inherit"}]),
+            "ORCA_PANE_KEY": "k",
+            "ORCA_WORKTREE_ID": f"r1::{self.repo}",
+            "PATH": f"{fake_bin}{os.pathsep}{self.env['PATH']}",
+        })
+
+    def dispatch(self, *args):
+        return subprocess.run([sys.executable, str(SCRIPT), *args], cwd=self.repo,
+                              capture_output=True, text=True, env=self.env)
+
+    def ok(self, *args):
+        result = self.dispatch(*args)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        return json.loads(result.stdout)
+
+    def calls(self, *prefix):
+        if not self.log.exists():
+            return []
+        calls = [json.loads(line) for line in self.log.read_text().splitlines()]
+        return [call for call in calls if call[:len(prefix)] == list(prefix)]
+
+    def test_worktree_create_adopts_a_git_worktree_and_converges(self):
+        path = self.root / "wt" / "feature"
+        first = self.ok("worktree", "create", "--branch", "feature", "--path", str(path),
+                        "--label", "Feature")
+        self.assertTrue(first["created"])
+        self.assertEqual(first["branch"], "feature")
+        self.assertTrue(first["place"].startswith("term_"))
+        self.assertTrue((path / ".herdr-dispatch.json").exists())
+        labeled = self.calls("worktree", "set")[0]
+        self.assertEqual(labeled[labeled.index("--display-name") + 1], "Feature")
+        self.assertEqual(labeled[labeled.index("--parent-worktree") + 1], f"id:r1::{self.repo}")
+
+        again = self.ok("worktree", "create", "--branch", "feature", "--path", str(path))
+        self.assertFalse(again["created"])
+        self.assertEqual(again["place"], first["place"])
+
+    def test_worktree_create_suffixes_a_branch_checked_out_elsewhere(self):
+        subprocess.run(["git", "-C", str(self.repo), "worktree", "add", "-q", "-b", "taken",
+                        str(self.root / "other")], check=True)
+        result = self.ok("worktree", "create", "--branch", "taken",
+                         "--path", str(self.root / "wt" / "taken"))
+        self.assertEqual(result["branch"], "taken-2")
+        self.assertEqual(result["path"], str(self.root / "wt" / "taken-2"))
+
+    def test_worktree_create_stops_where_orca_hides_it(self):
+        self.env["FAKE_ORCA_REPOS"] = json.dumps([{"id": "r1", "path": str(self.repo),
+                                                   "externalWorktreeVisibility": "hide"}])
+        result = self.dispatch("worktree", "create", "--branch", "hidden",
+                               "--path", str(self.root / "wt" / "hidden"))
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("--external-worktree-visibility show", json.loads(result.stdout)["reason"])
+        branches = subprocess.run(["git", "-C", str(self.repo), "branch", "--list", "hidden"],
+                                  capture_output=True, text=True).stdout
+        self.assertEqual(branches.strip(), "")
+
+    def test_worktree_create_stops_when_orca_never_shows_it(self):
+        self.env.update({"FAKE_ORCA_HIDES": "1", "DISPATCH_ORCA_CATALOG_WAIT": "0"})
+        path = self.root / "wt" / "inherited"
+        result = self.dispatch("worktree", "create", "--branch", "inherited", "--path", str(path))
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertIn("--external-worktree-visibility show", json.loads(result.stdout)["reason"])
+        self.assertTrue((path / ".herdr-dispatch.json").exists())
+
+    def test_worktree_create_stops_for_a_repo_orca_doesnt_know(self):
+        self.env["FAKE_ORCA_REPOS"] = "[]"
+        result = self.dispatch("worktree", "create", "--branch", "x")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("orca repo add", json.loads(result.stdout)["reason"])
+
+    def test_launch_types_the_command_and_reports_back_to_the_run(self):
+        place = self.ok("terminal", "create", "--cwd", str(self.repo), "--tab")["place"]
+        result = self.ok("agent", "launch", "--place", place, "--kind", "codex", "--model", "m",
+                         "--name", "explore-x", "--seed-prompt", "Look at X.", "--report-back")
+        self.assertEqual(result["run_id"], "run_1")
+        sends = [call[call.index("--text") + 1] for call in self.calls("terminal", "send")]
+        self.assertEqual(sends[0], "codex --no-daemon -m m")
+        self.assertIn("Look at X.", sends[1])
+        self.assertIn("--to run:run_1", sends[1])
+        self.assertIn("[explore-x]", sends[1])
+
+        again = self.ok("agent", "launch", "--place", place, "--kind", "codex", "--seed-prompt", "No.")
+        self.assertTrue(again["converged"])
+        self.assertEqual(len(self.calls("terminal", "send")), 2)
+
+    def test_claude_reports_by_send_message_and_keeps_its_session_name(self):
+        place = self.ok("terminal", "create", "--cwd", str(self.repo), "--tab")["place"]
+        self.ok("agent", "launch", "--place", place, "--kind", "claude", "--name", "review-7",
+                "--seed-prompt", "Review.", "--report-back", "--report-to-session", "driver")
+        sends = [call[call.index("--text") + 1] for call in self.calls("terminal", "send")]
+        self.assertEqual(sends[0], "claude -n review-7")
+        self.assertIn("SendMessage to `driver`", sends[1])
+        self.assertEqual(self.calls("orchestration"), [])
+
+    def test_a_blocked_prompt_is_not_ready(self):
+        place = self.ok("terminal", "create", "--cwd", str(self.repo), "--tab")["place"]
+        self.env["FAKE_ORCA_BLOCKED"] = "1"
+        result = self.dispatch("agent", "send", "--agent", place, "--message", "hi")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("agent_blocked", json.loads(result.stdout)["reason"])
+
+    def test_send_waits_and_status_reads_the_terminal(self):
+        place = self.ok("terminal", "create", "--cwd", str(self.repo), "--tab")["place"]
+        self.ok("agent", "launch", "--place", place, "--kind", "claude")
+        # With no seed, the launch still waits for the agent's prompt.
+        self.assertEqual(len(self.calls("terminal", "wait")), 1)
+        sent = self.ok("agent", "send", "--agent", place, "--message", "hi", "--wait")
+        self.assertTrue(sent["settled"])
+        self.assertIn("--wait-submit", self.calls("terminal", "send")[-1])
+        status = self.ok("agent", "status", "--agent", place)
+        self.assertEqual((status["alive"], status["kind"]), (True, "claude"))
+        self.ok("terminal", "close", "--place", place)
+        self.assertFalse(self.ok("agent", "status", "--agent", place)["alive"])
+
+    def test_terminal_in_a_subdirectory_starts_there(self):
+        (self.repo / "src").mkdir()
+        self.ok("terminal", "create", "--cwd", str(self.repo / "src"), "--tab", "--label", "x")
+        create = self.calls("terminal", "create")[0]
+        self.assertEqual(create[create.index("--worktree") + 1], f"id:r1::{self.repo}")
+        self.assertIn("cd ", create[create.index("--command") + 1])
+
+
+if __name__ == "__main__":
+    unittest.main()

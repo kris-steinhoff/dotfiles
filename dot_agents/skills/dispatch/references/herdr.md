@@ -66,10 +66,10 @@ Runs `scripts/herdr/launch-agent-in-pane` on the place's pane.
 - `--developer-instructions-file` (codex only) passes the file through Codex's `developer_instructions` config override, for project instructions above the Git root that Codex's `AGENTS.md` discovery can't see. It can't be combined with `--persona`, whose profile carries its prompt in the same setting.
 - `--report-back` passes the caller's `$HERDR_PANE_ID` as the report target. A non-claude agent is told to report with `herdr agent prompt <pane> "[<agent name>] <message>"`, and a codex agent also to request escalation for `herdr`. `--report-to-session` makes a claude agent report by SendMessage instead.
 
-Kinds: `claude`, `codex`, `gemini`, `copilot`, `opencode`, `pi`. Adding a kind is an entry in the script's `KINDS` list, plus one in its model-flag table when the kind doesn't take `--model`.
+Kinds: `claude`, `codex`, `gemini`, `copilot`, `opencode`, `pi`. Adding a kind is an entry in `KINDS` in `scripts/agent_cli.py`, plus one in its model-flag table when the kind doesn't take `--model`; the Orca backend reads the same tables.
 
 If the launch returns `agent_not_ready`, the pane is probably at a trust prompt. Tell the user, and once they've accepted it, deliver the seed with `agent send`.
 
 ## `agent send` and `agent status`
 
-`herdr agent prompt <agent> <message> [--wait --timeout <ms>]` and `herdr agent get <agent>`, passed through as Herdr prints them. `agent get` sees agents of every kind. A wait that times out doesn't prove the message wasn't delivered, so check `agent status` before sending it again.
+`herdr agent prompt <agent> <message> [--wait --timeout <ms>]` and `herdr agent get <agent>`, passed through as Herdr prints them. `<agent>` is the agent's place (its pane id) or its name, since Herdr accepts either. `agent get` sees agents of every kind. A wait that times out doesn't prove the message wasn't delivered, so check `agent status` before sending it again.

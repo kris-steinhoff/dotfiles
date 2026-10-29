@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Enumerate and prepare GitHub PR reviews for an idempotent Herdr workflow.
+"""Enumerate and prepare GitHub PR reviews for an idempotent dispatch workflow.
 
 The helper deliberately owns only deterministic local/GitHub state. Placement
-and agent launch remain in the dispatch skill. Review state is stored inside
-the .herdr-dispatch.json marker that `dispatch worktree create` stamps.
+and agent launch remain in the dispatch skill, under Herdr or Orca. Review
+state is stored inside the .herdr-dispatch.json marker that `dispatch worktree
+create` stamps under either tool.
 """
 
 import argparse
@@ -253,12 +254,7 @@ def herdr_result(*args):
         return None
 
 
-def reviewer_alive(state):
-    """Whether the pass's recorded reviewer still runs in Herdr: True, False,
-    or None when Herdr can't be asked. None counts as alive everywhere, so a
-    Herdr hiccup never relaunches a reviewer that is still working."""
-    if os.environ.get("HERDR_ENV") != "1":
-        return None
+def herdr_reviewer_alive(state):
     name = state.get("agent_name")
     if name and run(["herdr", "agent", "get", name]).returncode == 0:
         return True
@@ -277,10 +273,48 @@ def reviewer_alive(state):
     return any(isinstance(a, dict) and a.get("workspace_id") == workspace for a in agents)
 
 
-def orphaned(state):
+def orca_result(*args):
+    proc = run([os.environ.get("ORCA_CLI_COMMAND") or "orca", *args, "--json"])
+    try:
+        envelope = json.loads(proc.stdout)
+    except ValueError:
+        return None
+    return envelope.get("result") if envelope.get("ok") else None
+
+
+def orca_reviewer_alive(state, worktree):
+    """Its terminal still runs an agent, or some terminal in its worktree does,
+    since Orca may have resumed the reviewer under a new handle."""
+    def running(record):
+        return isinstance(record, dict) and record.get("connected") and record.get("agentIdentity")
+
+    place = state.get("place")
+    if place:
+        shown = orca_result("terminal", "show", "--terminal", place)
+        if shown and running(shown.get("terminal")):
+            return True
+    listed = orca_result("terminal", "list", "--worktree", f"path:{os.path.realpath(worktree)}")
+    if not isinstance(listed, dict) or not isinstance(listed.get("terminals"), list):
+        return None
+    return any(running(t) for t in listed["terminals"])
+
+
+def reviewer_alive(state, worktree):
+    """Whether the pass's recorded reviewer still runs, under Herdr or Orca:
+    True, False, or None when the workspace tool can't be asked. None counts
+    as alive everywhere, so a hiccup never relaunches a reviewer that is still
+    working."""
+    if os.environ.get("HERDR_ENV") == "1":
+        return herdr_reviewer_alive(state)
+    if os.environ.get("ORCA_PANE_KEY"):
+        return orca_reviewer_alive(state, worktree)
+    return None
+
+
+def orphaned(state, worktree):
     """An active pass whose reviewer is gone: its agent and workspace closed,
     or its workspace open with no agent left in it."""
-    return state.get("status") == "active" and reviewer_alive(state) is False
+    return state.get("status") == "active" and reviewer_alive(state, worktree) is False
 
 
 def action_payload(action, item, **extra):
@@ -313,7 +347,7 @@ def command_prepare(args):
 
         recorded_status = state.get("status", "prepared" if interrupted_creation else "active")
         if recorded_status == "active":
-            if orphaned(state):
+            if orphaned(state, path):
                 # Its reviewer died mid-pass. Relaunch it at the PR's current head,
                 # but only from a clean checkout still at the head it was reviewing.
                 head = checked(["git", "rev-parse", "HEAD"], cwd=path)
@@ -328,7 +362,7 @@ def command_prepare(args):
                 if head != wanted:
                     checked(["git", "reset", "--hard", wanted], cwd=path, label="refresh orphaned review worktree")
                 state.update({"head_sha": wanted, "status": "prepared", "prepared_at": now()})
-                for key in ("pane_id", "workspace_id", "agent_name"):
+                for key in ("place", "pane_id", "workspace_id", "agent_name"):
                     state.pop(key, None)
                 marker["github_pr_review"] = state
                 write_marker(path, marker)
@@ -440,7 +474,7 @@ def command_mark(args):
             f"{args.status}_at": now(),
         }
     )
-    for key in ("pane_id", "workspace_id", "agent_name"):
+    for key in ("place", "pane_id", "workspace_id", "agent_name"):
         value = getattr(args, key)
         if value:
             state[key] = value
@@ -455,7 +489,7 @@ def cleanup_verdict(entry, state, queued):
     number = state["pr_number"]
     path = entry["path"]
     if state.get("status") != "complete":
-        if orphaned(state):
+        if orphaned(state, path):
             if number in queued:
                 return "keep", "its reviewer is gone; the next prepare relaunches it"
             return "keep", "its reviewer is gone and review is no longer requested"
@@ -530,6 +564,7 @@ def command_cleanup(args):
             "head_branch": entry.get("branch", ""),
             "worktree": entry["path"],
             "workspace_id": state.get("workspace_id"),
+            "place": state.get("place"),
             "agent_name": state.get("agent_name"),
         }
         if args.apply and action == "remove":
@@ -581,6 +616,7 @@ def command_release(args):
 
 def command_complete(args):
     args.status = "complete"
+    args.place = None
     args.pane_id = None
     args.workspace_id = None
     args.agent_name = None
@@ -650,6 +686,7 @@ def parser():
     mark.add_argument("--pr-number", type=int, required=True)
     mark.add_argument("--head-sha", required=True)
     mark.add_argument("--status", choices=("prepared", "active"), required=True)
+    mark.add_argument("--place", help="the reviewer's place, from dispatch")
     mark.add_argument("--pane-id")
     mark.add_argument("--workspace-id")
     mark.add_argument("--agent-name")

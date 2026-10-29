@@ -3,10 +3,11 @@
 
 A worktree is safe to remove when losing the checkout loses nothing and stops
 nothing: its tree is clean (no uncommitted or untracked changes), no live agent
-occupies its Herdr workspace, and it is not where the caller is working. A live
-agent the caller has confirmed is finished (--done-agent, a name or pane id)
-does not hold its worktree, unless it is working right now; removing the
-worktree closes its workspace, which ends that agent. Its
+occupies its workspace in the workspace tool (a Herdr workspace, or an Orca
+worktree's terminals), and it is not where the caller is working. A live agent
+the caller has confirmed is finished (--done-agent, a name, pane id, or Orca
+terminal handle) does not hold its worktree, unless it is working right now;
+removing the worktree closes its workspace, which ends that agent. Its
 commits do not have to be pushed or merged, because the branch outlives the
 checkout: after removal the branch is deleted with `git branch -d`, which
 refuses one that is not fully merged, and that refusal is reported, not
@@ -22,11 +23,16 @@ more, it considers only those. Some worktrees are always kept:
     own root is on another branch
 
 A worktree with an open Herdr workspace is removed with `herdr worktree remove
---force`, which also closes the workspace; one with no workspace is removed
-with `git worktree remove`, or pruned when its directory is already gone.
+--force`, which also closes the workspace. Under Orca, its open terminals are
+closed with `orca terminal close --all` and git removes the checkout; `orca
+worktree rm` isn't used, because it deletes the branch without the `-d` check.
+One with no workspace is removed with `git worktree remove`, or pruned when
+its directory is already gone.
 
-Requires HERDR_ENV=1: without Herdr it cannot see live agents, so it refuses
-rather than guess.
+Requires a workspace tool, Herdr (HERDR_ENV=1) or Orca (ORCA_PANE_KEY):
+without one it cannot see live agents, so it refuses rather than guess. Orca
+reports an agent's state only for worktrees its sidebar shows; an agent it
+can't report on counts as `unknown`, which holds its worktree like `working`.
 
 Output (stdout, JSON): {"items": [...]}, one per worktree considered, each
   {path, branch, workspace_id, action, reason, agents, branch_action, branch_reason}
@@ -37,7 +43,7 @@ for nothing but them, so the caller can ask whether they are done.
 
 Exit codes (shared across the Herdr dispatch primitives):
   0  success, including items kept or failed; read each item's action.
-  2  needs judgment: not inside Herdr, or a --worktree that is not a worktree
+  2  needs judgment: no workspace tool, or a --worktree that is not a worktree
      of this repo. stdout is {"status": "needs_judgment", "reason": ...}.
   1  real error (the repo or its worktree list could not be read). Diagnostics
      go to stderr.
@@ -51,9 +57,15 @@ import os
 import subprocess
 import sys
 
+# Orca exports ORCA_CLI_COMMAND for sessions that need another executable.
+ORCA = os.environ.get("ORCA_CLI_COMMAND") or "orca"
+
 
 class CleanupError(Exception):
-    """A subprocess failed or returned something unparsable."""
+    """A subprocess failed or returned something unparsable. `code` is Orca's
+    error code when Orca gave one."""
+
+    code = None
 
 
 def run(argv, cwd=None):
@@ -146,14 +158,45 @@ def collect_dicts(obj, out=None):
     return out
 
 
-def open_workspaces(repo):
+def open_workspaces(repo, entries):
     """{realpath: open_workspace_id} for the repo's worktrees open in Herdr."""
     result = herdr_json(["worktree", "list", "--cwd", repo])
-    entries = result.get("worktrees") if isinstance(result, dict) else result
+    listed = result.get("worktrees") if isinstance(result, dict) else result
     workspaces = {}
-    for entry in entries or []:
+    for entry in listed or []:
         if isinstance(entry, dict) and entry.get("path") and entry.get("open_workspace_id"):
             workspaces[os.path.realpath(entry["path"])] = entry["open_workspace_id"]
+    return workspaces
+
+
+def orca_json(args):
+    proc = run([ORCA, *args, "--json"])
+    try:
+        envelope = json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        raise CleanupError(f"orca {' '.join(args)} returned non-JSON: {proc.stdout[:200]}")
+    if not envelope.get("ok"):
+        error = envelope.get("error") or {}
+        failure = CleanupError(
+            f"orca {' '.join(args)} failed: {error.get('code')} {error.get('message') or ''}".strip())
+        failure.code = error.get("code")
+        raise failure
+    return envelope.get("result") or {}
+
+
+def orca_workspaces(repo, entries):
+    """{realpath: Orca worktree id} for the repo's worktrees Orca knows."""
+    workspaces = {}
+    for entry in entries:
+        real = os.path.realpath(entry["path"])
+        try:
+            record = orca_json(["worktree", "show", "--worktree", f"path:{real}"]).get("worktree")
+        except CleanupError as error:
+            if error.code != "selector_not_found":
+                raise  # Orca couldn't be asked: refuse rather than guess
+            continue  # Orca doesn't know it, so nothing of Orca's runs there
+        if record and record.get("id"):
+            workspaces[real] = record["id"]
     return workspaces
 
 
@@ -178,7 +221,7 @@ def dirty(path):
     return bool(proc.stdout.strip())
 
 
-def live_agents():
+def live_agents(workspaces):
     """Every live agent Herdr knows, as {target, name, pane_id, status, workspace_id}."""
     result = herdr_json(["agent", "list"])
     agents = result.get("agents") if isinstance(result, dict) else result
@@ -194,6 +237,36 @@ def live_agents():
             "status": agent.get("agent_status"),
             "workspace_id": agent.get("workspace_id") or pane_id.partition(":")[0],
         })
+    return out
+
+
+def orca_agents(workspaces):
+    """The live agents in the repo's Orca worktrees, in the same shape, each
+    addressed by its terminal handle. Their state comes from `worktree ps`,
+    keyed by pane (tab and leaf); one it doesn't list is `unknown`."""
+    states = {}
+    try:
+        listed = orca_json(["worktree", "ps", "--limit", "1000"]).get("worktrees") or []
+    except CleanupError:
+        listed = []
+    for row in listed:
+        for agent in (row.get("agents") or []) if isinstance(row, dict) else []:
+            if isinstance(agent, dict) and agent.get("paneKey"):
+                states[agent["paneKey"]] = agent.get("state")
+    out = []
+    for worktree_id in workspaces.values():
+        listed = orca_json(["terminal", "list", "--worktree", f"id:{worktree_id}"]).get("terminals") or []
+        for terminal in listed:
+            if not (terminal.get("connected") and terminal.get("agentIdentity")):
+                continue
+            pane_key = f"{terminal.get('tabId')}:{terminal.get('leafId')}"
+            out.append({
+                "target": terminal["handle"],
+                "name": None,
+                "pane_id": terminal["handle"],
+                "status": states.get(pane_key) or "unknown",
+                "workspace_id": worktree_id,
+            })
     return out
 
 
@@ -213,7 +286,8 @@ def keep_reason(entry, workspace_id, protected, agents, done):
         return f"it is the checkout of the repo's HEAD or default branch {entry['branch']!r}", None
     if inside(os.getcwd(), path):
         return "it is the current working directory", None
-    if workspace_id and workspace_id == os.environ.get("HERDR_WORKSPACE_ID"):
+    if workspace_id and workspace_id in (os.environ.get("HERDR_WORKSPACE_ID"),
+                                         os.environ.get("ORCA_WORKTREE_ID")):
         return "it is the caller's own workspace", None
     if not entry.get("prunable"):  # a prunable entry's directory is gone, with nothing to lose
         try:
@@ -226,9 +300,9 @@ def keep_reason(entry, workspace_id, protected, agents, done):
     if agents is None:
         return "could not check for live agents", None
     here = [agent for agent in agents if agent["workspace_id"] == workspace_id]
-    if any(agent["status"] == "working" for agent in here):
-        busy = [agent for agent in here if agent["status"] == "working"]
-        return "an agent in its workspace is working", busy
+    if any(agent["status"] in ("working", "unknown") for agent in here):
+        busy = [agent for agent in here if agent["status"] in ("working", "unknown")]
+        return "an agent in its workspace is working, or its state is unknown", busy
     blocking = [agent for agent in here if not ({agent["target"], agent["pane_id"]} & done)]
     if blocking:
         return "live agents occupy its workspace", blocking
@@ -237,9 +311,15 @@ def keep_reason(entry, workspace_id, protected, agents, done):
 
 # --- removal ----------------------------------------------------------------
 
-def remove(git_dir, entry, workspace_id):
+def remove(git_dir, entry, workspace_id, tool):
     """None on success, else the failure reason."""
-    if workspace_id:
+    if workspace_id and tool == "orca":
+        try:
+            orca_json(["terminal", "close", "--worktree", f"id:{workspace_id}", "--all"])
+        except CleanupError as error:
+            return str(error)
+        proc = git(git_dir, "worktree", "remove", entry["path"])
+    elif workspace_id:
         proc = run(["herdr", "worktree", "remove", "--workspace", workspace_id, "--force"])
     elif entry.get("prunable"):
         proc = git(git_dir, "worktree", "prune")
@@ -279,29 +359,35 @@ def main():
     parser.add_argument("--repo", default=os.getcwd(),
                         help="any checkout or repo directory of the repo (default: cwd)")
     parser.add_argument("--worktree", action="append", default=[],
-                        help="a path or Herdr workspace_id to consider; repeatable (default: all)")
+                        help="a path, Herdr workspace_id, or Orca worktree id to consider; "
+                             "repeatable (default: all)")
     parser.add_argument("--done-agent", action="append", default=[],
-                        help="a live agent (name or pane id) confirmed finished; repeatable")
+                        help="a live agent (name, pane id, or Orca terminal handle) confirmed "
+                             "finished; repeatable")
     parser.add_argument("--dry-run", action="store_true", help="report what would be removed")
     args = parser.parse_args()
 
-    if os.environ.get("HERDR_ENV") != "1":
-        emit_judgment("not running inside a Herdr session (HERDR_ENV != 1)")
+    if os.environ.get("HERDR_ENV") == "1":
+        tool, find_workspaces, find_agents = "herdr", open_workspaces, live_agents
+    elif os.environ.get("ORCA_PANE_KEY"):
+        tool, find_workspaces, find_agents = "orca", orca_workspaces, orca_agents
+    else:
+        emit_judgment("no workspace tool is running (neither HERDR_ENV=1 nor ORCA_PANE_KEY is set)")
 
     try:
         git_dir = common_dir(args.repo)
         entries = git_worktrees(git_dir)
-        workspaces = open_workspaces(args.repo)
+        # The first entry is the primary checkout, or the bare repo itself.
+        candidates = [entry for entry in entries[1:] if not entry.get("bare")]
+        workspaces = find_workspaces(args.repo, candidates)
     except CleanupError as error:
         emit_error(str(error))
 
-    # The first entry is the primary checkout, or the bare repo itself.
-    candidates = [entry for entry in entries[1:] if not entry.get("bare")]
     if args.worktree:
         candidates = resolve_targets(args.worktree, candidates, workspaces)
     protected = protected_branches(git_dir)
     try:
-        agents = live_agents()
+        agents = find_agents(workspaces)
     except CleanupError:
         agents = None  # fail closed: every worktree with a workspace is kept
     done = set(args.done_agent)
@@ -327,7 +413,7 @@ def main():
         elif args.dry_run:
             item.update(action="would_remove", reason=safe_reason)
         else:
-            failure = remove(git_dir, entry, workspace_id)
+            failure = remove(git_dir, entry, workspace_id, tool)
             if failure:
                 item.update(action="failed", reason=failure)
             else:

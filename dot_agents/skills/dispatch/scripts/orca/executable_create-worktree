@@ -1,0 +1,292 @@
+#!/usr/bin/env python3
+"""Create a git worktree on a branch and open it in Orca, converging on re-run.
+
+The Orca counterpart of herdr/create-worktree, with the same rules for
+collisions and re-runs:
+
+  1. If a worktree already exists on the exact requested branch AND carries the
+     dispatch provenance marker (<path>/.herdr-dispatch.json), it is our own
+     prior creation, so reuse it and return created=false.
+  2. Else if a worktree already exists on that branch but is NOT ours, auto-
+     suffix (-2, -3, ...) to the next free name and create fresh.
+  3. Else create fresh on the requested name, checking out an existing local
+     branch if one is there, so source preparation -> create-worktree chains
+     cleanly.
+
+With --path the caller picks where the checkout goes; a branch collision
+suffixes branch and path together, and an occupied path alone suffixes only
+the path, exactly as under Herdr. Without --path it goes in Orca's default
+worktree folder, ~/orca/workspaces/<repo>/<branch>.
+
+git does the work rather than `orca worktree create`, because Orca's command
+takes neither a path nor an exact branch: asked for an existing branch's name,
+it cuts a new suffixed branch instead. Orca then adopts the checkout as one of
+the repo's non-Orca worktrees. That needs two things of Orca first, or the
+script stops with needs-judgment before touching git:
+
+  - the repo is registered in Orca (`orca repo add`), since Orca shows a
+    worktree only under its repo
+  - the repo doesn't hide non-Orca worktrees, since the user couldn't see the
+    worktree or anything launched in it. The fix is a setting of the user's,
+    so the script names it rather than changing it.
+
+A repo set to `inherit` follows Orca's global default, which the CLI can't
+read, so it passes. If Orca then never picks the worktree up, that default
+hides it, and the result is the same needs-judgment, after the fact: the
+worktree stays, and a re-run converges on it once Orca shows it.
+
+Once Orca has noticed the checkout, the script labels it with --label, records
+the caller's worktree as its parent (the lineage Orca nests its sidebar by),
+and opens a terminal tab in it. That terminal is the place. On a re-run it
+returns a terminal already open there, preferring one with no agent, and opens
+a new one only when there is none (reopened=true).
+
+The marker file name is Herdr's for continuity: worktrees created before Orca
+came into use carry it, and github-pr and teardown recognize dispatch-created
+worktrees by it. It is excluded through the repo's .git/info/exclude, so it
+never makes a clean worktree look dirty.
+
+Requires ORCA_PANE_KEY (an Orca terminal) and the `orca` CLI.
+
+Exit codes (shared across the dispatch primitives):
+  0  success. The JSON result object is printed to stdout.
+  2  needs judgment. stdout is {"status": "needs_judgment", "reason": ...}.
+  1  real error. Diagnostics go to stderr.
+
+All subprocesses are invoked as argv lists, never a shell string.
+"""
+
+import argparse
+from datetime import datetime, timezone
+import json
+import os
+import sys
+
+from orca_cli import OrcaError, agent_in, create_terminal, orca, run, terminals, wait_for_worktree
+
+MARKER_NAME = ".herdr-dispatch.json"
+MARKER_TAG = "herdr-dispatch"
+DEFAULT_ROOT = os.path.expanduser("~/orca/workspaces")
+
+
+def emit_success(obj):
+    print(json.dumps(obj))
+    sys.exit(0)
+
+
+def emit_judgment(reason, **partial):
+    print(json.dumps({"status": "needs_judgment", "reason": reason, **partial}))
+    sys.exit(2)
+
+
+def emit_error(message):
+    print(f"create-worktree: {message}", file=sys.stderr)
+    sys.exit(1)
+
+
+def git(repo, *args):
+    proc = run(["git", "-C", repo, *args])
+    if proc.returncode != 0:
+        raise OrcaError(f"git {' '.join(args)} failed: {proc.stderr.strip() or proc.stdout.strip()}")
+    return proc.stdout.strip()
+
+
+def git_branch_exists(repo, name):
+    return run(["git", "-C", repo, "show-ref", "--verify", "--quiet", f"refs/heads/{name}"]).returncode == 0
+
+
+def git_worktrees(repo):
+    entries, current = [], {}
+    for line in git(repo, "worktree", "list", "--porcelain").splitlines():
+        if line.startswith("worktree "):
+            if current:
+                entries.append(current)
+            current = {"path": line[len("worktree "):]}
+        elif line.startswith("branch "):
+            current["branch"] = line[len("branch "):].removeprefix("refs/heads/")
+    if current:
+        entries.append(current)
+    return entries
+
+
+def worktree_path_for_branch(repo, branch):
+    return next((e["path"] for e in git_worktrees(repo) if e.get("branch") == branch), None)
+
+
+def marker_is_ours(path):
+    try:
+        with open(os.path.join(path, MARKER_NAME), encoding="utf-8") as handle:
+            return json.load(handle).get("created_by") == MARKER_TAG
+    except (OSError, ValueError):
+        return False
+
+
+def ensure_marker_excluded(path):
+    """Keep the marker out of `git status`. Best-effort: never blocks creation."""
+    try:
+        common_dir = git(path, "rev-parse", "--path-format=absolute", "--git-common-dir")
+        exclude_path = os.path.join(common_dir, "info", "exclude")
+        os.makedirs(os.path.dirname(exclude_path), exist_ok=True)
+        existing = ""
+        if os.path.exists(exclude_path):
+            with open(exclude_path, encoding="utf-8") as handle:
+                existing = handle.read()
+        if MARKER_NAME in existing.splitlines():
+            return
+        with open(exclude_path, "a", encoding="utf-8") as handle:
+            if existing and not existing.endswith("\n"):
+                handle.write("\n")
+            handle.write(f"{MARKER_NAME}\n")
+    except (OSError, OrcaError):
+        pass
+
+
+def write_marker(path, branch, base):
+    ensure_marker_excluded(path)
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    payload = {"created_by": MARKER_TAG, "created_at": stamp, "branch": branch, "base": base}
+    with open(os.path.join(path, MARKER_NAME), "w", encoding="utf-8") as handle:
+        json.dump(payload, handle)
+
+
+def path_occupied(repo, path):
+    if os.path.lexists(path):
+        return True
+    target = os.path.realpath(path)
+    return any(os.path.realpath(e["path"]) == target for e in git_worktrees(repo))
+
+
+def next_free(repo, base, path):
+    suffix = 2
+    while True:
+        candidate = f"{base}-{suffix}"
+        candidate_path = f"{path}-{suffix}" if path else None
+        if (not git_branch_exists(repo, candidate)
+                and not worktree_path_for_branch(repo, candidate)
+                and not (candidate_path and path_occupied(repo, candidate_path))):
+            return candidate, candidate_path
+        suffix += 1
+
+
+def next_free_path(repo, path):
+    suffix = 2
+    while path_occupied(repo, f"{path}-{suffix}"):
+        suffix += 1
+    return f"{path}-{suffix}"
+
+
+def orca_repo(main_checkout):
+    """The Orca repo whose path is this repo's primary checkout, or needs-judgment."""
+    target = os.path.realpath(main_checkout)
+    repos = orca("repo", "list").get("repos") or []
+    for repo in repos:
+        if isinstance(repo, dict) and repo.get("path") and os.path.realpath(repo["path"]) == target:
+            if repo.get("externalWorktreeVisibility") == "hide":
+                emit_judgment(
+                    f"Orca hides non-Orca worktrees in {main_checkout}, so nothing created here "
+                    "would show in its sidebar. That setting is the user's: ask them to run "
+                    f"`orca repo set --repo id:{repo['id']} --external-worktree-visibility show`, "
+                    "then retry.",
+                    repo=main_checkout,
+                )
+            return repo
+    emit_judgment(
+        f"{main_checkout} isn't a repo Orca knows. Ask the user to add it "
+        f"(`orca repo add --path {main_checkout}`), then retry.",
+        repo=main_checkout,
+    )
+
+
+def adopt(path, label, repo_id):
+    """Orca's id for a worktree git created, after labeling it and recording its parent.
+
+    A repo set to `inherit` passes orca_repo's check, but Orca's global default
+    can still hide its non-Orca worktrees, which then never appear. The
+    worktree stays, and a re-run converges on it once it shows."""
+    record = wait_for_worktree(path)
+    if not record:
+        emit_judgment(
+            f"Orca didn't pick up the worktree at {path}, most likely because it hides non-Orca "
+            "worktrees, here by its global default. That setting is the user's: ask them to show "
+            "non-Orca worktrees in Orca's settings, or for this repo with `orca repo set --repo "
+            f"id:{repo_id} --external-worktree-visibility show`, then retry.",
+            path=path,
+        )
+    worktree_id = record["id"]
+    args = ["worktree", "set", "--worktree", f"id:{worktree_id}"]
+    if label:
+        args += ["--display-name", label]
+    parent = os.environ.get("ORCA_WORKTREE_ID")
+    if parent and parent != worktree_id and not record.get("parentWorktreeId"):
+        args += ["--parent-worktree", f"id:{parent}"]
+    if len(args) > 4:
+        try:
+            orca(*args)
+        except OrcaError as error:
+            print(f"create-worktree: couldn't label {path}: {error}", file=sys.stderr)
+    return worktree_id
+
+
+def place_in(worktree_id, title):
+    """(terminal handle, opened): a terminal in the worktree to launch into,
+    preferring one with no agent, or a new one when there is none."""
+    open_terminals = [t for t in terminals(worktree_id) if t.get("connected")]
+    for candidate in open_terminals:
+        if not agent_in(candidate):
+            return candidate["handle"], False
+    if open_terminals:
+        return open_terminals[0]["handle"], False
+    return create_terminal(worktree_id, title), True
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Create a git worktree and open it in Orca.")
+    parser.add_argument("--branch", required=True, help="branch to create or check out")
+    parser.add_argument("--base", help="base ref for a new branch")
+    parser.add_argument("--label", help="Orca display name")
+    parser.add_argument("--repo", help="git repo to operate in (default: cwd)")
+    parser.add_argument("--path", help="explicit worktree path (default: Orca's worktree folder)")
+    args = parser.parse_args()
+
+    if not os.environ.get("ORCA_PANE_KEY"):
+        emit_judgment("not running inside an Orca terminal (ORCA_PANE_KEY is not set)")
+
+    try:
+        repo = os.path.abspath(args.repo or os.getcwd())
+        if run(["git", "-C", repo, "rev-parse", "--git-dir"]).returncode != 0:
+            emit_judgment(f"{repo} is not a git checkout", repo=repo)
+        main_checkout = git_worktrees(repo)[0]["path"]
+        repo_id = orca_repo(main_checkout)["id"]
+        title = args.label or args.branch
+
+        existing = worktree_path_for_branch(repo, args.branch)
+        if existing and marker_is_ours(existing):
+            worktree_id = adopt(existing, args.label, repo_id)
+            handle, reopened = place_in(worktree_id, title)
+            emit_success({"worktree_id": worktree_id, "path": existing, "terminal": handle,
+                          "branch": args.branch, "created": False, "reopened": reopened})
+
+        branch = args.branch
+        path = os.path.abspath(args.path) if args.path else os.path.join(
+            DEFAULT_ROOT, os.path.basename(main_checkout), args.branch.replace("/", "-"))
+        if existing:
+            branch, path = next_free(repo, args.branch, path)
+        elif path_occupied(repo, path):
+            path = next_free_path(repo, path)
+
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        if git_branch_exists(repo, branch):
+            git(repo, "worktree", "add", path, branch)
+        else:
+            git(repo, "worktree", "add", "-b", branch, path, *([args.base] if args.base else []))
+        write_marker(path, branch, args.base)
+        worktree_id = adopt(path, args.label, repo_id)
+        handle = create_terminal(worktree_id, title)
+        emit_success({"worktree_id": worktree_id, "path": path, "terminal": handle,
+                      "branch": branch, "created": True})
+    except OrcaError as error:
+        emit_error(str(error))
+
+
+if __name__ == "__main__":
+    main()

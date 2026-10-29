@@ -93,6 +93,7 @@
         "~/.local/state/ai-usage",
         "~/Documents/Chief of Staff/inbox",
         "~/.herdr/worktrees",
+        "~/orca/workspaces",
         "~/.dolt"{{ range get . "claudeSandboxAllowWrite" | default list }},
         {{ toJson . }}{{ end }}
       ],

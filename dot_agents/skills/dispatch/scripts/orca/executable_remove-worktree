@@ -1,0 +1,174 @@
+#!/usr/bin/env python3
+"""Remove one worktree and close its Orca terminals. Destructive, fail-closed.
+
+The Orca counterpart of herdr/remove-worktree, with the same gate. Unless
+`--force` is given, it refuses (needs-judgment, with a specific reason) when
+any of these hold:
+
+  1. The tree is dirty (uncommitted changes).
+  2. The branch's work isn't verifiably pushed: no upstream configured at all,
+     or real commits ahead of its upstream.
+  3. A live agent still runs in one of the worktree's Orca terminals.
+  4. It is the caller's own worktree ($ORCA_WORKTREE_ID).
+
+Past the gate it closes every terminal Orca has open in the worktree
+(`orca terminal close --all`, which ends whatever runs there), then removes the
+checkout with `git worktree remove --force`, and reports removed only once git
+no longer lists it. It doesn't use `orca worktree rm`, because that also
+deletes the branch, and dispatch leaves branches alone. Orca forgets the
+worktree on its own once git has.
+
+A path git doesn't list and that is gone from disk is already removed, a
+success. A path git doesn't list that still exists is refused, as is the
+repository's main checkout. A removal that deleted the checkout but couldn't
+delete git's record of it, as happens in a sandbox that can't write the repo's
+.git/worktrees/, is needs-judgment with checkout_removed=true.
+
+`--worktree` is a path or an Orca worktree id (<repoId>::<path>).
+
+Requires ORCA_PANE_KEY (an Orca terminal) and the `orca` CLI.
+
+Exit codes (shared across the dispatch primitives):
+  0  success. The JSON result object is printed to stdout.
+  2  needs judgment. stdout is {"status": "needs_judgment", "reason": ...}.
+  1  real error. Diagnostics go to stderr.
+"""
+
+import argparse
+import json
+import os
+import sys
+
+from orca_cli import OrcaError, agent_in, orca, run, terminals, worktree
+
+
+def emit_success(obj):
+    print(json.dumps(obj))
+    sys.exit(0)
+
+
+def emit_judgment(reason, **partial):
+    print(json.dumps({"status": "needs_judgment", "reason": reason, **partial}))
+    sys.exit(2)
+
+
+def emit_error(message):
+    print(f"remove-worktree: {message}", file=sys.stderr)
+    sys.exit(1)
+
+
+def git_worktrees(repo):
+    """Every worktree git registers for `repo`, main checkout first, as dicts
+    with `path` (realpath) and `prunable` (git's reason, or None)."""
+    proc = run(["git", "-C", repo, "worktree", "list", "--porcelain"])
+    if proc.returncode != 0:
+        raise OrcaError(f"git worktree list failed in {repo}: {proc.stderr.strip()}")
+    entries = []
+    for line in proc.stdout.splitlines():
+        if line.startswith("worktree "):
+            entries.append({"path": os.path.realpath(line[len("worktree "):]), "prunable": None})
+        elif line.startswith("prunable") and entries:
+            entries[-1]["prunable"] = line[len("prunable"):].strip() or "prunable"
+    return entries
+
+
+def git_entry(entries, path):
+    real = os.path.realpath(path)
+    return next((e for e in entries if e["path"] == real), None)
+
+
+def resolve(target, repo):
+    """The worktree's realpath, after emitting success when it is already gone
+    and needs-judgment when it isn't a linked worktree."""
+    if "::" in target and not os.path.exists(target):
+        target = target.split("::", 1)[1]
+    entries = git_worktrees(repo)
+    real = os.path.realpath(target)
+    entry = git_entry(entries, real)
+    if entry is None:
+        nested = [e["path"] for e in entries if e["path"].startswith(real.rstrip(os.sep) + os.sep)]
+        if nested:
+            emit_judgment(f"{target} is not a worktree, but {len(nested)} worktree(s) sit under it; "
+                          "pass one worktree's own path", path=target, worktrees=nested)
+        if os.path.exists(real):
+            emit_judgment(f"{target} is not a worktree git registers in {repo}", path=target)
+        emit_success({"removed": True, "path": target})
+    if entry is entries[0]:
+        emit_judgment(f"{target} is the repository's main checkout, not a linked worktree", path=target)
+    return real
+
+
+def git_out(path, *args):
+    proc = run(["git", "-C", path, *args])
+    return proc.returncode, proc.stdout.strip()
+
+
+def unpushed_reason(path):
+    code, upstream = git_out(path, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")
+    if code != 0 or not upstream:
+        return ("branch has no upstream configured, so its commits aren't "
+                "verifiably pushed anywhere else")
+    code, out = git_out(path, "rev-list", "--left-right", "--count", f"{upstream}...HEAD")
+    try:
+        ahead = int(out.split()[1]) if code == 0 else None
+    except (IndexError, ValueError):
+        ahead = None
+    if ahead is None:
+        return "could not determine how far the branch is ahead of its upstream"
+    if ahead > 0:
+        return f"branch is {ahead} commit(s) ahead of its upstream (unpushed)"
+    return None
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Remove one worktree (fail-closed).")
+    parser.add_argument("--worktree", required=True, help="a path or an Orca worktree id")
+    parser.add_argument("--force", action="store_true", help="override the safety refusal")
+    parser.add_argument("--repo", default=os.getcwd(),
+                        help="git repo for the worktree-list lookup (default: cwd)")
+    args = parser.parse_args()
+
+    if not os.environ.get("ORCA_PANE_KEY"):
+        emit_judgment("not running inside an Orca terminal (ORCA_PANE_KEY is not set)")
+
+    try:
+        path = resolve(args.worktree, args.repo)
+        record = worktree(f"path:{path}")
+        worktree_id = record["id"] if record else None
+
+        if not args.force:
+            code, status = git_out(path, "status", "--porcelain")
+            if code == 0 and status:
+                emit_judgment("worktree has uncommitted changes (dirty tree)",
+                              path=path, worktree_id=worktree_id)
+            reason = unpushed_reason(path)
+            if reason:
+                emit_judgment(reason, path=path, worktree_id=worktree_id)
+            if worktree_id and any(agent_in(t) for t in terminals(worktree_id)):
+                emit_judgment("a live agent still runs in one of this worktree's terminals",
+                              path=path, worktree_id=worktree_id)
+            if worktree_id and worktree_id == os.environ.get("ORCA_WORKTREE_ID"):
+                emit_judgment("this is the caller's own worktree", path=path, worktree_id=worktree_id)
+
+        if worktree_id and terminals(worktree_id):
+            orca("terminal", "close", "--worktree", f"id:{worktree_id}", "--all")
+        proc = run(["git", "-C", args.repo, "worktree", "remove", "--force", path])
+        detail = (proc.stderr or proc.stdout).strip()
+
+        entry = git_entry(git_worktrees(args.repo), path)
+        if entry is None:
+            emit_success({"removed": True, "path": path})
+        if entry["prunable"] and not os.path.exists(path):
+            emit_judgment(
+                "the checkout was deleted but git's record of it remains (prunable), "
+                "likely because .git/worktrees/ isn't writable here; run "
+                "`git worktree prune` where it is",
+                path=path, worktree_id=worktree_id, checkout_removed=True,
+            )
+        raise OrcaError(f"git worktree remove left {path} registered (exit {proc.returncode}): {detail}")
+    except OrcaError as error:
+        emit_error(str(error))
+
+
+if __name__ == "__main__":
+    main()

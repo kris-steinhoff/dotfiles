@@ -92,6 +92,27 @@ out="$(cd "$repo" && python3 "$script" prepare --pr-number 7)"
 check "prepare relaunches an orphaned pass whose head moved" [ "$(field action <<<"$out")/$(field relaunched <<<"$out")" = dispatch/True ]
 check "the relaunch moves the checkout to the new head" [ "$(git -C "$wt" rev-parse HEAD)" = "$(git -C "$origin" rev-parse refs/pull/7/head)" ]
 
+# Under Orca, a reviewer is alive while its terminal, or any terminal in its
+# worktree, runs an agent. The fake orca answers from FAKE_ORCA_AGENT.
+cat >"$tmp/bin/orca" <<'EOF'
+#!/bin/bash
+case "$1 $2" in
+"terminal show")
+	printf '{"ok":true,"result":{"terminal":{"handle":"%s","connected":true,"agentIdentity":%s}}}\n' "$4" "${FAKE_ORCA_AGENT:-null}" ;;
+"terminal list") echo '{"ok":true,"result":{"terminals":[]}}' ;;
+*) echo '{"ok":false,"error":{"code":"unexpected"}}' ;;
+esac
+EOF
+chmod +x "$tmp/bin/orca"
+review 8
+wt8="$repo/.worktrees/pr-8"
+python3 "$script" mark --worktree "$wt8" --pr-number 8 --head-sha "$(git -C "$wt8" rev-parse HEAD)" \
+	--status active --place term_8 >/dev/null
+out="$(cd "$repo" && env -u HERDR_ENV ORCA_PANE_KEY=k FAKE_ORCA_AGENT='"claude"' python3 "$script" prepare --pr-number 8)"
+check "under Orca, a reviewer whose terminal runs an agent keeps its pass" [ "$(field action <<<"$out")" = already_active ]
+out="$(cd "$repo" && env -u HERDR_ENV ORCA_PANE_KEY=k python3 "$script" prepare --pr-number 8)"
+check "under Orca, a pass whose reviewer is gone is relaunched" [ "$(field action <<<"$out")/$(field relaunched <<<"$out")" = dispatch/True ]
+
 [ "$failures" -eq 0 ] || {
 	echo "$out" >&2
 	exit 1

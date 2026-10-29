@@ -7,16 +7,17 @@ message to that agent) rather than how Herdr or Orca does it. The backend comes
 from the environment:
 
   HERDR_ENV=1        Herdr, through the scripts in herdr/ and the herdr CLI
-  ORCA_PANE_KEY set  Orca, not implemented yet (needs judgment)
+  ORCA_PANE_KEY set  Orca, through the scripts in orca/ and the orca CLI
 
 A place is somewhere an agent can be launched, in whatever form the backend
-needs to find it again; under Herdr it is a pane id. Callers get one from
-`worktree create` or `terminal create`, pass it to `agent launch` or
-`terminal close`, and never look inside it.
+needs to find it again: a pane id under Herdr, a terminal handle under Orca.
+Callers get one from `worktree create` or `terminal create`, pass it to
+`agent launch` or `terminal close`, and never look inside it. It also
+addresses the agent launched there, for `agent send` and `agent status`.
 
-The Herdr scripts keep their own JSON results. This adds `place` to the results
-that create somewhere to launch and passes everything else through, exit code
-included, so the exit codes are theirs:
+The backend scripts keep their own JSON results. This adds `place` to the
+results that create somewhere to launch and passes everything else through,
+exit code included, so the exit codes are theirs:
 
   0  success. The JSON result is on stdout.
   2  needs judgment. stdout is {"status": "needs_judgment", "reason": ...}.
@@ -29,10 +30,13 @@ import argparse
 import json
 import os
 from pathlib import Path
+import shlex
 import subprocess
 import sys
 
-HERDR_SCRIPTS = Path(__file__).resolve().parent / "herdr"
+SCRIPTS = Path(__file__).resolve().parent
+HERDR_SCRIPTS = SCRIPTS / "herdr"
+ORCA_SCRIPTS = SCRIPTS / "orca"
 
 
 def emit_judgment(reason):
@@ -49,16 +53,24 @@ def backend():
     if os.environ.get("HERDR_ENV") == "1":
         return "herdr"
     if os.environ.get("ORCA_PANE_KEY"):
-        emit_judgment("the Orca backend isn't implemented yet; use Orca's own orca-cli skill")
+        return "orca"
     emit_judgment("no workspace tool is running (neither HERDR_ENV=1 nor ORCA_PANE_KEY is set)")
 
 
-def herdr_script(name):
+def backend_script(directory, name):
     for candidate in (name, f"executable_{name}"):
-        path = HERDR_SCRIPTS / candidate
+        path = directory / candidate
         if path.is_file():
             return str(path)
-    emit_error(f"Herdr backend script {name} not found in {HERDR_SCRIPTS}")
+    emit_error(f"backend script {name} not found in {directory}")
+
+
+def herdr_script(name):
+    return backend_script(HERDR_SCRIPTS, name)
+
+
+def orca_script(name):
+    return backend_script(ORCA_SCRIPTS, name)
 
 
 def run_script(argv, place_key=None):
@@ -107,17 +119,41 @@ def herdr_workspace_for(cwd):
     return best or os.environ.get("HERDR_WORKSPACE_ID")
 
 
+def orca_cli():
+    """The Orca backend's helper module, imported only when Orca is the backend."""
+    sys.path.insert(0, str(ORCA_SCRIPTS))
+    import orca_cli as module
+    return module
+
+
+def emit_orca(call):
+    """Print what an Orca command function returns, mapping its errors to exit codes."""
+    module = orca_cli()
+    try:
+        result = call(module)
+    except module.OrcaError as error:
+        emit_error(str(error))
+    print(json.dumps(result))
+    sys.exit(0)
+
+
 def worktree_create(args):
-    argv = [herdr_script("create-worktree"), "--branch", args.branch]
+    if backend() == "orca":
+        argv = [orca_script("create-worktree"), "--branch", args.branch]
+        place_key = "terminal"
+    else:
+        argv = [herdr_script("create-worktree"), "--branch", args.branch]
+        place_key = "pane_id"
     for flag, value in (("--base", args.base), ("--path", args.path),
                         ("--repo", args.repo), ("--label", args.label)):
         if value:
             argv += [flag, value]
-    run_script(argv, place_key="pane_id")
+    run_script(argv, place_key=place_key)
 
 
 def worktree_remove(args):
-    argv = [herdr_script("remove-worktree"), "--worktree", args.worktree]
+    script = orca_script("remove-worktree") if backend() == "orca" else herdr_script("remove-worktree")
+    argv = [script, "--worktree", args.worktree]
     if args.repo:
         argv += ["--repo", args.repo]
     if args.force:
@@ -126,6 +162,8 @@ def worktree_remove(args):
 
 
 def terminal_create(args):
+    if backend() == "orca":
+        emit_orca(lambda orca: orca_terminal_create(orca, args))
     workspace = herdr_workspace_for(args.cwd)
     if not workspace:
         emit_judgment(f"no Herdr workspace holds {args.cwd}, and the caller's own is unknown")
@@ -139,35 +177,113 @@ def terminal_create(args):
     run_script(argv, place_key="pane_id")
 
 
+def orca_terminal_create(orca, args):
+    """A terminal in the Orca worktree holding --cwd, else in the caller's own.
+    Orca opens terminals at the worktree's root, so a deeper --cwd is a `cd`."""
+    cwd = os.path.realpath(args.cwd)
+    proc = subprocess.run(["git", "-C", cwd, "rev-parse", "--show-toplevel"],
+                          capture_output=True, text=True)
+    record = orca.worktree(f"path:{proc.stdout.strip()}") if proc.returncode == 0 else None
+    worktree_id = record["id"] if record else os.environ.get("ORCA_WORKTREE_ID")
+    if not worktree_id:
+        emit_judgment(f"no Orca worktree holds {args.cwd}, and the caller's own is unknown")
+    root = os.path.realpath(worktree_id.split("::", 1)[-1])
+    command = None if cwd == root else f"cd {shlex.quote(cwd)}"
+    if args.tab:
+        handle = orca.create_terminal(worktree_id, args.label, command)
+    else:
+        beside = [t for t in orca.terminals(worktree_id) if t.get("connected")]
+        beside.sort(key=lambda t: bool(orca.agent_in(t)))
+        if beside:
+            split = ["terminal", "split", "--terminal", beside[0]["handle"], "--direction", "vertical"]
+            if command:
+                split += ["--command", command]
+            handle = (orca.orca(*split).get("split") or {}).get("handle")
+            if not handle:
+                raise orca.OrcaError("terminal split returned no handle")
+        else:
+            handle = orca.create_terminal(worktree_id, args.label, command)
+    return {"terminal": handle, "worktree_id": worktree_id, "place": handle}
+
+
 def terminal_close(args):
+    if backend() == "orca":
+        emit_orca(lambda orca: {"closed": True, "place": args.place,
+                                **orca.orca("terminal", "close", "--terminal", args.place)})
     run_herdr(["pane", "close", args.place])
 
 
 def agent_launch(args):
-    argv = [herdr_script("launch-agent-in-pane"), "--pane-id", args.place, "--kind", args.kind]
+    orca = backend() == "orca"
+    if orca:
+        argv = [orca_script("launch-agent"), "--terminal", args.place, "--kind", args.kind]
+    else:
+        argv = [herdr_script("launch-agent-in-pane"), "--pane-id", args.place, "--kind", args.kind]
     for flag, value in (("--model", args.model), ("--persona", args.persona),
                         ("--name", args.name), ("--seed-prompt", args.seed_prompt),
                         ("--developer-instructions-file", args.developer_instructions_file),
                         ("--report-to-session", args.report_to_session)):
         if value:
             argv += [flag, value]
-    if args.report_back:
+    if args.report_back and orca:
+        argv.append("--report-back")
+    elif args.report_back:
         pane = os.environ.get("HERDR_PANE_ID")
         if not pane:
             emit_judgment("--report-back needs the caller's pane, and HERDR_PANE_ID is not set")
         argv += ["--report-to-pane", pane]
-    run_script(argv, place_key="pane_id")
+    run_script(argv, place_key="terminal" if orca else "pane_id")
 
 
 def agent_send(args):
+    if backend() == "orca":
+        emit_orca(lambda orca: orca_agent_send(orca, args))
     command = ["agent", "prompt", args.agent, args.message]
     if args.wait:
         command += ["--wait", "--timeout", str(args.timeout)]
     run_herdr(command)
 
 
+def orca_terminal_handle(agent):
+    """Under Orca an agent is addressed by its place, a terminal handle."""
+    if not agent.startswith("term_"):
+        emit_judgment(f"under Orca, address an agent by its place (a term_ handle), not {agent!r}")
+    return agent
+
+
+def orca_agent_send(orca, args):
+    handle = orca_terminal_handle(args.agent)
+    send = ["terminal", "send", "--terminal", handle, "--text", args.message, "--enter"]
+    if args.wait:
+        send += ["--wait-submit", "30"]
+    try:
+        orca.orca(*send)
+    except orca.OrcaError as error:
+        if error.code == "agent_prompt_blocked":
+            emit_judgment("agent_blocked: the agent is at a permission or trust prompt, "
+                          "which only the user should answer")
+        raise
+    result = {"sent": True, "place": handle}
+    if args.wait:
+        wait = orca.orca("terminal", "wait", "--terminal", handle, "--for", "tui-idle",
+                         "--timeout-ms", str(args.timeout)).get("wait") or {}
+        result["settled"] = bool(wait.get("satisfied"))
+    return result
+
+
 def agent_status(args):
+    if backend() == "orca":
+        emit_orca(lambda orca: orca_agent_status(orca, args))
     run_herdr(["agent", "get", args.agent])
+
+
+def orca_agent_status(orca, args):
+    handle = orca_terminal_handle(args.agent)
+    record = orca.terminal(handle)
+    kind = orca.agent_in(record)
+    return {"place": handle, "alive": bool(kind), "kind": kind,
+            "terminal_open": bool(record and record.get("connected")),
+            "agent_wait": (record or {}).get("agentWait")}
 
 
 def main():
@@ -213,13 +329,13 @@ def main():
     p.add_argument("--report-to-session", help="for claude: report by SendMessage to this name")
     p.set_defaults(handler=agent_launch)
     p = agent.add_parser("send", help="send a launched agent a message")
-    p.add_argument("--agent", required=True)
+    p.add_argument("--agent", required=True, help="its place, or under Herdr its name")
     p.add_argument("--message", required=True)
     p.add_argument("--wait", action="store_true", help="wait until the agent's turn settles")
     p.add_argument("--timeout", type=int, default=120000, help="with --wait, in milliseconds")
     p.set_defaults(handler=agent_send)
     p = agent.add_parser("status", help="whether a launched agent is alive, and its state")
-    p.add_argument("--agent", required=True)
+    p.add_argument("--agent", required=True, help="its place, or under Herdr its name")
     p.set_defaults(handler=agent_status)
 
     args = parser.parse_args()

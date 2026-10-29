@@ -12,9 +12,9 @@ Each pass starts by removing review worktrees that no longer need a reviewer:
 scripts/dispatch.py cleanup --apply [--repo <path>]
 ```
 
-Run it as its own command, with nothing chained before or after it. It returns `{items: [...]}`, one per dispatch-created review worktree in the repository, each with `action` (`remove` or `keep`), `reason`, `pr_number`, `head_branch`, `worktree`, `workspace_id`, and `agent_name`. A worktree is marked `remove` when its pass is complete, its review is not requested again, and its checkout is clean and still at the reviewed head. The review's outcome does not matter: an approval, a request for changes, and a pass finished without posting are all done with their worktree. A PR that needs another look comes back through a fresh review request, and the next `prepare` builds a new worktree for it; the re-review reads my earlier findings from GitHub, not from the old checkout. A pass still in progress, a review requested again, or local work in the checkout keeps the worktree. So does a pass whose reviewer is gone (its Herdr workspace closed, or its agent exited), which the helper checks with Herdr; its reason says so, and the next `prepare` relaunches it while review is still requested. Report those as needing a reviewer, not as mid-review.
+Run it as its own command, with nothing chained before or after it. It returns `{items: [...]}`, one per dispatch-created review worktree in the repository, each with `action` (`remove` or `keep`), `reason`, `pr_number`, `head_branch`, `worktree`, `place`, `workspace_id`, and `agent_name`. A worktree is marked `remove` when its pass is complete, its review is not requested again, and its checkout is clean and still at the reviewed head. The review's outcome does not matter: an approval, a request for changes, and a pass finished without posting are all done with their worktree. A PR that needs another look comes back through a fresh review request, and the next `prepare` builds a new worktree for it; the re-review reads my earlier findings from GitHub, not from the old checkout. A pass still in progress, a review requested again, or local work in the checkout keeps the worktree. So does a pass whose reviewer is gone (its workspace or terminal closed, or its agent exited), which the helper asks Herdr or Orca about; its reason says so, and the next `prepare` relaunches it while review is still requested. Report those as needing a reviewer, not as mid-review.
 
-With `--apply`, the helper acts on each `remove` item as soon as it has checked it. It removes the worktree with `dispatch worktree remove --force`, which closes its Herdr workspace and the finished reviewer idling there; the force is expected, because the exact-head branch has no upstream and the check just made covers everything that gate protects. It then deletes the PR's local branch and the helper's private refs, but only when the branch's commits are on the PR's fetched head. Each acted-on item gains `removed` and `released`, and a `problem` when either failed: a branch left behind holds work found nowhere else, so leave it and report it. Never remove a `keep` item yourself, and never remove a worktree this helper did not create. Report each removal in the pass summary. Without `--apply`, `cleanup` only classifies, which is how to look before acting; `scripts/dispatch.py release --pr-number <n>` remains for releasing one PR's branch by hand.
+With `--apply`, the helper acts on each `remove` item as soon as it has checked it. It removes the worktree with `dispatch worktree remove --force`, which closes its Herdr workspace or Orca terminals and the finished reviewer idling there; the force is expected, because the exact-head branch has no upstream and the check just made covers everything that gate protects. It then deletes the PR's local branch and the helper's private refs, but only when the branch's commits are on the PR's fetched head. Each acted-on item gains `removed` and `released`, and a `problem` when either failed: a branch left behind holds work found nowhere else, so leave it and report it. Never remove a `keep` item yourself, and never remove a worktree this helper did not create. Report each removal in the pass summary. Without `--apply`, `cleanup` only classifies, which is how to look before acting; `scripts/dispatch.py release --pr-number <n>` remains for releasing one PR's branch by hand.
 
 ## Enumerate
 
@@ -45,31 +45,31 @@ For a completed (or prepared but never launched), clean worktree whose PR has mo
 
 ## Create and launch
 
-For `dispatch`, run `dispatch worktree create` (the `dispatch` skill) on the returned `head_branch`, with no alternate branch and no base. Pass `--label "Review #<n> <author>"`, such as `Review #254 Ada Lovelace`, so the worktree reads as its PR in Herdr's sidebar while staying short enough not to be cut off; the summary that opens the reviewer's session carries the title. Verify its returned `branch` is exactly `head_branch`; otherwise stop and report the collision. For a refreshed or relaunched PR it reuses the existing worktree (`created: false`), reopening a Herdr workspace on it if the old one was closed.
+For `dispatch`, run `dispatch worktree create` (the `dispatch` skill) on the returned `head_branch`, with no alternate branch and no base. Pass `--label "Review #<n> <author>"`, such as `Review #254 Ada Lovelace`, so the worktree reads as its PR in the workspace tool's sidebar while staying short enough not to be cut off; the summary that opens the reviewer's session carries the title. Verify its returned `branch` is exactly `head_branch`; otherwise stop and report the collision. For a refreshed or relaunched PR it reuses the existing worktree (`created: false`), reopening a Herdr workspace on it if the old one was closed, or under Orca opening a terminal there if none is open. Under Orca, a needs-judgment result saying the repo isn't in Orca or hides non-Orca worktrees stops the whole queue, since every PR would hit it: report the reason, which names the setting for the user to change, and launch nothing.
 
 In a project that uses the `worktree-layout` skill, the review worktree nests in the clone's `.worktrees/`, so also pass `--path <clone>/.worktrees/<head_branch with "/" replaced by "-">`. For a head branch `feat/rate-limit-headers`, that is `<clone>/.worktrees/feat-rate-limit-headers`.
 
-Immediately claim the worktree before launching, with the `pane_id` and `workspace_id` from that result:
+Immediately claim the worktree before launching, with the `place` from that result, and under Herdr its `pane_id` and `workspace_id` too:
 
 ```bash
-scripts/dispatch.py mark --worktree <path> --pr-number <n> --head-sha <sha> --status prepared --pane-id <pane> --workspace-id <workspace>
+scripts/dispatch.py mark --worktree <path> --pr-number <n> --head-sha <sha> --status prepared --place <place> [--pane-id <pane> --workspace-id <workspace>]
 ```
 
-Use a Claude agent named `review-<n>` in the worktree pane. For a new pane, start it with `dispatch agent launch --place <place> --kind claude --name review-<n>` and no seed prompt. If a completed worktree was refreshed and its prior Claude agent still occupies the pane, reuse that agent; do not create another worktree or agent merely to redeliver the prompts. Do not thread report-back—the review remains interactive in its own pane.
+Use a Claude agent named `review-<n>` at the worktree's place. For a new place, start it with `dispatch agent launch --place <place> --kind claude --name review-<n>` and no seed prompt. If a completed worktree was refreshed and its prior Claude agent still occupies the place, reuse that agent; do not create another worktree or agent merely to redeliver the prompts. Do not thread report-back—the review remains interactive in its own pane.
 
-Then send the agent two prompts with `dispatch agent send`, in order, addressed to the `agent_name` the launch returned (it may carry a suffix). The first shows the PR's summary as a turn of its own, and `--wait` holds the second until that turn is over:
+Then send the agent two prompts with `dispatch agent send`, in order, addressed to its place. The first shows the PR's summary as a turn of its own, and `--wait` holds the second until that turn is over:
 
 ```bash
-dispatch agent send --agent <agent_name> --message "/summarize-github-pr <n>" --wait
-dispatch agent send --agent <agent_name> --message "Run \`/github-pr review <n>\` on this PR against \`<base_branch>\`. Work interactively with Kris here through finding triage and final posting confirmation."
+dispatch agent send --agent <place> --message "/summarize-github-pr <n>" --wait
+dispatch agent send --agent <place> --message "Run \`/github-pr review <n>\` on this PR against \`<base_branch>\`. Work interactively with Kris here through finding triage and final posting confirmation."
 ```
 
 The order matters. An agent prints the summary as its final message when the summary is the whole turn, but run in the middle of a longer turn, it narrates past the summary instead of showing it. So the summary can't be part of the review prompt.
 
-After the second prompt is delivered, record the active pass and agent name:
+After the second prompt is delivered, record the active pass and the `agent_name` the launch returned (under Herdr it may carry a suffix):
 
 ```bash
-scripts/dispatch.py mark --worktree <path> --pr-number <n> --head-sha <sha> --status active --pane-id <pane> --workspace-id <workspace> --agent-name <name>
+scripts/dispatch.py mark --worktree <path> --pr-number <n> --head-sha <sha> --status active --place <place> [--pane-id <pane> --workspace-id <workspace>] --agent-name <name>
 ```
 
 Summarize only what this invocation did: worktrees cleaned up, newly launched or refreshed PRs, already-active or completed PRs skipped, stale heads deferred, and collisions or errors needing attention. Do not poll launched reviewers.

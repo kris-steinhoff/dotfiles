@@ -92,11 +92,11 @@ class DispatchTests(unittest.TestCase):
         self.assertIn("no workspace tool", json.loads(result.stdout)["reason"])
         self.assertEqual(self.calls(), [])
 
-    def test_orca_alone_needs_judgment(self):
+    def test_orca_agents_are_addressed_by_place(self):
         self.env["ORCA_PANE_KEY"] = "k"
-        result = self.dispatch("agent", "status", "--agent", "x")
+        result = self.dispatch("agent", "status", "--agent", "explore-x")
         self.assertEqual(result.returncode, 2)
-        self.assertIn("Orca", json.loads(result.stdout)["reason"])
+        self.assertIn("by its place", json.loads(result.stdout)["reason"])
 
     def test_launch_maps_place_and_report_back_to_herdr(self):
         self.herdr_env()

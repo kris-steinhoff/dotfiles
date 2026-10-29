@@ -1,0 +1,198 @@
+#!/usr/bin/env python3
+"""Start an agent in an Orca terminal, seed it, and thread a report-back target.
+
+The Orca counterpart of herdr/launch-agent-in-pane. The place is a terminal
+handle, from create-worktree or a terminal create.
+
+It types the agent's own command line into the terminal's shell rather than
+using `orca agent launch`, which opens a new tab and takes no persona, no
+session name, and no extra arguments. Typed, the agent gets exactly the flags
+Herdr would pass (agent_cli.py), so `--name` still names a claude session and
+makes it a SendMessage address. Orca recognizes the agent in the terminal
+either way, from its own hooks.
+
+Idempotent: if the terminal already runs an agent of the requested kind, it
+returns that agent without starting another or re-sending the seed. A
+different kind there is needs-judgment. Orca doesn't know dispatch's agent
+names, so the converged result carries the name this launch would have used.
+
+After typing the command it waits for Orca to see the agent and for the agent
+to settle at its prompt, then sends the seed. An agent that never appears, or
+one stopped at a trust prompt, is agent_not_ready: the seed waits for the
+user, then goes with `dispatch agent send`.
+
+Report-back has no prompt to type into, as under Herdr. A claude agent with
+--report-to-session reports by SendMessage. Otherwise --report-back gives the
+agent the caller's Orca orchestration Run (creating and binding one to the
+caller's terminal if it has none) and has it report with `orca orchestration
+send --to run:<id>`, which lands in that Run's inbox, marked as the agent's.
+
+Names aren't suffixed, because Orca has no registry of them to check against.
+
+Requires ORCA_PANE_KEY (an Orca terminal) and the `orca` CLI.
+
+Exit codes (shared across the dispatch primitives):
+  0  success. The JSON result object is printed to stdout.
+  2  needs judgment. stdout is {"status": "needs_judgment", "reason": ...}.
+  1  real error. Diagnostics go to stderr.
+"""
+
+import argparse
+import json
+import os
+from pathlib import Path
+import shlex
+import sys
+import time
+
+from orca_cli import OrcaError, agent_in, orca, terminal
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from agent_cli import KINDS, Refusal, check_request, compose_prompt, extra_args  # noqa: E402
+
+# How long the agent gets to start before it counts as not ready.
+START_SECONDS = 60
+
+
+def emit_success(obj):
+    print(json.dumps(obj))
+    sys.exit(0)
+
+
+def emit_judgment(reason, **partial):
+    print(json.dumps({"status": "needs_judgment", "reason": reason, **partial}))
+    sys.exit(2)
+
+
+def emit_error(message):
+    print(f"launch-agent: {message}", file=sys.stderr)
+    sys.exit(1)
+
+
+def caller_run():
+    """The caller's orchestration Run id, creating and binding one if it has none."""
+    run = orca("orchestration", "run-current").get("run")
+    if not run:
+        created = orca("orchestration", "run-create", "--objective", "dispatch report-back")
+        run = created.get("run") or {"id": created.get("runId")}
+    run_id = run.get("id") if isinstance(run, dict) else None
+    if not run_id:
+        raise OrcaError("orchestration run-create returned no run id")
+    return run_id
+
+
+def report_instructions(kind, name, run_id, report_to_session):
+    """How the launched agent reaches whoever dispatched it, by kind."""
+    if kind == "claude" and report_to_session:
+        return (
+            "Send your results, and anything else for the agent that dispatched you, "
+            f"with SendMessage to `{report_to_session}`."
+        )
+    if not run_id:
+        return None
+    lines = [
+        "Send your results, and anything else for the agent that dispatched you, with "
+        f'`orca orchestration send --to run:{run_id} --type status --subject "[{name}] <one line>" '
+        '--body "<message>" --json`. Use `--type question` instead for a question you need '
+        "answered before you can go on; the answer arrives typed into your prompt. Start "
+        f"every subject with the `[{name}]` tag, which is how that agent tells your messages "
+        "apart from other agents'."
+    ]
+    if kind == "codex":
+        lines.append(
+            "Codex's sandbox blocks Orca's socket, so request escalated permissions "
+            "for every `orca` command."
+        )
+    return " ".join(lines)
+
+
+def wait_for_agent(handle, kind):
+    """True once Orca sees the agent in the terminal and its prompt has settled."""
+    deadline = time.monotonic() + START_SECONDS
+    while agent_in(terminal(handle)) != kind:
+        if time.monotonic() > deadline:
+            return False
+        time.sleep(1)
+    remaining = max(1000, int((deadline - time.monotonic()) * 1000))
+    wait = orca("terminal", "wait", "--terminal", handle, "--for", "tui-idle",
+                "--timeout-ms", str(remaining)).get("wait") or {}
+    return bool(wait.get("satisfied"))
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Launch and seed an agent in an Orca terminal.")
+    parser.add_argument("--terminal", required=True, help="terminal handle at a shell prompt")
+    parser.add_argument("--kind", required=True, choices=KINDS, help="agent kind")
+    parser.add_argument("--model", help="model hint, e.g. opus")
+    parser.add_argument("--persona", help="persona to launch, e.g. coordinator (claude/codex only)")
+    parser.add_argument("--name", help="agent name, e.g. nxc-162 (claude: also its session name)")
+    parser.add_argument("--developer-instructions-file",
+                        help="file to inject through Codex's developer_instructions config override")
+    parser.add_argument("--seed-prompt", help="prompt to deliver after launch")
+    parser.add_argument("--report-back", action="store_true",
+                        help="the agent reports to the caller's orchestration Run")
+    parser.add_argument("--report-to-session",
+                        help="the caller's Claude session name; a claude agent reports there by SendMessage")
+    args = parser.parse_args()
+
+    if not os.environ.get("ORCA_PANE_KEY"):
+        emit_judgment("not running inside an Orca terminal (ORCA_PANE_KEY is not set)")
+
+    handle = args.terminal
+    name = args.name or args.persona or args.kind
+    try:
+        check_request(args.kind, args.persona, args.name, args.developer_instructions_file)
+        command = [args.kind, *extra_args(args.kind, args.model, args.persona, args.name,
+                                          args.developer_instructions_file)]
+    except Refusal as refusal:
+        emit_judgment(refusal.reason, **refusal.partial, terminal=handle)
+
+    try:
+        record = terminal(handle)
+        if not record or not record.get("connected"):
+            emit_judgment(f"terminal {handle} is closed or unknown to Orca; create the place again",
+                          terminal=handle)
+        existing = agent_in(record)
+        if existing:
+            if existing != args.kind:
+                emit_judgment(f"terminal {handle} already runs a {existing} agent, not {args.kind}",
+                              kind=existing, terminal=handle)
+            # Converge: our own prior launch. Don't restart it or re-send the seed.
+            emit_success({"agent_name": name, "kind": existing, "terminal": handle, "converged": True})
+
+        use_run = args.report_back and not (args.kind == "claude" and args.report_to_session)
+        run_id = caller_run() if use_run else None
+
+        orca("terminal", "send", "--terminal", handle, "--text", shlex.join(command), "--enter")
+        try:
+            orca("terminal", "set-pane-title", "--terminal", handle, "--title", name)
+        except OrcaError:
+            pass  # only a label
+
+        prompt = compose_prompt(args.seed_prompt,
+                                report_instructions(args.kind, name, run_id, args.report_to_session))
+        result = {"agent_name": name, "kind": args.kind, "terminal": handle}
+        if run_id:
+            result["run_id"] = run_id
+        # Wait even with no seed: a caller's next `agent send` typed into an
+        # agent still starting up could be lost or answer a dialog for the user.
+        if not wait_for_agent(handle, args.kind):
+            emit_judgment("agent_not_ready: the agent didn't reach its prompt, perhaps stopped "
+                          "at a trust prompt; deliver the seed with `dispatch agent send` once "
+                          "it is ready", **result)
+        if prompt:
+            try:
+                orca("terminal", "send", "--terminal", handle, "--text", prompt, "--enter")
+            except OrcaError as error:
+                if error.code != "agent_prompt_blocked":
+                    raise
+                emit_judgment("agent_not_ready: the agent is at a permission or trust prompt; "
+                              "deliver the seed with `dispatch agent send` once the user has "
+                              "answered it", **result)
+        emit_success(result)
+    except OrcaError as error:
+        emit_error(str(error))
+
+
+if __name__ == "__main__":
+    main()
