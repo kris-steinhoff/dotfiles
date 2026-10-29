@@ -57,7 +57,16 @@
     "additionalDirectories": [
       "~/scratch"
     ],
-    "defaultMode": "auto"
+    "allow": [
+      "Bash(git push:*)"
+    ],
+    "defaultMode": "auto",
+    "deny": [
+      "Bash(git push *--force*)",
+      "Bash(git push -f*)",
+      "Bash(git push * -f*)",
+      "Bash(git push *+*)"
+    ]
   },
   "pluginConfigs": {
     "agents-md@builtin": {
