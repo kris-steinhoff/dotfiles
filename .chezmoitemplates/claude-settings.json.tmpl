@@ -3,11 +3,11 @@
   "autoMode": {
     "allow": [
       "$defaults",
-      "GitHub PR Review Cleanup: Running the github-pr skill's own `dispatch.py` (at `skills/github-pr/scripts/dispatch.py` under the home directory's `~/.claude/` or `~/.agents/`) as `dispatch.py cleanup --apply`, optionally with `--repo <path>` and no other arguments, as its own command with nothing chained before or after it, is not Interfere With Workloads, Irreversible Local Destruction, or Irreversible Deletion. It removes only review worktrees that the github-pr skill created and that it verifies in the same run, closing each one's local Herdr workspace and idle reviewer agent, and deletes only local branches and refs. This does not apply if that script or a `.herdr-dispatch.json` marker was written or edited this session other than by the skill's own `dispatch.py`, and it does not cover `dispatch worktree remove`, `git worktree remove`, or `herdr worktree remove` called directly."
+      "GitHub PR Review Cleanup: Running the github-pr skill's own `dispatch.py` (at `skills/github-pr/scripts/dispatch.py` under the home directory's `~/.claude/` or `~/.agents/`) as `dispatch.py cleanup --apply`, optionally with `--repo <path>` and no other arguments, as its own command with nothing chained before or after it, is not Interfere With Workloads, Irreversible Local Destruction, or Irreversible Deletion. It closes only the terminal tabs of reviewer agents that the github-pr skill launched and recorded, and only once every PR it gave that reviewer is finished, so the agent it ends is idle with its work posted; it also deletes the skill's own private git refs under `refs/github-pr-review/`. This does not apply if that script or the queue's state file under `~/.local/state/github-pr/reviews/` was written or edited this session other than by the skill's own `dispatch.py`, and it does not cover `dispatch terminal close`, `herdr pane close`, or `orca terminal close` called directly."
     ],
     "environment": [
       "$defaults",
-      "Review worktrees under a repository's `.worktrees/` that carry a `.herdr-dispatch.json` marker with a `github_pr_review` entry are created by the github-pr skill's `review ready` pass, each with its own Herdr workspace and one reviewer agent that idles there once the review is done. Herdr is a terminal multiplexer running on this machine, so its workspaces and agents are local. `dispatch.py cleanup --apply` removes such a worktree only when its pass is complete, its review is not requested again, and its checkout is clean at the reviewed head, and deletes its local branch only when the branch's commits are on the PR, so nothing it removes exists only locally; it never touches remote branches."
+      "Reviewer tabs recorded in `~/.local/state/github-pr/reviews/<owner>/<repo>.json` are created by the github-pr skill's `review ready` pass, each running one interactive Claude reviewer that idles in its tab once its reviews are posted. Herdr and Orca are terminal workspace tools running on this machine, so their tabs and agents are local. `dispatch.py cleanup --apply` closes such a tab only when every PR its reviewer was given is finished; reviews read PRs from git without a checkout, so closing a tab loses no local work, and it never touches remote branches or GitHub."
     ]
   },
   "enabledPlugins": {
@@ -83,6 +83,7 @@
         "~/.cache/pre-commit",
         "~/.cache/uv",
         "~/.local/state/drive-implementation",
+        "~/.local/state/github-pr",
         "~/.local/share/uv/tools",
         "~/.npm/_cacache",
         "~/.npm/_npx",

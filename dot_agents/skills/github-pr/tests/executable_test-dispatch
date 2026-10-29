@@ -1,0 +1,305 @@
+#!/usr/bin/env python3
+"""Behavior tests for github-pr's review queue helper, against a fake gh, a fake
+Herdr behind the real dispatch skill, and real git repos."""
+
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+import unittest
+
+
+SKILL_DIR = Path(__file__).resolve().parents[1]
+SCRIPT = SKILL_DIR / "scripts" / "dispatch.py"
+if not SCRIPT.exists():
+    SCRIPT = SKILL_DIR / "scripts" / "executable_dispatch.py"
+
+
+# A fake gh. The queue is a JSON file of PRs; each one's head is origin's
+# refs/pull/<n>/head, as GitHub reports it.
+FAKE_GH = r'''#!/usr/bin/env python3
+import json
+import os
+import subprocess
+import sys
+
+args = sys.argv[1:]
+queue = json.load(open(os.environ["FAKE_QUEUE"]))
+others = json.loads(os.environ.get("FAKE_OPEN") or "[]")
+
+
+def head(n):
+    return subprocess.run(["git", "-C", os.environ["FAKE_ORIGIN"], "rev-parse", f"refs/pull/{n}/head"],
+                          capture_output=True, text=True).stdout.strip()
+
+
+def record(pr):
+    return {"number": pr["number"], "title": pr.get("title", f"PR {pr['number']}"), "url": "u",
+            "author": {"login": "ada"}, "baseRefName": pr.get("base", "main"),
+            "headRefName": pr.get("head", f"pr-{pr['number']}"), "headRefOid": head(pr["number"]),
+            "files": [{"path": p} for p in pr.get("files", [])], "additions": 1, "deletions": 1}
+
+
+if args[:2] == ["repo", "view"]:
+    print(json.dumps({"nameWithOwner": "acme/widgets"}))
+elif args[:2] == ["pr", "list"] and "--search" in args:
+    print(json.dumps([record(pr) for pr in queue]))
+elif args[:2] == ["pr", "list"]:
+    print(json.dumps([record(pr) for pr in queue + others]))
+elif args[:2] == ["pr", "view"]:
+    n = int(args[2])
+    print(json.dumps(next(record(pr) for pr in queue + others if pr["number"] == n)))
+else:
+    sys.exit(f"unexpected gh call {args}")
+'''
+
+# A fake Herdr where the agents named in FAKE_ALIVE are alive.
+FAKE_HERDR = r'''#!/usr/bin/env python3
+import json
+import os
+import sys
+
+args = sys.argv[1:]
+with open(os.environ["FAKE_HERDR_LOG"], "a") as log:
+    log.write(json.dumps(args) + "\n")
+if args[:2] == ["agent", "get"]:
+    if args[2] in os.environ.get("FAKE_ALIVE", "").split(","):
+        print(json.dumps({"result": {"agent": {"name": args[2]}}}))
+        sys.exit(0)
+    print(json.dumps({"error": {"code": "agent_not_found"}}))
+    sys.exit(1)
+print(json.dumps({"result": {}}))
+'''
+
+
+class QueueTests(unittest.TestCase):
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.root = Path(os.path.realpath(temp.name))
+        self.origin = self.root / "origin.git"
+        self.repo = self.root / "repo"
+        subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(self.origin)], check=True)
+        subprocess.run(["git", "clone", "-q", str(self.origin), str(self.repo)], check=True,
+                       capture_output=True)
+        self.git("commit", "-q", "--allow-empty", "-m", "base")
+        self.git("push", "-q", "origin", "main")
+        bin_dir = self.root / "bin"
+        bin_dir.mkdir()
+        for name, body in (("gh", FAKE_GH), ("herdr", FAKE_HERDR)):
+            (bin_dir / name).write_text(body)
+            (bin_dir / name).chmod(0o755)
+        self.queue_file = self.root / "queue.json"
+        self.log = self.root / "herdr.log"
+        self.env = {k: v for k, v in os.environ.items() if not k.startswith(("HERDR_", "ORCA_"))}
+        self.env.update({"PATH": f"{bin_dir}{os.pathsep}{self.env['PATH']}", "HERDR_ENV": "1",
+                         "FAKE_ORIGIN": str(self.origin), "FAKE_QUEUE": str(self.queue_file),
+                         "FAKE_HERDR_LOG": str(self.log),
+                         "GITHUB_PR_STATE_DIR": str(self.root / "state")})
+        self.queue([])
+
+    def git(self, *args, cwd=None):
+        return subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", "-C",
+                               str(cwd or self.repo), *args], check=True, capture_output=True,
+                              text=True).stdout.strip()
+
+    def push(self, number, parent=None):
+        """Add a commit to a PR's head on origin, on `parent` when given (a force-push)."""
+        base = parent or subprocess.run(
+            ["git", "-C", str(self.origin), "rev-parse", "-q", "--verify", f"refs/pull/{number}/head"],
+            capture_output=True, text=True).stdout.strip() or "main"
+        tree = self.git("rev-parse", f"{base}^{{tree}}", cwd=self.origin)
+        sha = self.git("commit-tree", tree, "-p", base, "-m", f"push to {number}", cwd=self.origin)
+        self.git("update-ref", f"refs/pull/{number}/head", sha, cwd=self.origin)
+        return sha
+
+    def queue(self, prs):
+        for pr in prs:
+            if not subprocess.run(["git", "-C", str(self.origin), "rev-parse", "-q", "--verify",
+                                   f"refs/pull/{pr['number']}/head"], capture_output=True).stdout:
+                self.push(pr["number"])
+        self.queue_file.write_text(json.dumps(prs))
+
+    def helper(self, *args, code=0):
+        result = subprocess.run([sys.executable, str(SCRIPT), *args], cwd=self.repo,
+                                capture_output=True, text=True, env=self.env)
+        self.assertEqual(result.returncode, code, result.stdout + result.stderr)
+        return json.loads(result.stdout)
+
+    def items(self):
+        return {item["number"]: item for item in self.helper("ready")["items"]}
+
+    def closed(self):
+        if not self.log.exists():
+            return []
+        calls = [json.loads(line) for line in self.log.read_text().splitlines()]
+        return [call[2] for call in calls if call[:2] == ["pane", "close"]]
+
+    def head(self, number):
+        return self.git("rev-parse", f"refs/pull/{number}/head", cwd=self.origin)
+
+    def test_ready_reports_how_queued_prs_relate(self):
+        self.queue([
+            {"number": 1, "head": "nxc-5-api", "files": ["api.py", "db.py"]},
+            {"number": 2, "base": "nxc-5-api", "head": "nxc-5-ui", "files": ["ui.py"]},
+            {"number": 3, "title": "Tidy db", "files": ["db.py"]},
+            {"number": 4, "files": ["other.py"]},
+        ])
+        ready = self.helper("ready")
+        items = {item["number"]: item for item in ready["items"]}
+        self.assertEqual(items[2]["stacked_on"], 1)
+        self.assertEqual(items[1]["jira_keys"], ["NXC-5"])
+        self.assertEqual({item["state"] for item in items.values()}, {"new"})
+        pairs = {tuple(pair["prs"]): pair for pair in ready["relations"]}
+        self.assertEqual(pairs[(1, 2)]["stacked"], {"lower": 1, "upper": 2})
+        self.assertEqual(pairs[(1, 2)]["jira_keys"], ["NXC-5"])
+        self.assertEqual(pairs[(1, 3)]["files"], ["db.py"])
+        self.assertNotIn(4, {n for pair in ready["relations"] for n in pair["prs"]})
+
+    def test_a_reviewer_takes_its_prs_in_order(self):
+        self.queue([{"number": 1}, {"number": 2}])
+        view = self.helper("assign", "--reviewer", "review-1", "--place", "w1:p2", "--prs", "1,2")
+        self.assertEqual((view["active"], view["next"]), (None, 1))
+        self.helper("mark", "--pr-number", "1", "--head-sha", self.head(1))
+        reviewer = self.helper("ready")["reviewers"][0]
+        self.assertEqual((reviewer["active"], reviewer["next"]), (1, None))
+        self.assertEqual(self.items()[2]["state"], "assigned")
+
+        self.helper("complete", "--pr-number", "1", "--head-sha", self.head(1), "--reviewer", "review-1")
+        reviewer = self.helper("ready")["reviewers"][0]
+        self.assertEqual((reviewer["active"], reviewer["next"]), (None, 2))
+        self.assertEqual(self.items()[1]["state"], "complete")
+
+        # Another reviewer can't take a PR that is already given out.
+        self.helper("assign", "--reviewer", "review-9", "--place", "w1:p9", "--prs", "2", code=2)
+
+    def test_a_finished_pass_at_an_older_head_is_new_again(self):
+        self.queue([{"number": 1}])
+        self.helper("complete", "--pr-number", "1", "--head-sha", self.head(1))
+        self.assertEqual(self.items()[1]["state"], "complete")
+        self.push(1)
+        self.assertEqual(self.items()[1]["state"], "new")
+
+    def test_cleanup_closes_a_finished_reviewer_and_keeps_what_stops_a_rereview(self):
+        self.queue([{"number": 1}])
+        self.helper("assign", "--reviewer", "review-1", "--place", "w1:p2", "--prs", "1")
+        self.helper("mark", "--pr-number", "1", "--head-sha", self.head(1))
+        self.helper("complete", "--pr-number", "1", "--head-sha", self.head(1), "--reviewer", "review-1")
+
+        dry = self.helper("cleanup")["items"][0]
+        self.assertEqual(dry["action"], "close")
+        self.assertEqual(self.closed(), [])
+
+        self.assertTrue(self.helper("cleanup", "--apply")["items"][0]["closed"])
+        self.assertEqual(self.closed(), ["w1:p2"])
+        self.assertEqual(self.helper("ready")["reviewers"], [])
+        # Still requested at the reviewed head (a team request), so still complete.
+        self.assertEqual(self.items()[1]["state"], "complete")
+
+        self.queue([])
+        self.helper("cleanup", "--apply")
+        self.queue([{"number": 1}])
+        self.assertEqual(self.items()[1]["state"], "new")
+
+    def test_cleanup_forgets_a_gone_reviewer_and_requeues_its_prs(self):
+        self.queue([{"number": 1}, {"number": 2}])
+        self.helper("assign", "--reviewer", "review-1", "--place", "w1:p2", "--prs", "1,2")
+        self.helper("mark", "--pr-number", "1", "--head-sha", self.head(1))
+
+        self.env["FAKE_ALIVE"] = "w1:p2"
+        self.assertEqual(self.helper("cleanup", "--apply")["items"][0]["action"], "keep")
+
+        self.env["FAKE_ALIVE"] = ""
+        item = self.helper("cleanup", "--apply")["items"][0]
+        self.assertEqual((item["action"], item["requeued"]), ("forget", [1, 2]))
+        self.assertEqual(self.closed(), ["w1:p2"])  # whatever shell is left in its tab
+        self.assertEqual({i["state"] for i in self.items().values()}, {"new"})
+
+    def test_cleanup_drops_a_withdrawn_pr_from_its_reviewers_list(self):
+        self.queue([{"number": 1}, {"number": 2}])
+        self.env["FAKE_ALIVE"] = "w1:p2"
+        self.helper("assign", "--reviewer", "review-1", "--place", "w1:p2", "--prs", "1,2")
+        self.helper("mark", "--pr-number", "1", "--head-sha", self.head(1))
+        self.queue([])  # review requests withdrawn; #1 is mid-pass and stays
+        item = self.helper("cleanup", "--apply")["items"][0]
+        self.assertEqual((item["action"], item["withdrawn"]), ("keep", [2]))
+        self.assertEqual(self.helper("ready")["reviewers"][0]["prs"], [1])
+
+    def test_state_is_shared_by_every_clone_of_the_repo(self):
+        self.queue([{"number": 1}])
+        self.helper("complete", "--pr-number", "1", "--head-sha", self.head(1))
+        self.assertTrue((self.root / "state" / "acme" / "widgets.json").exists())
+        other = self.root / "other"
+        subprocess.run(["git", "clone", "-q", str(self.origin), str(other)], check=True, capture_output=True)
+        result = subprocess.run([sys.executable, str(SCRIPT), "ready"], cwd=other,
+                                capture_output=True, text=True, env=self.env)
+        self.assertEqual(json.loads(result.stdout)["items"][0]["state"], "complete")
+
+    def test_a_tab_already_gone_still_closes_its_finished_reviewer(self):
+        self.queue([{"number": 1}])
+        self.helper("assign", "--reviewer", "review-1", "--place", "gone", "--prs", "1")
+        self.helper("complete", "--pr-number", "1", "--head-sha", self.head(1), "--reviewer", "review-1")
+        item = self.helper("cleanup", "--apply")["items"][0]
+        self.assertEqual((item["action"], item["closed"]), ("close", True))
+        self.assertEqual(self.helper("ready")["reviewers"], [])
+
+    def test_a_pr_moved_to_a_new_reviewer_belongs_only_to_it(self):
+        # R finished #1, then its tab closed before cleanup ran; #1 is pushed
+        # and requested again, and S takes it.
+        self.queue([{"number": 1}, {"number": 2}])
+        self.helper("assign", "--reviewer", "review-1", "--place", "w1:p2", "--prs", "1,2")
+        self.helper("complete", "--pr-number", "1", "--head-sha", self.head(1), "--reviewer", "review-1")
+        self.push(1)
+        self.helper("assign", "--reviewer", "review-9", "--place", "w1:p9", "--prs", "1")
+        self.helper("mark", "--pr-number", "1", "--head-sha", self.head(1))
+        reviewers = {r["name"]: r for r in self.helper("ready")["reviewers"]}
+        self.assertEqual(reviewers["review-1"]["prs"], [2])
+        self.assertEqual(reviewers["review-9"]["active"], 1)
+
+        self.env["FAKE_ALIVE"] = "w1:p9"
+        items = {i["reviewer"]: i for i in self.helper("cleanup", "--apply")["items"]}
+        self.assertEqual((items["review-1"]["action"], items["review-1"]["requeued"]), ("forget", [2]))
+        self.assertEqual(items["review-9"]["action"], "keep")
+        self.assertEqual(self.items()[1]["state"], "active")
+        self.assertIn("w1:p2", self.closed())  # the gone reviewer's leftover tab
+        self.assertNotIn("w1:p9", self.closed())
+
+    def test_a_hand_review_claims_its_pr_and_cant_close_a_queued_pass(self):
+        self.queue([{"number": 1}, {"number": 2}])
+        self.helper("claim", "--pr-number", "1")
+        self.assertTrue(self.items()[1]["claimed_by_hand"])
+        self.helper("assign", "--reviewer", "review-1", "--place", "w1:p2", "--prs", "1", code=2)
+        self.helper("cleanup", "--apply")
+        self.assertEqual(self.items()[1]["state"], "active")
+
+        self.helper("assign", "--reviewer", "review-2", "--place", "w1:p3", "--prs", "2")
+        self.helper("mark", "--pr-number", "2", "--head-sha", self.head(2))
+        self.helper("claim", "--pr-number", "2", code=2)
+        self.helper("claim", "--pr-number", "2", "--reviewer", "review-2")
+        self.helper("complete", "--pr-number", "2", "--head-sha", self.head(2), code=2)
+        self.assertEqual(self.items()[2]["state"], "active")
+
+    def test_fetch_reads_the_head_without_a_checkout(self):
+        self.queue([{"number": 1}])
+        before = self.git("rev-parse", "HEAD")
+        first = self.helper("fetch", "--pr-number", "1")
+        self.assertEqual(first["head_sha"], self.head(1))
+        self.assertFalse(first["moved"])
+        self.assertEqual(first["merge_base"], before)
+        self.assertEqual(self.git("rev-parse", "HEAD"), before)
+        self.assertEqual(self.git("status", "--porcelain"), "")
+
+        self.push(1)
+        moved = self.helper("fetch", "--pr-number", "1")
+        self.assertEqual((moved["moved"], moved["rewritten"]), (True, False))
+        self.assertEqual(moved["previous_head"], first["head_sha"])
+
+        self.push(1, parent="main")
+        forced = self.helper("fetch", "--pr-number", "1")
+        self.assertEqual((forced["moved"], forced["rewritten"]), (True, True))
+
+
+if __name__ == "__main__":
+    unittest.main()

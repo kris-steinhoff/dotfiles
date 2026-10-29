@@ -42,8 +42,8 @@ returns a terminal already open there, preferring one with no agent, and opens
 a new one only when there is none (reopened=true).
 
 The marker file name is Herdr's for continuity: worktrees created before Orca
-came into use carry it, and github-pr and teardown recognize dispatch-created
-worktrees by it. It is excluded through the repo's .git/info/exclude, so it
+came into use carry it, and teardown recognizes dispatch-created worktrees by
+it. It is excluded through the repo's .git/info/exclude, so it
 never makes a clean worktree look dirty.
 
 Requires ORCA_PANE_KEY (an Orca terminal) and the `orca` CLI.

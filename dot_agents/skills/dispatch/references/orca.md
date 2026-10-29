@@ -13,7 +13,7 @@ Two things must hold first, or it stops with needs-judgment before touching git:
 - **Orca knows the repo.** Orca shows a worktree only under its repo, matched by the repo's primary checkout. The fix is `orca repo add --path <checkout>`, for the user to run.
 - **The repo doesn't hide non-Orca worktrees.** Orca's per-repo `externalWorktreeVisibility` set to `hide` keeps the worktree, and everything launched in it, out of the sidebar. The reason names the `orca repo set … --external-worktree-visibility show` command; it is the user's setting, so ask them rather than run it. A repo set to `inherit` follows Orca's global default, which the CLI can't read, so the script goes ahead; if Orca then doesn't pick the worktree up within 15 seconds, the default hides it, and the result is the same needs-judgment, naming both settings. The worktree stays, and a re-run converges on it once Orca shows it.
 
-Collisions and re-runs follow the Herdr rules exactly: a worktree on the branch carrying the dispatch marker (`<path>/.herdr-dispatch.json`, named for Herdr because existing worktrees and the `github-pr` helper know it by that name) is reused (`created: false`); one on the branch without it suffixes the branch, and the path with it; an occupied path alone suffixes only the path. A reused worktree returns a terminal already open there, preferring one with no agent, so a relaunch converges on the agent already running in it; with none open, it opens one (`reopened: true`).
+Collisions and re-runs follow the Herdr rules exactly: a worktree on the branch carrying the dispatch marker (`<path>/.herdr-dispatch.json`, named for Herdr because existing worktrees carry it) is reused (`created: false`); one on the branch without it suffixes the branch, and the path with it; an occupied path alone suffixes only the path. A reused worktree returns a terminal already open there, preferring one with no agent, so a relaunch converges on the agent already running in it; with none open, it opens one (`reopened: true`).
 
 Without `--path`, the worktree goes in Orca's default folder, `~/orca/workspaces/<repo>/<branch>`, with `/` in the branch turned into `-`. A new branch starts from `--base`, or from the caller's checkout's `HEAD`, since git runs in the caller's checkout rather than in a parent workspace as under Herdr.
 
@@ -36,7 +36,7 @@ Result: `{ terminal, worktree_id, place }`.
 
 ## `terminal close`
 
-`orca terminal close --terminal <place>`, which ends whatever runs there.
+`orca terminal close --terminal <place>`, which ends whatever runs there. A stale handle counts as closed (`already_gone: true`).
 
 ## `agent launch`
 

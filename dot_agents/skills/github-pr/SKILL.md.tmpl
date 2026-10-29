@@ -1,6 +1,6 @@
 ---
 name: github-pr
-description: Works GitHub pull requests from either side, posting only what the user confirms. `review <n>` reviews a PR — prior review context, the shared review policy without Nits, triage of each finding with the user, the approved review posted, and threads of verified fixes resolved on re-review. `review ready` idempotently dispatches every open non-draft PR awaiting my or my team's review into its own exact-head-branch worktree under Herdr or Orca and removes the worktrees of finished reviews; suitable for repeated `/loop` invocation. `respond <n>` replies as the PR's author to unanswered review comments, each reply drafted for the user to approve. Use for any comment, reply, or review posted to a GitHub PR on the user's behalf.
+description: Works GitHub pull requests from either side, posting only what the user confirms. `review <n>` reviews a PR — prior review context, the shared review policy without Nits, triage of each finding with the user, the approved review posted, and threads of verified fixes resolved on re-review. `review ready` idempotently dispatches every open non-draft PR awaiting my or my team's review to an interactive reviewer in a tab under Herdr or Orca, grouping related PRs such as a stack into one tab reviewed in order, and closes the tabs of finished reviewers; suitable for repeated `/loop` invocation. `respond <n>` replies as the PR's author to unanswered review comments, each reply drafted for the user to approve. Use for any comment, reply, or review posted to a GitHub PR on the user's behalf.
 {{- with get . "custom" }}
 {{ . }}
 {{- end }}
@@ -10,8 +10,8 @@ description: Works GitHub pull requests from either side, posting only what the 
 
 Own every GitHub PR conversation posted on the user's behalf, from either side. The modes:
 
-- `review ready` discovers review requests and dispatches one interactive reviewer per PR.
-- `review <n>` dispatches that PR when necessary; inside its recorded worktree, it conducts the review, triages findings with the user, and posts only after confirmation.
+- `review ready` discovers review requests, groups related ones, and dispatches an interactive reviewer per group into a tab.
+- `review <n>` conducts the review where it is invoked, from the PR's diff with no checkout, triages findings with the user, and posts only after confirmation.
 - `respond <n>` drafts the author's replies to the PR's unanswered review comments, walks the user through each, and posts only after confirmation.
 
 A bare `<n>`, or no mode at all, does not pick one. Ask whether to review or respond, suggesting `respond` when the authenticated user is the PR's author and `review` otherwise.
@@ -22,28 +22,37 @@ This skill may be invoked directly, by any agent, or repeatedly with `/loop 5m /
 
 Several of these sessions run at once, and the PR's summary is how the user tells which PR a pane is about. A dispatched `review <n>` session gets it before the review starts: the dispatcher sends `/summarize-github-pr <n>` as the session's first prompt (see [references/queue.md](references/queue.md)), so don't run it again.
 
-A `respond <n>` session, and a `review <n>` the user started in its worktree by hand, opens with the summary itself: before reading anything else about the PR, run the `summarize-github-pr` skill and send its output, every line as markdown, as your first message.
+A `respond <n>` session, and a `review <n>` the user started by hand, opens with the summary itself: before reading anything else about the PR, run the `summarize-github-pr` skill and send its output, every line as markdown, as your first message.
 
 ## `review ready`: dispatch the queue
 
-This mode needs a workspace tool the `dispatch` skill supports, Herdr (`HERDR_ENV=1`) or Orca (`ORCA_PANE_KEY` set). Read [references/queue.md](references/queue.md), then run the queue and dispatch flow there. Do not ask the user to confirm the discovered set: `review ready` is explicit authorization to launch the requested review queue, including when a loop invoked it.
+This mode needs a workspace tool the `dispatch` skill supports, Herdr (`HERDR_ENV=1`) or Orca (`ORCA_PANE_KEY` set). Read [references/queue.md](references/queue.md), then run the queue flow there. Do not ask the user to confirm the discovered set: `review ready` is explicit authorization to launch the requested review queue, including when a loop invoked it.
 
-Each PR uses a local branch named exactly as GitHub's `headRefName`, because Claude uses that identity to link the checkout to its PR. Never substitute a numbered or suffixed branch. A conflicting unrelated local branch is skipped and reported without modification.
+Reviews need no checkout, so each reviewer runs in a tab of the current checkout. Before launching, look across the queue for PRs that belong together, such as a stack or two halves of one change, and give each such group one reviewer that takes its PRs in order; say in the run's summary how you grouped them and why. The queue mode closes the tabs of finished reviewers, moves reviewers on to the next PR in their group, and launches reviewers for new PRs. It does not collect findings, triage, or post.
 
-The queue mode removes finished review worktrees, then dispatches or refreshes reviewers. A worktree is removed once its pass is complete, whatever the review's outcome; if the PR needs another look, a new review request brings it back in a fresh worktree. It does not wait for reviewers, collect their findings, triage, or post.
+## `review <n>`: conduct the review
 
-## `review <n>`: dispatch or conduct the review
+Run this inline, in the session that invokes it; it dispatches nothing. First claim the PR, so a `review ready` queue leaves it alone while you work:
 
-Resolve the PR. If the current checkout is not its recorded exact-head-branch review worktree, read [references/queue.md](references/queue.md) and run that document's prepare, create, mark, and launch flow for this PR alone, then stop; the launched reviewer continues interactively in its pane. If the current checkout is the recorded review worktree for this PR, conduct the review here, starting with the head check in [Keep up with the head](#keep-up-with-the-head), because the PR may have moved since dispatch.
+```bash
+scripts/dispatch.py claim --pr-number <n> [--reviewer <name>]
+```
 
-Read the PR title, author, body, base branch, current head SHA, and changed files, and run `scripts/feedback.py <n>` for my prior reviews and the threads I started. On a re-review, include unresolved prior findings in the review brief so the reviewer verifies them against the current code and does not duplicate findings that still stand.
+Pass `--reviewer` with the name the prompt gave you when `review ready` sent you this PR; started any other way, pass none. A needs-judgment result means another reviewer has the PR in progress: tell the user which, and go on only if they say so.
+
+A review reads the PR from git's object store rather than a checkout. Start with the head check in [Keep up with the head](#keep-up-with-the-head), which fetches the PR's head and base without touching the working tree and returns `head_sha`, `base_branch`, and `merge_base`.
+
+Read the PR title, author, body, and changed files, and run `scripts/feedback.py <n>` for my prior reviews and the threads I started. On a re-review, include unresolved prior findings in the review brief so the reviewer verifies them against the current code and does not duplicate findings that still stand.
 
 Invoke the shared `review` skill once per head with a self-contained brief containing:
 
 - the PR's stated intent and base branch
-- the change scope (`<base>...HEAD` in this checkout)
+- the change scope, `git diff <merge_base> <head_sha>`, which is the diff GitHub shows
+- that the working tree is not the PR's code, since it may be on any branch: read the PR's code with `git show <head_sha>:<path>` and search it with `git grep <pattern> <head_sha>`, and don't run its tests, which have no checkout to run in
 - relevant unresolved prior findings and their thread comment IDs
 - an explicit instruction not to report Nits
+
+When `review ready` sent you this PR as part of a group, its prompt names the other PRs and why they belong together. Use the earlier ones as context, and don't raise again a finding already posted on one of them.
 
 While the reviewer runs, tell the user in a line or two that it is running and what you asked it to focus on. The summary that opened the session already describes the PR.
 
@@ -55,23 +64,31 @@ Triage follows [Triage with the user](#triage-with-the-user), with the review's 
 
 Render the confirmed review into a batch with one inline comment per included finding where possible, replies on the threads of still-open prior findings, and `resolve` for the verified fixes. Prefix each finding body with `[Blocker]` or `[Follow-up]`.
 
-When the workflow reaches a terminal decision (successfully posted, or the user explicitly decides to finish without posting), record the pass complete with `scripts/dispatch.py complete`. Leave it active if posting failed or the user has not finished triage, so `review ready` never replaces the checkout underneath an unfinished review.
+When the workflow reaches a terminal decision (successfully posted, or the user explicitly decides to finish without posting), record the pass complete:
+
+```bash
+scripts/dispatch.py complete --pr-number <n> --head-sha <head_sha> [--reviewer <name>]
+```
+
+with the same `--reviewer` you claimed with.
+
+If the prompt that started the review named a session to tell, send it the message the prompt gives. Then stop: in a group, the next PR arrives as a new prompt, so don't start it yourself. Don't record completion if posting failed or the user has not finished triage, so the queue never treats an unfinished review as done.
 
 ### Keep up with the head
 
-The author may push while the pass is open, and a review formed against older code can't post. So check the head when the pass starts, before triage's first question, and before the final confirmation:
+The author may push while the review is open, and a review formed against older code can't post. So check the head when the review starts, before triage's first question, and before the final confirmation:
 
 ```bash
-scripts/dispatch.py advance --pr-number <n>
+scripts/dispatch.py fetch --pr-number <n>
 ```
 
-Run it from the review worktree; under a sandbox that proxies network access, it reaches `api.github.com` and `github.com`. It fetches the PR's current head and, when the head has moved, resets this clean checkout onto it and records the new head in the pass. Don't move the branch any other way: git refuses to fetch into a branch that is checked out, and the pass's record must follow the checkout. It returns `advanced: false` when nothing moved, and needs-judgment when the checkout has local changes, which goes to the user.
+Run it from any checkout of the repository; under a sandbox that proxies network access, it reaches `api.github.com` and `github.com`. It fetches the PR's current head to a private ref and its base branch to `origin/<base>`, and changes nothing in the working tree. It returns `moved: true`, with `previous_head` and `rewritten`, when the head differs from the last fetch.
 
-When it advances at the start, review the new head as usual. When it advances later, tell the user in a line that the head moved and what the new commits do, then review again before going on: invoke the shared `review` skill with the same brief plus the commits since `previous_head` (`previous_head..HEAD`, or a diff between the two heads when `rewritten` says it was a force-push) and this pass's findings so far with the user's rulings. Triage only what is new or materially changed. A finding the user already ruled on that still stands keeps its ruling, and one the new commits fix drops out; name the dropped ones in triage's count line, such as `1 Follow-up; the hero height one is fixed by 066422b`.
+At the start, review whatever head it returns. When it moves later, tell the user in a line that the head moved and what the new commits do, then review again before going on: invoke the shared `review` skill with the same brief plus the commits since `previous_head` (`previous_head..head_sha`, or a diff between the two heads when `rewritten` says it was a force-push) and this pass's findings so far with the user's rulings. Triage only what is new or materially changed. A finding the user already ruled on that still stands keeps its ruling, and one the new commits fix drops out; name the dropped ones in triage's count line, such as `1 Follow-up; the hero height one is fixed by 066422b`.
 
 ## `respond <n>`: reply as the author
 
-Run this inline, in the session that invokes it; it dispatches nothing. Work from a checkout of the PR's head when one exists, so answers rest on the code as it stands. If the authenticated user is not the PR's author, say so and ask before going on.
+Run this inline, in the session that invokes it; it dispatches nothing. Answers rest on the code as it stands: read it from a checkout of the PR's head when one exists, or else from git after `scripts/dispatch.py fetch --pr-number <n>`, with `git show <head_sha>:<path>`. If the authenticated user is not the PR's author, say so and ask before going on.
 
 Run `scripts/feedback.py <n>` and take every `unanswered` inline thread, whoever started it, and every review summary body and conversation comment that is not my own. Whether a summary or comment was already answered is a judgment the API can't make: list those after `my_latest` as needing replies, and the older ones separately as possibly answered, so triage settles them rather than a timestamp. Bot reviewers are included; say which items are a bot's, so the user can skip them quickly.
 
@@ -117,7 +134,6 @@ Set `head_sha` to the head the content was formed against. Run `scripts/post.py 
 
 - Do not edit the PR's source in any mode.
 - Do not request or report Nits.
-- Do not launch more than one active review pass for the same PR head.
-- Move an active review worktree to a new PR head only from its own pass, with `scripts/dispatch.py advance`; `review ready` reports it as stale and leaves it alone.
-- Do not remove a review worktree except through `review ready`'s cleanup step, or when the user separately asks.
+- Do not launch more than one reviewer for the same PR.
+- Do not close a reviewer's tab except through `review ready`'s cleanup step, or when the user separately asks.
 - Resolve only threads I started, and only in a review.

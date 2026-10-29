@@ -38,10 +38,10 @@ A **place** is somewhere an agent can be launched, in whatever form the backend 
 - **`worktree create`** — a worktree on `--branch`, ready to launch into, at `--path` or where the tool puts worktrees by default. A new branch starts from `--base`. It converges: run again for the same branch and it returns the worktree it made before (`created: false`), reopening it in the tool if needed. A branch already checked out somewhere it didn't make gets a suffix (`-2`, `-3`, …), and so does an occupied path; read `branch` and `path` back from the result rather than assuming. Result: `{ path, branch, created, reopened, place, … }`.
 - **`worktree remove`** — removes one worktree and closes it in the tool. Fail-closed: without `--force` it refuses a dirty tree, a branch with commits not verifiably pushed, a live agent there, or the caller's own worktree. It leaves branches alone. For sweeping a repo, use `cleanup-worktrees` instead. Result: `{ removed, path }`.
 - **`terminal create`** — a new terminal in the checkout holding `--cwd`, split beside what's there or in a tab of its own with `--tab`. Each call adds a new one. Result: `{ place, … }`.
-- **`terminal close`** — closes the terminal at a place, ending whatever runs in it.
+- **`terminal close`** — closes the terminal at a place, ending whatever runs in it. A place already gone counts as closed, with `already_gone: true`.
 - **`agent launch`** — starts an agent of `--kind` at a place and delivers `--seed-prompt` without waiting for its turn. If the place already holds a live agent of the same kind, it returns that agent rather than starting another or re-sending the seed. `--name` sets a readable name, which under Herdr may come back suffixed if one is taken; for claude it is also the session's SendMessage address, so use the `agent_name` the result returns. `--persona` (claude and codex) launches a persona. Result: `{ agent_name, kind, place }`.
 - **`agent send`** — types a message into a launched agent's prompt. With `--wait`, it returns once the agent's turn settles. An agent sitting at an approval dialog refuses it (`agent_blocked`); only the user should answer that dialog, so tell them.
-- **`agent status`** — whether an agent is still alive, and its state.
+- **`agent status`** — whether an agent is still alive, and its state. Result: `{ place, alive, … }`; an agent that is gone is `alive: false`, not an error.
 
 ## Report-back
 

@@ -53,7 +53,7 @@ Finds the open workspace whose checkout holds `--cwd`, the innermost when checko
 
 ## `terminal close`
 
-`herdr pane close <place>`.
+`herdr pane close <place>`. A pane Herdr reports as not found counts as closed (`already_gone: true`).
 
 ## `agent launch`
 
@@ -72,4 +72,4 @@ If the launch returns `agent_not_ready`, the pane is probably at a trust prompt.
 
 ## `agent send` and `agent status`
 
-`herdr agent prompt <agent> <message> [--wait --timeout <ms>]` and `herdr agent get <agent>`, passed through as Herdr prints them. `<agent>` is the agent's place (its pane id) or its name, since Herdr accepts either. `agent get` sees agents of every kind. A wait that times out doesn't prove the message wasn't delivered, so check `agent status` before sending it again.
+`agent send` is `herdr agent prompt <agent> <message> [--wait --timeout <ms>]`, passed through as Herdr prints it. `agent status` runs `herdr agent get <agent>` and returns `{ place, alive, agent }` in the shape Orca's status has, with Herdr's own record of the agent under `agent`; an agent Herdr reports as not found is `alive: false`, not an error. `<agent>` is the agent's place (its pane id) or its name, since Herdr accepts either. `agent get` sees agents of every kind. A wait that times out doesn't prove the message wasn't delivered, so check `agent status` before sending it again.

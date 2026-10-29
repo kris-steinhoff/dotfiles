@@ -38,7 +38,15 @@ elif args[:2] == ["tab", "create"]:
     result = {"tab": {"tab_id": "w2:t2"}, "root_pane": {"pane_id": "w2:p9"}}
 elif args[:2] == ["agent", "list"]:
     result = {"agents": []}
-elif args[:2] in (["agent", "start"], ["agent", "prompt"], ["agent", "get"], ["pane", "close"]):
+elif args[:2] == ["agent", "get"] and args[2] == "gone":
+    print(json.dumps({"error": {"code": "agent_not_found", "message": "not found"}}))
+    sys.exit(1)
+elif args[:2] == ["pane", "close"] and args[2] == "gone":
+    print(json.dumps({"error": {"code": "pane_not_found", "message": "not found"}}))
+    sys.exit(1)
+elif args[:2] == ["agent", "get"]:
+    result = {"agent": {"name": args[2]}}
+elif args[:2] in (["agent", "start"], ["agent", "prompt"], ["pane", "close"]):
     result = {}
 else:
     print(f"unexpected fake Herdr call: {args}", file=sys.stderr)
@@ -97,6 +105,21 @@ class DispatchTests(unittest.TestCase):
         result = self.dispatch("agent", "status", "--agent", "explore-x")
         self.assertEqual(result.returncode, 2)
         self.assertIn("by its place", json.loads(result.stdout)["reason"])
+
+    def test_herdr_status_says_whether_the_agent_is_alive(self):
+        self.herdr_env()
+        alive = self.dispatch("agent", "status", "--agent", "w1:p3")
+        self.assertEqual(alive.returncode, 0, alive.stderr)
+        self.assertEqual(json.loads(alive.stdout)["alive"], True)
+        gone = self.dispatch("agent", "status", "--agent", "gone")
+        self.assertEqual(gone.returncode, 0, gone.stderr)
+        self.assertEqual(json.loads(gone.stdout), {"place": "gone", "alive": False})
+
+    def test_closing_a_place_already_gone_counts_as_closed(self):
+        self.herdr_env()
+        result = self.dispatch("terminal", "close", "--place", "gone")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["already_gone"], True)
 
     def test_launch_maps_place_and_report_back_to_herdr(self):
         self.herdr_env()

@@ -207,10 +207,32 @@ def orca_terminal_create(orca, args):
 
 
 def terminal_close(args):
+    """Close the terminal at a place. A place already gone counts as closed."""
     if backend() == "orca":
-        emit_orca(lambda orca: {"closed": True, "place": args.place,
-                                **orca.orca("terminal", "close", "--terminal", args.place)})
-    run_herdr(["pane", "close", args.place])
+        emit_orca(lambda orca: orca_terminal_close(orca, args.place))
+    proc = subprocess.run(["herdr", "pane", "close", args.place], capture_output=True, text=True)
+    if proc.returncode == 0:
+        print(json.dumps({"closed": True, "place": args.place}))
+        sys.exit(0)
+    try:
+        code = (json.loads(proc.stdout).get("error") or {}).get("code") or ""
+    except (ValueError, AttributeError):
+        code = ""
+    if code.endswith("_not_found"):
+        print(json.dumps({"closed": True, "place": args.place, "already_gone": True}))
+        sys.exit(0)
+    emit_error(f"herdr pane close {args.place} failed ({proc.returncode}): "
+               f"{proc.stderr.strip() or proc.stdout.strip()}")
+
+
+def orca_terminal_close(orca, place):
+    try:
+        orca.orca("terminal", "close", "--terminal", place)
+    except orca.OrcaError as error:
+        if error.code not in orca.GONE_CODES:
+            raise
+        return {"closed": True, "place": place, "already_gone": True}
+    return {"closed": True, "place": place}
 
 
 def agent_launch(args):
@@ -274,7 +296,28 @@ def orca_agent_send(orca, args):
 def agent_status(args):
     if backend() == "orca":
         emit_orca(lambda orca: orca_agent_status(orca, args))
-    run_herdr(["agent", "get", args.agent])
+    herdr_agent_status(args)
+
+
+def herdr_agent_status(args):
+    """`herdr agent get`, as `{ place, alive, agent }` like Orca's status. An
+    agent Herdr can't find is not alive; any other failure is an error."""
+    proc = subprocess.run(["herdr", "agent", "get", args.agent], capture_output=True, text=True)
+    try:
+        envelope = json.loads(proc.stdout)
+    except ValueError:
+        envelope = {}
+    if proc.returncode == 0 and "result" in envelope:
+        result = envelope["result"]
+        agent = result.get("agent", result) if isinstance(result, dict) else result
+        print(json.dumps({"place": args.agent, "alive": True, "agent": agent}))
+        sys.exit(0)
+    code = ((envelope.get("error") or {}).get("code") or "") if isinstance(envelope, dict) else ""
+    if code.endswith("_not_found"):
+        print(json.dumps({"place": args.agent, "alive": False}))
+        sys.exit(0)
+    emit_error(f"herdr agent get {args.agent} failed ({proc.returncode}): "
+               f"{proc.stderr.strip() or proc.stdout.strip()}")
 
 
 def orca_agent_status(orca, args):

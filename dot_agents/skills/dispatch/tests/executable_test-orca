@@ -92,6 +92,8 @@ if command == "terminal wait":
     reply({"wait": {"satisfied": True}})
 if command == "terminal set-pane-title":
     reply({})
+if command == "terminal close" and flag("--terminal") not in (None, *state["terminals"]):
+    reply(error="terminal_handle_stale")
 if command == "terminal close":
     for record in state["terminals"].values():
         if record["handle"] == flag("--terminal") or record["worktreeId"] == (flag("--worktree") or "").removeprefix("id:"):
@@ -244,6 +246,7 @@ class OrcaTests(unittest.TestCase):
         self.assertEqual((status["alive"], status["kind"]), (True, "claude"))
         self.ok("terminal", "close", "--place", place)
         self.assertFalse(self.ok("agent", "status", "--agent", place)["alive"])
+        self.assertTrue(self.ok("terminal", "close", "--place", "term_gone")["already_gone"])
 
     def test_terminal_in_a_subdirectory_starts_there(self):
         (self.repo / "src").mkdir()

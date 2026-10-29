@@ -155,3 +155,7 @@
 .agents/skills/remove-worktree
 .claude/skills/remove-worktree
 .gemini/config/plugins/kris-steinhoff/skills/remove-worktree
+# github-pr's review queue stopped using worktrees, and these two tests of the
+# worktree helper went with it; without this they linger and fail if run.
+.agents/skills/github-pr/tests/test-dispatch-advance
+.agents/skills/github-pr/tests/test-dispatch-cleanup
