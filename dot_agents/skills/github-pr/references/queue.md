@@ -74,7 +74,7 @@ Keep at most three subagents reviewing at once, fewer when the harness caps how 
 
 ### Show the board
 
-The board is a table with one row per PR this session holds, in the order they'll be triaged:
+The board is a table with one row per PR this run is working, in the order they'll be triaged:
 
 ```markdown
 | PR   | Title                     | Author       | Stage                     |
@@ -120,7 +120,7 @@ When it returns, mark the PR `posted` with its event. When a check failed, mark 
 
 When every PR on the board is posted or skipped, put the tab label back and summarize: what was posted on each PR, with its event; what was skipped; how PRs were grouped and why; and anything still needing the user.
 
-A later run in this session, by hand or by `/loop`, adds new PRs to the board and leaves the ones it is still working where they are. A PR the board shows as posted or skipped that `ready` reports `new` again was re-requested at a new head: claim it and give it a new pass, back to `reviewing`.
+A later run in this session, by hand or by `/loop`, starts a new board: the PRs still being worked, where they were, followed by the new ones. A PR an earlier run finished and summarized drops off, so the board, and the label's count, cover only what is still in flight. A PR that run finished that `ready` reports `new` again was re-requested at a new head: claim it and give it a new pass, back on the board as `reviewing`.
 
 ## With tabs
 
