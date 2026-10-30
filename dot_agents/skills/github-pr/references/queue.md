@@ -77,14 +77,14 @@ Keep at most three subagents reviewing at once, fewer when the harness caps how 
 The board is a table with one row per PR this run is working, in the order they'll be triaged:
 
 ```markdown
-| PR   | Title                     | Author       | Stage                     |
-| ---- | ------------------------- | ------------ | ------------------------- |
-| #254 | Add rate limit headers    | Ada Lovelace | posted: changes requested |
-| #255 | Use rate limit headers in | Ada Lovelace | triage                    |
-| #261 | Fix flaky login test      | Alan Turing  | reviewing                 |
+| PR                                           | Title                     | Author       | Stage                     |
+| -------------------------------------------- | ------------------------- | ------------ | ------------------------- |
+| [#254](https://github.com/acme/api/pull/254) | Add rate limit headers    | Ada Lovelace | posted: changes requested |
+| [#255](https://github.com/acme/api/pull/255) | Use rate limit headers in | Ada Lovelace | triage                    |
+| [#261](https://github.com/acme/api/pull/261) | Fix flaky login test      | Alan Turing  | reviewing                 |
 ```
 
-The stages are `reviewing`, `ready` (results in, waiting for triage), `triage`, `posting`, `posted` with the event, `skipped` (finished without posting), and `needs you` with a few words on why. Cut titles to about 40 characters. Show the board when reviews are started, at the start of each PR's triage, when a review lands or a post finishes while no triage is underway, and at the end.
+The stages are `reviewing`, `ready` (results in, waiting for triage), `triage`, `posting`, `posted` with the event, `skipped` (finished without posting), and `needs you` with a few words on why. Link each PR number to its `url`, as in the example, and do the same wherever the run names a PR it holds, such as the final summary. Cut titles to about 40 characters. Show the board when reviews are started, at the start of each PR's triage, when a review lands or a post finishes while no triage is underway, and at the end.
 
 Under Herdr or Orca, also keep this session's tab label on the progress, so it shows in the sidebar while the user is elsewhere:
 
@@ -102,7 +102,7 @@ For each PR:
 
 1. Claim it again, which renews the claim.
 2. Check the head with `fetch` (see the skill's "Keep up with the head"). If it moved since the review, send the PR back to its reviewer subagent with the new commits, set it back to `reviewing`, and go on to the next ready PR.
-3. Send the board as a message of its own, with the PR in triage marked and its URL under the table. That is what tells the user which PR the questions after it are about. Don't print the PR's summary here: printed partway through a turn, a script's output gets narrated past rather than shown, while a table you compose yourself does show. Run the `summarize-github-pr` script for the confirmation, which opens with its table.
+3. Send the board as a message of its own, with the PR in triage marked. That is what tells the user which PR the questions after it are about. Don't print the PR's summary here: printed partway through a turn, a script's output gets narrated past rather than shown, while a table you compose yourself does show. Run the `summarize-github-pr` script for the confirmation, which opens with its table.
 4. Triage with the user from the review's results, and check the head again before the final confirmation, as the skill describes.
 5. Once the user confirms, start the posting subagent below, set the PR to `posting`, and go straight on to the next ready PR. If the user instead finishes without posting, record the pass complete yourself and mark it `skipped`.
 
