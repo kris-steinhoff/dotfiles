@@ -55,6 +55,10 @@ Finds the open workspace whose checkout holds `--cwd`, the innermost when checko
 
 `herdr pane close <place>`. A pane Herdr reports as not found counts as closed (`already_gone: true`).
 
+## `terminal label`
+
+Finds the tab holding the place's pane (`herdr pane get`), or the caller's own pane, `$HERDR_PANE_ID`, and renames it with `herdr tab rename`, returning the label it had as `previous`. Herdr keeps no automatic label to go back to, so a call without `--text` is needs-judgment; restore with `--text <previous>`.
+
 ## `agent launch`
 
 Runs `scripts/herdr/launch-agent-in-pane` on the place's pane.

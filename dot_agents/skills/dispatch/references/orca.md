@@ -38,6 +38,10 @@ Result: `{ terminal, worktree_id, place }`.
 
 `orca terminal close --terminal <place>`, which ends whatever runs there. A stale handle counts as closed (`already_gone: true`).
 
+## `terminal label`
+
+`orca terminal rename --terminal <place> --title <text>`, on the caller's own terminal, `$ORCA_TERMINAL_HANDLE`, without `--place`. Without `--text` it clears the custom title, and Orca goes back to its automatic one, so `previous` is always null.
+
 ## `agent launch`
 
 Runs `scripts/orca/launch-agent`, which types the agent's command line into the place's shell rather than calling `orca agent launch`. Orca's launcher opens a tab of its own and takes no persona, no session name, and no extra arguments; typed, the agent gets exactly the flags it gets under Herdr (from `scripts/agent_cli.py`), so `--name` still names a claude session and makes it a SendMessage address. Orca recognizes the agent in the terminal either way, from its hooks.

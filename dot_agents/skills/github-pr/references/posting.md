@@ -4,9 +4,9 @@ Reference for `scripts/post.py` and `scripts/feedback.py`, and for the anchoring
 
 ## Reading the conversation
 
-`scripts/feedback.py <pr>` prints the PR's whole review conversation as JSON: identity (`author`, `viewer`, `head_sha`, `base_branch`), the inline `threads`, the summary bodies of `reviews`, and the conversation `comments`. Each thread carries its `thread_id`, its `root_comment_id` (the only id a reply or a resolution can target), `resolved`, `outdated`, `started_by_me`, and `unanswered` (unresolved, and the latest comment is someone else's). Reviews and conversation comments cannot be threaded, so whether one still needs an answer is a judgment rather than a recorded fact. Their `after_my_latest` marks those someone else wrote after `my_latest`, the newest thing I posted anywhere on the PR (the rule `watch-pr` wakes on); an older one may or may not have been answered. Bots are included and flagged `bot`.
+`scripts/feedback.py <pr>` prints the PR's whole review conversation as JSON: identity (`author`, `viewer`, `head_sha`, `base_branch`), the inline `threads`, the summary bodies of `reviews`, and the conversation `comments`. Each thread carries its `thread_id`, its `root_comment_id` (the only id a reply or a resolution can target), `resolved`, `outdated`, `started_by_me`, `replied_by_me` (I wrote a comment after its first), and `unanswered` (unresolved, and the latest comment is someone else's). Reviews and conversation comments cannot be threaded, so whether one still needs an answer is a judgment rather than a recorded fact. Their `after_my_latest` marks those someone else wrote after `my_latest`, the newest thing I posted anywhere on the PR (the rule `watch-pr` wakes on); an older one may or may not have been answered. Bots are included and flagged `bot`.
 
-A reviewer reads its own `started_by_me` threads to find prior findings. An author reads every `unanswered` thread, whoever started it, and every review body and conversation comment that is not its own.
+A reviewer reads its own `started_by_me` threads to find prior findings, and other reviewers' threads it hasn't replied in, review bodies, and conversation comments to take a stance on. An author reads every `unanswered` thread, whoever started it, and every review body and conversation comment that is not its own.
 
 ## Poster schema
 
@@ -48,6 +48,10 @@ Always dry-run first and fix everything it reports. The checks run again before 
 ### Re-review posting
 
 On a re-review, a still-open prior finding that was posted inline is answered on its existing thread through `thread_replies` rather than re-posted. A prior finding verified as fixed has its thread resolved through `resolve`, with a reply only when the fix needs a note. A prior finding that lived in the summary body under a name has no thread, so its status goes in the new review's body by that name ("Finding A (missing migration): resolved in …"), never in a standalone conversation comment.
+
+### Replies to other reviewers
+
+A review's Agree or Dispute on another reviewer's inline comment goes in `thread_replies` on that comment's thread, an Agree opening with its severity, `[Blocker]` or `[Follow-up]`. One on a review summary body or a conversation comment has no thread, so it goes in the new review's body, naming whose point it answers. Another reviewer's thread is never resolved from here, even when its concern is fixed.
 
 ### Response posting
 

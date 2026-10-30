@@ -46,7 +46,11 @@ elif args[:2] == ["pane", "close"] and args[2] == "gone":
     sys.exit(1)
 elif args[:2] == ["agent", "get"]:
     result = {"agent": {"name": args[2]}}
-elif args[:2] in (["agent", "start"], ["agent", "prompt"], ["pane", "close"]):
+elif args[:2] == ["pane", "get"]:
+    result = {"pane": {"pane_id": args[2], "tab_id": "w2:t2"}}
+elif args[:2] == ["tab", "get"]:
+    result = {"tab": {"tab_id": args[2], "label": "main"}}
+elif args[:2] in (["agent", "start"], ["agent", "prompt"], ["pane", "close"], ["tab", "rename"]):
     result = {}
 else:
     print(f"unexpected fake Herdr call: {args}", file=sys.stderr)
@@ -160,6 +164,18 @@ class DispatchTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         create = self.call("tab", "create")
         self.assertEqual(create[create.index("--workspace") + 1], "w9")
+
+    def test_label_renames_the_callers_tab_and_returns_the_old_label(self):
+        self.herdr_env()
+        result = self.dispatch("terminal", "label", "--text", "Reviews 1/3")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout),
+                         {"place": "w9:p1", "label": "Reviews 1/3", "previous": "main"})
+        self.assertEqual(self.call("pane", "get"), ["pane", "get", "w9:p1"])
+        self.assertEqual(self.call("tab", "rename"), ["tab", "rename", "w2:t2", "Reviews 1/3"])
+        reset = self.dispatch("terminal", "label")
+        self.assertEqual(reset.returncode, 2)
+        self.assertIn("pass --text", json.loads(reset.stdout)["reason"])
 
     def test_send_and_close_pass_through_to_herdr(self):
         self.herdr_env()

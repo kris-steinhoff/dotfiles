@@ -235,6 +235,52 @@ def orca_terminal_close(orca, place):
     return {"closed": True, "place": place}
 
 
+def terminal_label(args):
+    """Label the tab holding a place, the caller's own by default. Without
+    --text, Orca goes back to its automatic title; Herdr has none to go back to."""
+    if backend() == "orca":
+        emit_orca(lambda orca: orca_terminal_label(orca, args))
+    place = args.place or os.environ.get("HERDR_PANE_ID")
+    if not place:
+        emit_judgment("no --place, and the caller's own pane is unknown (HERDR_PANE_ID is not set)")
+    if args.text is None:
+        emit_judgment("Herdr has no automatic tab label to go back to; "
+                      "pass --text with the label to restore")
+    pane = herdr_result("pane", "get", place).get("pane") or {}
+    tab = pane.get("tab_id")
+    if not tab:
+        emit_error(f"herdr pane get {place} returned no tab_id")
+    previous = (herdr_result("tab", "get", tab).get("tab") or {}).get("label")
+    herdr_result("tab", "rename", tab, args.text)
+    print(json.dumps({"place": place, "label": args.text, "previous": previous}))
+    sys.exit(0)
+
+
+def herdr_result(*command):
+    proc = subprocess.run(["herdr", *command], capture_output=True, text=True)
+    try:
+        envelope = json.loads(proc.stdout)
+    except ValueError:
+        envelope = None
+    if proc.returncode != 0 or not isinstance(envelope, dict) or "result" not in envelope:
+        emit_error(f"herdr {' '.join(command)} failed ({proc.returncode}): "
+                   f"{proc.stderr.strip() or proc.stdout.strip()}")
+    return envelope["result"] or {}
+
+
+def orca_terminal_label(orca, args):
+    place = args.place or os.environ.get("ORCA_TERMINAL_HANDLE")
+    if not place:
+        emit_judgment("no --place, and the caller's own terminal is unknown "
+                      "(ORCA_TERMINAL_HANDLE is not set)")
+    rename = ["terminal", "rename", "--terminal", orca_terminal_handle(place)]
+    if args.text:
+        rename += ["--title", args.text]
+    orca.orca(*rename)
+    # Orca keeps an automatic title to go back to, so there is nothing to restore.
+    return {"place": place, "label": args.text or None, "previous": None}
+
+
 def agent_launch(args):
     orca = backend() == "orca"
     if orca:
@@ -358,6 +404,10 @@ def main():
     p = terminal.add_parser("close", help="close a terminal and whatever runs in it")
     p.add_argument("--place", required=True)
     p.set_defaults(handler=terminal_close)
+    p = terminal.add_parser("label", help="label the tab holding a place, the caller's own by default")
+    p.add_argument("--place", help="default: the caller's own terminal")
+    p.add_argument("--text", help="the label; omit to go back to the tool's own, where it has one")
+    p.set_defaults(handler=terminal_label)
 
     agent = nouns.add_parser("agent").add_subparsers(dest="verb", required=True)
     p = agent.add_parser("launch", help="start an agent at a place and seed it")

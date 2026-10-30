@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Enumerate, group, and track GitHub PR reviews for an idempotent review queue.
 
-The helper owns only deterministic local and GitHub state. Placement and agent
-launch stay in the dispatch skill, under Herdr or Orca, and grouping related
-PRs is the calling agent's judgment; `ready` supplies the relationships it
-judges from.
+The helper owns only deterministic local and GitHub state. Reviewers run as
+the calling session's subagents, or in tabs placed by the dispatch skill under
+Herdr or Orca, and grouping related PRs is the calling agent's judgment;
+`ready` supplies the relationships it judges from.
 
 A review needs no checkout. `fetch` brings a PR's head into git's object store
 under a private ref, refs/github-pr-review/<n>/head, and the reviewer reads the
@@ -19,10 +19,12 @@ checkout of it sees the same queue:
 
 A PR belongs to a reviewer only when the PR's own record names it. A
 reviewer's list says only the order, so a stale entry there, left when a PR
-moved to another reviewer, is ignored and pruned. A review started by hand
-claims its PR with no reviewer.
+moved to another reviewer, is ignored and pruned. A session that reviews PRs
+itself, by hand with `review <n>` or through its own subagents, claims them
+with no reviewer and a holder token of its own, which keeps other sessions off
+them until the claim lapses.
 
-Every write holds a lock beside the file, because the queue's session, its
+Every write holds a lock beside the file, because queue sessions, their tab
 reviewers, and hand-started reviews update it independently.
 """
 
@@ -34,6 +36,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import uuid
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from itertools import combinations
@@ -44,8 +47,9 @@ SEARCH = "is:open -is:draft review-requested:@me -author:@me"
 GH_FIELDS = "number,title,url,author,baseRefName,headRefName,headRefOid"
 JIRA_KEY = re.compile(r"\b([A-Z][A-Z0-9]+-[0-9]+)\b")
 SHARED_FILES_SHOWN = 5
-# A hand-started review's claim lapses after this long without completing,
-# since nothing can tell whether the session that made it is still open.
+# A session's claim lapses after this long without completing, since nothing
+# can tell whether the session that made it is still open. Claiming again
+# renews it.
 HAND_CLAIM_HOURS = 12
 STATE_ROOT = Path(os.environ.get("GITHUB_PR_STATE_DIR")
                   or Path.home() / ".local" / "state" / "github-pr" / "reviews")
@@ -91,6 +95,12 @@ def repo_root(path):
 
 def now():
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def lapsed(record):
+    """Whether a session's claim is old enough that no one need honor it."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=HAND_CLAIM_HOURS)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return record.get("claimed_at", "") <= cutoff
 
 
 def gh_json(repo, *args):
@@ -276,7 +286,8 @@ def command_ready(args):
             item["state"] = status or "new"
             item["reviewer"] = record.get("reviewer") if status in ("assigned", "active") else None
             if status == "active" and not item["reviewer"]:
-                item["claimed_by_hand"] = True
+                item["claimed_in_session"] = True
+                item["holder"] = record.get("holder")
         views = [reviewer_view(name, r, data) for name, r in sorted(reviewers.items())]
     for item in items:
         del item["files"]
@@ -300,7 +311,7 @@ def command_assign(args):
             if record.get("status") in ("assigned", "active") and record.get("reviewer") != args.reviewer:
                 holder = record.get("reviewer")
                 judgment(f"PR #{number} is already with reviewer {holder!r}" if holder
-                         else f"PR #{number} is being reviewed by hand", pr_number=number)
+                         else f"PR #{number} is being reviewed in a session", pr_number=number)
         for number in args.prs:
             record = data["prs"].get(str(number)) or {}
             for name, other in data["reviewers"].items():
@@ -325,12 +336,17 @@ def command_mark(args):
     emit({"status": "active", "pr_number": args.pr_number, "reviewer": record.get("reviewer")})
 
 
-def held_elsewhere(record, reviewer):
-    """Judgment when another reviewer, or a hand review, has this PR in progress."""
-    if record.get("status") in ("assigned", "active") and record.get("reviewer") != reviewer:
-        holder = record.get("reviewer")
-        return (f"reviewer {holder!r} has this PR in progress" if holder
-                else "a review started by hand has this PR in progress")
+def held_elsewhere(record, reviewer, holder=None):
+    """Judgment when another reviewer, or another session's own review, has this
+    PR in progress. A session's claim stops counting once it lapses."""
+    if record.get("status") not in ("assigned", "active"):
+        return None
+    if record.get("reviewer") != reviewer:
+        other = record.get("reviewer")
+        return (f"reviewer {other!r} has this PR in progress" if other
+                else "a session reviewing it itself has this PR in progress")
+    if reviewer is None and record.get("holder") not in (None, holder) and not lapsed(record):
+        return f"another session (holder {record['holder']}) has this PR in progress"
     return None
 
 
@@ -339,30 +355,35 @@ def command_claim(args):
     repo = repo_root(args.repo)
     with state(repo, write=True) as data:
         record = data["prs"].get(str(args.pr_number)) or {}
-        problem = held_elsewhere(record, args.reviewer)
+        if record.get("reviewer") is None and lapsed(record):
+            record = {}  # a lapsed session claim is anyone's
+        problem = held_elsewhere(record, args.reviewer, args.holder)
         if problem:
             judgment(f"PR #{args.pr_number}: {problem}", pr_number=args.pr_number,
                      reviewer=record.get("reviewer"))
+        holder = None
         if args.reviewer:
             if not record:
                 judgment(f"PR #{args.pr_number} isn't assigned to reviewer {args.reviewer!r}",
                          pr_number=args.pr_number)
         else:
+            holder = args.holder or uuid.uuid4().hex[:12]
             data["prs"][str(args.pr_number)] = {"status": "active", "reviewer": None,
-                                                "claimed_at": now()}
-    emit({"claimed": True, "pr_number": args.pr_number, "reviewer": args.reviewer})
+                                                "holder": holder, "claimed_at": now()}
+    emit({"claimed": True, "pr_number": args.pr_number, "reviewer": args.reviewer, "holder": holder})
 
 
 def command_complete(args):
     repo = repo_root(args.repo)
     with state(repo, write=True) as data:
         record = data["prs"].get(str(args.pr_number)) or {}
-        problem = held_elsewhere(record, args.reviewer)
+        problem = held_elsewhere(record, args.reviewer, args.holder)
         if problem:
             judgment(f"PR #{args.pr_number}: {problem}, so this review can't close its pass",
                      pr_number=args.pr_number, reviewer=record.get("reviewer"))
         record.update({"status": "complete", "head_sha": args.head_sha, "completed_at": now(),
                        "reviewer": args.reviewer})
+        record.pop("holder", None)
         data["prs"][str(args.pr_number)] = record
     emit({"status": "complete", "pr_number": args.pr_number, "head_sha": args.head_sha})
 
@@ -451,15 +472,13 @@ def command_cleanup(args):
         if args.apply:
             # A finished pass is kept only while it still answers a review
             # request at the head it reviewed; it is what stops a re-review.
-            # A hand-started review keeps its claim until it lapses.
+            # A session's own claim stays until it lapses.
             attached = {n for name, r in reviewers.items() for n in r.get("prs") or [] if owned(data, name, n)}
-            lapsed = (datetime.now(timezone.utc) - timedelta(hours=HAND_CLAIM_HOURS)).strftime("%Y-%m-%dT%H:%M:%SZ")
             for key, record in list(prs.items()):
                 number = int(key)
                 if number in attached:
                     continue
-                if record.get("status") == "active" and not record.get("reviewer") \
-                        and record.get("claimed_at", "") > lapsed:
+                if record.get("status") == "active" and not record.get("reviewer") and not lapsed(record):
                     continue
                 if record.get("status") != "complete" or queue.get(number) != record.get("head_sha"):
                     drop_pr(repo, data, number)
@@ -491,12 +510,14 @@ def parser():
 
     claim = command("claim", command_claim, "record a review as in progress before it starts")
     claim.add_argument("--pr-number", type=int, required=True)
-    claim.add_argument("--reviewer", help="the queue reviewer's name, when review ready sent the PR")
+    claim.add_argument("--reviewer", help="the tab reviewer's name, when review ready sent the PR")
+    claim.add_argument("--holder", help="this session's holder token, from its first claim's result")
 
     complete = command("complete", command_complete, "record a terminal decision for one pass")
     complete.add_argument("--pr-number", type=int, required=True)
     complete.add_argument("--head-sha", required=True)
-    complete.add_argument("--reviewer", help="the queue reviewer's name, when review ready sent the PR")
+    complete.add_argument("--reviewer", help="the tab reviewer's name, when review ready sent the PR")
+    complete.add_argument("--holder", help="the holder token the PR was claimed with")
 
     fetch = command("fetch", command_fetch, "fetch a PR's current head and base, with no checkout")
     fetch.add_argument("--pr-number", type=int, required=True)

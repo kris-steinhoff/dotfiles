@@ -1,6 +1,6 @@
 ---
 name: github-pr
-description: Works GitHub pull requests from either side, posting only what the user confirms. `review <n>` reviews a PR — prior review context, the shared review policy without Nits, triage of each finding with the user, the approved review posted, and threads of verified fixes resolved on re-review. `review ready` idempotently dispatches every open non-draft PR awaiting my or my team's review to an interactive reviewer in a tab under Herdr or Orca, grouping related PRs such as a stack into one tab reviewed in order, and closes the tabs of finished reviewers; suitable for repeated `/loop` invocation. `respond <n>` replies as the PR's author to unanswered review comments, each reply drafted for the user to approve. Use for any comment, reply, or review posted to a GitHub PR on the user's behalf.
+description: Works GitHub pull requests from either side, posting only what the user confirms. `review <n>` reviews a PR — prior review context, the shared review policy without Nits, a stance on other reviewers' open comments, triage of each finding and reply with the user, the approved review posted, and threads of verified fixes resolved on re-review. `review ready` idempotently works every open non-draft PR awaiting my or my team's review, grouping related PRs such as a stack to be reviewed in order; background subagents review them while this session triages each with the user, hands the approved review to a posting subagent, and shows progress on a board, and where the harness has no subagents it dispatches interactive reviewers into tabs under Herdr or Orca. Suitable for repeated `/loop` invocation. `respond <n>` replies as the PR's author to unanswered review comments, each reply drafted for the user to approve. Use for any comment, reply, or review posted to a GitHub PR on the user's behalf.
 {{- with get . "custom" }}
 {{ . }}
 {{- end }}
@@ -10,8 +10,8 @@ description: Works GitHub pull requests from either side, posting only what the 
 
 Own every GitHub PR conversation posted on the user's behalf, from either side. The modes:
 
-- `review ready` discovers review requests, groups related ones, and dispatches an interactive reviewer per group into a tab.
-- `review <n>` conducts the review where it is invoked, from the PR's diff with no checkout, triages findings with the user, and posts only after confirmation.
+- `review ready` discovers review requests and groups related ones. Subagents review them in the background while this session triages each PR with the user and hands the approved review to a posting subagent. Where the harness can't run subagents, it dispatches an interactive reviewer per group into a tab instead.
+- `review <n>` conducts one review where it is invoked, from the PR's diff with no checkout, triages findings with the user, and posts only after confirmation.
 - `respond <n>` drafts the author's replies to the PR's unanswered review comments, walks the user through each, and posts only after confirmation.
 
 A bare `<n>`, or no mode at all, does not pick one. Ask whether to review or respond, suggesting `respond` when the authenticated user is the PR's author and `review` otherwise.
@@ -20,59 +20,82 @@ This skill may be invoked directly, by any agent, or repeatedly with `/loop 5m /
 
 ## Open with the summary
 
-Several of these sessions run at once, and the PR's summary is how the user tells which PR a pane is about. A dispatched `review <n>` session gets it before the review starts: the dispatcher sends `/summarize-github-pr <n>` as the session's first prompt (see [references/queue.md](references/queue.md)), so don't run it again.
+The PR's summary is how the user tells which PR is in front of them, so every review and response opens with it:
 
-A `respond <n>` session, and a `review <n>` the user started by hand, opens with the summary itself: before reading anything else about the PR, run the `summarize-github-pr` skill and send its output, every line as markdown, as your first message.
+- A tab reviewer that `review ready` dispatched gets it before the review starts: the dispatcher sends `/summarize-github-pr <n>` as the session's first prompt, so don't run it again.
+- A `review ready` session working with subagents opens each PR's triage with its board instead, and shows the summary's table in the confirmation, as [references/queue.md](references/queue.md) describes.
+- A `respond <n>` session, and a `review <n>` the user started by hand, opens with the summary itself: before reading anything else about the PR, run the `summarize-github-pr` skill and send its output, every line as markdown, as your first message.
 
-## `review ready`: dispatch the queue
+## `review ready`: work the queue
 
-This mode needs a workspace tool the `dispatch` skill supports, Herdr (`HERDR_ENV=1`) or Orca (`ORCA_PANE_KEY` set). Read [references/queue.md](references/queue.md), then run the queue flow there. Do not ask the user to confirm the discovered set: `review ready` is explicit authorization to launch the requested review queue, including when a loop invoked it.
+Read [references/queue.md](references/queue.md), then run the queue flow there. Do not ask the user to confirm the discovered set: `review ready` is explicit authorization to review the requested queue, including when a loop invoked it.
 
-Reviews need no checkout, so each reviewer runs in a tab of the current checkout. Before launching, look across the queue for PRs that belong together, such as a stack or two halves of one change, and give each such group one reviewer that takes its PRs in order; say in the run's summary how you grouped them and why. The queue mode closes the tabs of finished reviewers, moves reviewers on to the next PR in their group, and launches reviewers for new PRs. It does not collect findings, triage, or post.
+It runs one of two ways, chosen by what the harness can do:
+
+- **Subagents**, whenever the harness can start subagents that run in the background while you keep working, such as Claude Code's Agent tool or Codex's `spawn_agent`. Subagents review the PRs, and this session holds every triage: as each review lands, it triages that PR with the user, hands the confirmed review to a posting subagent, and moves to the next PR while that one posts. A board shows where each PR stands.
+- **Tabs**, only when the harness has no such subagents. This needs a workspace tool the `dispatch` skill supports, Herdr (`HERDR_ENV=1`) or Orca (`ORCA_PANE_KEY` set). Each tab's reviewer triages and posts with the user itself, and this session only launches, advances, and closes them.
+
+With neither, say so and stop. Either way, look across the queue for PRs that belong together before reviewing, such as a stack or two halves of one change, and give each group one reviewer that takes its PRs in order; say how you grouped them and why.
 
 ## `review <n>`: conduct the review
 
-Run this inline, in the session that invokes it; it dispatches nothing. First claim the PR, so a `review ready` queue leaves it alone while you work:
+Run this inline, in the session that invokes it. First claim the PR, so a `review ready` queue leaves it alone while you work:
 
 ```bash
 scripts/dispatch.py claim --pr-number <n> [--reviewer <name>]
 ```
 
-Pass `--reviewer` with the name the prompt gave you when `review ready` sent you this PR; started any other way, pass none. A needs-judgment result means another reviewer has the PR in progress: tell the user which, and go on only if they say so.
+Pass `--reviewer` with the name the prompt gave you when `review ready` sent you this PR in a tab. Started any other way, pass none, and keep the `holder` the result returns, a token that marks the claim as this session's. A needs-judgment result means another reviewer or session has the PR in progress: tell the user which, and go on only if they say so.
+
+Then [review the PR](#review-the-pr). While the reviewer runs, tell the user in a line or two that it is running and what you asked it to focus on; the summary that opened the session already describes the PR. When it returns, [triage with the user](#triage-with-the-user), [post](#post), and [record the pass](#record-the-pass).
+
+When `review ready` sent you this PR in a tab as part of a group, its prompt names the other PRs and why they belong together. Use the earlier ones as context, and don't raise again a finding already posted on one of them. If that prompt named a session to tell when the pass is complete, send it the message the prompt gives once the pass is recorded. Then stop: in a group, the next PR arrives as a new prompt, so don't start it yourself.
+
+## Review the PR
+
+This is the review itself, up to triage. `review <n>` runs it inline, and a `review ready` queue gives it to a subagent, which returns the results below rather than triaging.
 
 A review reads the PR from git's object store rather than a checkout. Start with the head check in [Keep up with the head](#keep-up-with-the-head), which fetches the PR's head and base without touching the working tree and returns `head_sha`, `base_branch`, and `merge_base`.
 
-Read the PR title, author, body, and changed files, and run `scripts/feedback.py <n>` for my prior reviews and the threads I started. On a re-review, include unresolved prior findings in the review brief so the reviewer verifies them against the current code and does not duplicate findings that still stand.
+Read the PR title, author, body, and changed files, and run `scripts/feedback.py <n>` for the review conversation so far: my prior findings in the threads I started, and the open comments of other reviewers (see [Other reviewers' comments](#other-reviewers-comments)).
 
 Invoke the shared `review` skill once per head with a self-contained brief containing:
 
 - the PR's stated intent and base branch
 - the change scope, `git diff <merge_base> <head_sha>`, which is the diff GitHub shows
 - that the working tree is not the PR's code, since it may be on any branch: read the PR's code with `git show <head_sha>:<path>` and search it with `git grep <pattern> <head_sha>`, and don't run its tests, which have no checkout to run in
-- relevant unresolved prior findings and their thread comment IDs
+- my unresolved prior findings and their thread comment IDs, to verify against the current code rather than raise again
+- the other reviewers' open comments, as context, so it doesn't report what they already raised as if it were new
 - an explicit instruction not to report Nits
 
-When `review ready` sent you this PR as part of a group, its prompt names the other PRs and why they belong together. Use the earlier ones as context, and don't raise again a finding already posted on one of them.
-
-While the reviewer runs, tell the user in a line or two that it is running and what you asked it to focus on. The summary that opened the session already describes the PR.
-
-The shared reviewer returns Blockers and Follow-ups without editing, interaction, a verdict, or posting. Preserve its classifications unless discussion with the user supplies new technical evidence.
+The shared reviewer returns Blockers and Follow-ups without editing, interaction, a verdict, or posting. Preserve its classifications unless discussion with the user supplies new technical evidence. Then take a stance on the other reviewers' comments yourself, as below, from its findings and your own reading of the code.
 
 On a re-review, each prior finding the reviewer verifies as fixed is a thread to resolve: resolving is how the reviewer confirms a fix holds. A prior finding that still stands gets a reply on its thread instead of a new inline comment.
 
-Triage follows [Triage with the user](#triage-with-the-user), with the review's findings as its items; when the review found nothing, go straight to the confirmation. Then derive the GitHub event from the included findings: any Blocker means `REQUEST_CHANGES`; otherwise use `APPROVE`. A Follow-up never changes the event by itself. If no findings remain, the review is an approval. The final confirmation shows the event, the included findings, and the threads to be resolved.
+The results, which a subagent returns as its final message and an inline review carries into triage, are:
 
-Render the confirmed review into a batch with one inline comment per included finding where possible, replies on the threads of still-open prior findings, and `resolve` for the verified fixes. Prefix each finding body with `[Blocker]` or `[Follow-up]`.
+- `head_sha`, `base_branch`, and `merge_base` as reviewed
+- each finding, with its classification, title, and impact, the anchor it would post at (a path and a RIGHT-side line in the diff, or a short name for the summary body when nothing anchors; see [references/posting.md](references/posting.md)), and the comment it would post, prefixed `[Blocker]` or `[Follow-up]`
+- each prior finding, with its thread's root comment ID, as fixed or still standing, and for one still standing, the reply it would post
+- each other reviewer's comment it takes a stance on, with its thread's root comment ID or its review or comment ID, its author, the comment's point in a line, the stance with its severity, and the reply it would post
+- what the reviewer verified, and anything it couldn't
 
-When the workflow reaches a terminal decision (successfully posted, or the user explicitly decides to finish without posting), record the pass complete:
+### Other reviewers' comments
 
-```bash
-scripts/dispatch.py complete --pr-number <n> --head-sha <head_sha> [--reviewer <name>]
-```
+Other reviewers, people and bots alike, may have raised concerns already. Weighing in on them tells the author which ones matter and how much, so the review answers them as well as adding its own. From `feedback.py`, take:
 
-with the same `--reviewer` you claimed with.
+- each unresolved thread started by someone other than me and the PR's author, in which I haven't replied (`replied_by_me` is false)
+- each review summary body and conversation comment by another reviewer that is `after_my_latest`, leaving out status and tooling comments that raise no concern about the code, such as a CI or deploy-preview bot's
 
-If the prompt that started the review named a session to tell, send it the message the prompt gives. Then stop: in a group, the next PR arrives as a new prompt, so don't start it yourself. Don't record completion if posting failed or the user has not finished triage, so the queue never treats an unfinished review as done.
+Judge each one against the code and take one of three stances. The shared `review` skill doesn't do this; its report covers only problems the change introduces, so the stances are yours, informed by what it found:
+
+- **Agree**: the concern holds. The reply gives it my severity, `[Blocker]` or `[Follow-up]`, and adds whatever the review found that strengthens it. When my severity is higher than the comment's own framing, such as a bot's suggestion that would break something, the reply says so: that is how a comment is escalated to a Blocker.
+- **Dispute**: the concern doesn't hold. The reply says why, with evidence from the code, plainly and without arguing.
+- **No stance**: a Nit, a matter of taste, a point already settled in its thread, or one outside the change's scope. Nothing is posted.
+
+A finding of the review's own that another reviewer already raised becomes an Agree on their comment rather than a new comment of mine.
+
+In triage, each Agree or Dispute is an item like a finding. An included Agree counts toward the GitHub event at its severity, so agreeing that another reviewer's comment is a Blocker requests changes.
 
 ### Keep up with the head
 
@@ -84,7 +107,7 @@ scripts/dispatch.py fetch --pr-number <n>
 
 Run it from any checkout of the repository; under a sandbox that proxies network access, it reaches `api.github.com` and `github.com`. It fetches the PR's current head to a private ref and its base branch to `origin/<base>`, and changes nothing in the working tree. It returns `moved: true`, with `previous_head` and `rewritten`, when the head differs from the last fetch.
 
-At the start, review whatever head it returns. When it moves later, tell the user in a line that the head moved and what the new commits do, then review again before going on: invoke the shared `review` skill with the same brief plus the commits since `previous_head` (`previous_head..head_sha`, or a diff between the two heads when `rewritten` says it was a force-push) and this pass's findings so far with the user's rulings. Triage only what is new or materially changed. A finding the user already ruled on that still stands keeps its ruling, and one the new commits fix drops out; name the dropped ones in triage's count line, such as `1 Follow-up; the hero height one is fixed by 066422b`.
+At the start, review whatever head it returns. When it moves later, tell the user in a line that the head moved and what the new commits do, then review again before going on: the reviewer gets the same brief plus the commits since `previous_head` (`previous_head..head_sha`, or a diff between the two heads when `rewritten` says it was a force-push) and this pass's results so far with the user's rulings. Inline, invoke the shared `review` skill again; in a `review ready` queue, the PR goes back to its reviewer subagent. Triage only what is new or materially changed. An item the user already ruled on that still stands keeps its ruling, and one the new commits fix drops out; name the dropped ones in triage's count line, such as `1 Follow-up; the hero height one is fixed by 066422b`.
 
 ## `respond <n>`: reply as the author
 
@@ -107,7 +130,7 @@ Render the confirmed replies into a batch with no review: `thread_replies` for i
 
 ## Triage with the user
 
-Open triage with a one-line count of the items, such as `2 Blockers and 3 Follow-ups`, then ask about them.
+Open triage with a one-line count of the items, such as `2 Blockers, 3 Follow-ups, and 2 replies to Copilot`, then ask about them. In a review, the items are the findings, the replies on my prior findings that still stand, and the Agree and Dispute replies to other reviewers.
 
 Every item gets its own question and its own ruling, but the questions go out together, Blockers first. Asking one item per prompt ("Follow-up 1 of 5", wait, "Follow-up 2 of 5", …) costs the user a round trip per finding and gains nothing, because findings rarely depend on each other. Ask only whether each item should be included; do not ask for an overall verdict yet.
 
@@ -116,24 +139,40 @@ Every item gets its own question and its own ruling, but the questions go out to
 
 Hold an item back for a later round only when its question depends on another item's ruling: two findings with one root cause, where excluding or rewriting one changes what the other should say, or a reply whose stance turns on how another item is settled. Ask the item it depends on first, then the dependent one, worded for that ruling. When findings are that entangled, asking them as one item is often simpler.
 
-Keep each question concise: what the item is and its concrete consequence. Do not put the full technical body or file coordinates in the question unless the user asks to discuss it. Preserve each ruling as you proceed; when the user opens discussion on one item of a batch, settle it and keep the rulings the rest of the batch already gave.
+Keep each question concise: what the item is and its concrete consequence. For a reply to another reviewer, name whose comment it answers and the stance, such as `Agree with Copilot, as a Blocker: the retry loop never exits`. Do not put the full technical body or file coordinates in the question unless the user asks to discuss it. Preserve each ruling as you proceed; when the user opens discussion on one item of a batch, settle it and keep the rulings the rest of the batch already gave.
 
-After triage, show everything that will post and explicitly ask for confirmation before posting. Open the confirmation with the summary's table (number and title, author and URL, ready time and stack) copied from the opening summary, so the user can see which PR it is posting to. If the user declines, revise or stop as directed. Never infer posting approval from the earlier per-item rulings.
+In a review, derive the GitHub event from the included items: any Blocker, whether my own finding or an Agree with another reviewer, means `REQUEST_CHANGES`; otherwise use `APPROVE`. A Follow-up never changes the event by itself. If nothing remains included, the review is an approval. When the review found nothing to triage, go straight to the confirmation.
+
+After triage, show everything that will post and explicitly ask for confirmation before posting: in a review, the event, the included findings, the replies, and the threads to be resolved. Open the confirmation with the summary's table (number and title, author and URL, ready time and stack) copied from the PR's summary, running `summarize-github-pr` for it if this session hasn't, so the user can see which PR it is posting to. If the user declines, revise or stop as directed. Never infer posting approval from the earlier per-item rulings.
 
 ## Post
 
-Render the confirmed batch with this exact header, so every posted message is attributed:
+Render the confirmed content into a batch, with this exact header, so every posted message is attributed:
 
 ```markdown
 {{ includeTemplate ".chezmoitemplates/posting-attribution.md" . | trim }}
 ```
 
+In a review, the batch has one inline comment per included finding at its anchor, a finding with no anchor in the body under its name, `thread_replies` for the replies on my still-standing prior findings and on other reviewers' threads, and `resolve` for the verified fixes. Replies to other reviewers' summary bodies and conversation comments, which have no thread, go in the review's body, naming whose point each answers. When the event rests on an Agree at Blocker, the body names that point too, such as `Requesting changes for Copilot's point on the retry loop (see its thread)`, so the review says why even before its replies land.
+
 Set `head_sha` to the head the content was formed against. Run `scripts/post.py --dry-run batch.json` and resolve every problem it reports. If the PR's head has moved, do not post content formed against the stale code. In a review, go back through [Keep up with the head](#keep-up-with-the-head) and confirm again. In `respond`, read the new commits, revise any draft they change (a new commit may fix what a reply was about to decline), and confirm again. Only then run `scripts/post.py batch.json`. If a step fails after part of the batch landed, retry only with the remainder batch the poster prints, never the original. Do not fall back to hand-built `gh` posting if the script fails. Posting is the only external mutation this skill performs, and only after the confirmation above.
+
+A posting subagent from a `review ready` queue follows the same steps with the content it was handed, and changes none of it. Any fix a check asks for, such as moving a finding whose anchor won't post into the body, changes what the user confirmed, so it posts nothing and reports the problem back instead.
+
+## Record the pass
+
+When a review reaches a terminal decision (successfully posted, or the user explicitly decides to finish without posting), record the pass complete:
+
+```bash
+scripts/dispatch.py complete --pr-number <n> --head-sha <head_sha> [--reviewer <name> | --holder <token>]
+```
+
+with the same `--reviewer` or `--holder` the PR was claimed with. Don't record completion if posting failed or the user has not finished triage, so the queue never treats an unfinished review as done.
 
 ## Boundaries
 
 - Do not edit the PR's source in any mode.
 - Do not request or report Nits.
-- Do not launch more than one reviewer for the same PR.
+- Do not run more than one reviewer for the same PR.
 - Do not close a reviewer's tab except through `review ready`'s cleanup step, or when the user separately asks.
 - Resolve only threads I started, and only in a review.

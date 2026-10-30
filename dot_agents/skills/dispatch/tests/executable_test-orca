@@ -90,7 +90,7 @@ if command == "terminal send":
     reply({})
 if command == "terminal wait":
     reply({"wait": {"satisfied": True}})
-if command == "terminal set-pane-title":
+if command in ("terminal set-pane-title", "terminal rename"):
     reply({})
 if command == "terminal close" and flag("--terminal") not in (None, *state["terminals"]):
     reply(error="terminal_handle_stale")
@@ -247,6 +247,16 @@ class OrcaTests(unittest.TestCase):
         self.ok("terminal", "close", "--place", place)
         self.assertFalse(self.ok("agent", "status", "--agent", place)["alive"])
         self.assertTrue(self.ok("terminal", "close", "--place", "term_gone")["already_gone"])
+
+    def test_label_titles_the_callers_tab_and_resets_it(self):
+        self.env["ORCA_TERMINAL_HANDLE"] = "term_me"
+        self.assertEqual(self.ok("terminal", "label", "--text", "Reviews 1/3"),
+                         {"place": "term_me", "label": "Reviews 1/3", "previous": None})
+        self.ok("terminal", "label")
+        renames = self.calls("terminal", "rename")
+        self.assertEqual(renames[0][:6], ["terminal", "rename", "--terminal", "term_me",
+                                          "--title", "Reviews 1/3"])
+        self.assertNotIn("--title", renames[1])
 
     def test_terminal_in_a_subdirectory_starts_there(self):
         (self.repo / "src").mkdir()

@@ -7,15 +7,15 @@ Output:
 
   {pr, url, title, author, viewer, base_branch, head_branch, head_sha, my_latest,
    threads:  [{thread_id, root_comment_id, path, line, resolved, outdated,
-               started_by_me, unanswered, comments: [{id, author, bot, body,
-               created_at, url}]}],
+               started_by_me, replied_by_me, unanswered,
+               comments: [{id, author, bot, body, created_at, url}]}],
    reviews:  [{id, author, bot, state, body, submitted_at, url, after_my_latest}],
    comments: [{id, author, bot, body, created_at, url, after_my_latest}]}
 
 `threads` are the inline review threads. `root_comment_id` is the id a reply
 must target, since GitHub accepts replies only on a thread's first comment.
 A thread is `unanswered` when it is unresolved and its latest comment is
-someone else's.
+someone else's, and `replied_by_me` when I wrote any comment after its first.
 
 `reviews` holds every review with a summary body (a review with an empty body
 is only the container for its inline comments), and `comments` the PR's
@@ -24,9 +24,10 @@ answer is a judgment, not a fact the API records. `after_my_latest` marks those
 someone else wrote after `my_latest`, the newest thing I posted anywhere on the
 PR (the rule watch-pr wakes on); an older one may or may not have been answered.
 
-Nothing is filtered out. A reviewer reads its own `started_by_me` threads; an
-author reads every `unanswered` thread, and every review body and comment that
-is not its own.
+Nothing is filtered out. A reviewer reads its own `started_by_me` threads for
+its prior findings, and other reviewers' threads, review bodies, and comments
+to weigh in on; an author reads every `unanswered` thread, and every review
+body and comment that is not its own.
 """
 
 import argparse
@@ -72,6 +73,7 @@ def main():
             "resolved": node["isResolved"],
             "outdated": node["isOutdated"],
             "started_by_me": comments[0]["author"] == me,
+            "replied_by_me": any(c["author"] == me for c in comments[1:]),
             "unanswered": not node["isResolved"] and comments[-1]["author"] != me,
             "comments": comments,
         })

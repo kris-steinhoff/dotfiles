@@ -3,6 +3,7 @@
 Herdr behind the real dispatch skill, and real git repos."""
 
 import json
+from datetime import datetime, timedelta, timezone
 import os
 from pathlib import Path
 import subprocess
@@ -140,6 +141,14 @@ class QueueTests(unittest.TestCase):
     def head(self, number):
         return self.git("rev-parse", f"refs/pull/{number}/head", cwd=self.origin)
 
+    def age_claim(self, number, hours):
+        """Backdate a PR's claim, as if it were made `hours` ago."""
+        [path] = (self.root / "state").glob("*/*.json")
+        data = json.loads(path.read_text())
+        then = datetime.now(timezone.utc) - timedelta(hours=hours)
+        data["prs"][str(number)]["claimed_at"] = then.strftime("%Y-%m-%dT%H:%M:%SZ")
+        path.write_text(json.dumps(data))
+
     def test_ready_reports_how_queued_prs_relate(self):
         self.queue([
             {"number": 1, "head": "nxc-5-api", "files": ["api.py", "db.py"]},
@@ -266,10 +275,23 @@ class QueueTests(unittest.TestCase):
         self.assertIn("w1:p2", self.closed())  # the gone reviewer's leftover tab
         self.assertNotIn("w1:p9", self.closed())
 
-    def test_a_hand_review_claims_its_pr_and_cant_close_a_queued_pass(self):
+    def test_a_session_claim_keeps_other_sessions_off_until_it_lapses(self):
+        self.queue([{"number": 1}])
+        holder = self.helper("claim", "--pr-number", "1")["holder"]
+        self.assertEqual(self.items()[1]["holder"], holder)
+        self.assertEqual(self.helper("claim", "--pr-number", "1", "--holder", holder)["holder"], holder)
+        self.helper("claim", "--pr-number", "1", code=2)
+        self.helper("claim", "--pr-number", "1", "--holder", "other", code=2)
+        self.helper("complete", "--pr-number", "1", "--head-sha", self.head(1), "--holder", "other", code=2)
+        self.age_claim(1, hours=13)
+        self.assertEqual(self.helper("claim", "--pr-number", "1", "--holder", "other")["holder"], "other")
+        self.helper("complete", "--pr-number", "1", "--head-sha", self.head(1), "--holder", "other")
+        self.assertEqual(self.items()[1]["state"], "complete")
+
+    def test_a_session_claims_its_pr_and_cant_close_a_tab_reviewers_pass(self):
         self.queue([{"number": 1}, {"number": 2}])
         self.helper("claim", "--pr-number", "1")
-        self.assertTrue(self.items()[1]["claimed_by_hand"])
+        self.assertTrue(self.items()[1]["claimed_in_session"])
         self.helper("assign", "--reviewer", "review-1", "--place", "w1:p2", "--prs", "1", code=2)
         self.helper("cleanup", "--apply")
         self.assertEqual(self.items()[1]["state"], "active")
