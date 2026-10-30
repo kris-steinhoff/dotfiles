@@ -10,6 +10,7 @@ One batch carries whatever a pass posts (see references/posting.md):
    thread_replies?: [{in_reply_to, body}],           # replies on existing threads
    issue_comment?: {body},                           # one conversation comment
    resolve?: [root_comment_id],                      # threads to mark resolved
+   rerequest?: [login],                              # reviewers to ask for another review
    commits?: [sha]}                                  # commits the text cites
 
   event in {APPROVE, REQUEST_CHANGES, COMMENT}
@@ -20,12 +21,13 @@ against code that has since moved), when an inline comment anchors to a line
 that is not a RIGHT-side position in the diff (the reviews API would reject the
 whole review) or to a file GitHub gives no patch for, when a reply targets
 anything but a thread's first comment, when a thread to resolve was not started
-by me, or when a cited commit is not on the PR. `header` is required and
+by me, when a reviewer to re-request is a bot, me, or someone who has not
+reviewed the PR, or when a cited commit is not on the PR. `header` is required and
 prepended verbatim to every message posted; this script requires attribution
 but does not decide its text.
 
 Order of posting: the review, then thread replies, then the conversation
-comment, then resolutions. Each later step is a separate call, so one that
+comment, then resolutions, then re-requests. Each later step is a separate call, so one that
 fails is reported without undoing what already landed, and the steps still
 owed are printed as a remainder batch. Retry with that batch, never the
 original, which would post the review a second time.
@@ -87,6 +89,7 @@ def check(batch):
     replies = batch.get("thread_replies", [])
     resolve = batch.get("resolve", [])
     cites = batch.get("commits", [])
+    rerequest = batch.get("rerequest", [])
 
     if not (batch.get("header") or "").strip():
         problems.append("header is required: every posted message carries the attribution line")
@@ -95,7 +98,7 @@ def check(batch):
     if event is None and (comments or (batch.get("body") or "").strip()):
         problems.append("body and comments belong to a review and need an event; "
                         "conversation text goes in issue_comment")
-    if not (event or replies or batch.get("issue_comment") or resolve):
+    if not (event or replies or batch.get("issue_comment") or resolve or rerequest):
         problems.append("nothing to post")
 
     def needs_body(item, what):
@@ -131,7 +134,7 @@ def check(batch):
             problems.append(f"anchor {anchor} is not a RIGHT-side position in the diff")
 
     threads = review_threads(slug, pr) if (replies or resolve) else []
-    me = viewer_login() if resolve else None
+    me = viewer_login() if (resolve or rerequest) else None
     roots = {}
     replies_of = {}
     for t in threads:
@@ -162,6 +165,18 @@ def check(batch):
         else:
             to_resolve.append((cid, thread["id"]))
 
+    reviewed = {}
+    for r in rest_list(f"repos/{slug}/pulls/{pr}/reviews") if rerequest else []:
+        user = r.get("user") or {}
+        reviewed[user.get("login")] = user.get("type") == "Bot" or str(user.get("login")).endswith("[bot]")
+    for login in rerequest:
+        if login == me:
+            problems.append(f"re-request target {login} is me")
+        elif login not in reviewed:
+            problems.append(f"re-request target {login} has not reviewed this PR")
+        elif reviewed[login]:
+            problems.append(f"re-request target {login} is a bot; only human reviewers are re-requested")
+
     on_pr = pr_commits(slug, pr) if cites else []
     for sha in cites:
         if len(sha) < 7 or not any(full.startswith(sha) for full in on_pr):
@@ -183,9 +198,10 @@ def main():
     event = batch.get("event")
     replies = batch.get("thread_replies", [])
     issue_comment = batch.get("issue_comment")
+    rerequest = batch.get("rerequest", [])
     print(f"PR #{pr}: review {event or '(none)'}, {len(batch.get('comments', []))} inline comment(s), "
           f"{len(replies)} reply(ies), {'1' if issue_comment else 'no'} conversation comment, "
-          f"{len(ctx['to_resolve'])} thread(s) to resolve")
+          f"{len(ctx['to_resolve'])} thread(s) to resolve, {len(rerequest)} reviewer(s) to re-request")
     if problems:
         print("\n".join(f"  BAD {p}" for p in problems))
         sys.exit("refusing to post; fix the batch and dry-run again" if not args.dry_run else 1)
@@ -212,7 +228,7 @@ def main():
             sys.exit(f"posting review failed: {res.stderr.strip()}")
         print(f"posted review: {json.loads(res.stdout).get('html_url', '')}")
 
-    owed = {"thread_replies": [], "issue_comment": None, "resolve": []}
+    owed = {"thread_replies": [], "issue_comment": None, "resolve": [], "rerequest": []}
     for r in replies:
         cid = int(r["in_reply_to"])
         res = gh("api", f"repos/{slug}/pulls/{pr}/comments/{cid}/replies", "-X", "POST", "--input", "-",
@@ -239,6 +255,15 @@ def main():
             print(f"  resolving thread {cid} failed: {res.stderr.strip()}", file=sys.stderr)
         else:
             print(f"  resolved thread {cid}")
+
+    if rerequest:
+        res = gh("api", f"repos/{slug}/pulls/{pr}/requested_reviewers", "-X", "POST", "--input", "-",
+                 input=json.dumps({"reviewers": rerequest}), check=False)
+        if res.returncode != 0:
+            owed["rerequest"] = rerequest
+            print(f"  re-requesting review failed: {res.stderr.strip()}", file=sys.stderr)
+        else:
+            print(f"  re-requested review from {', '.join(rerequest)}")
 
     remainder = {k: v for k, v in owed.items() if v}
     if remainder:

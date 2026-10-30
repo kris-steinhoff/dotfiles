@@ -22,6 +22,10 @@ case "\$1 \$2" in
 	exit 1
 	;;
 "api repos/owner/repo/pulls/7/files") cat "\$FAKE_GH_FILES" ;;
+"api user") echo me ;;
+"api repos/owner/repo/pulls/7/reviews")
+	printf '%s\n' '{"user":{"login":"ada","type":"User"}}' '{"user":{"login":"copilot-pull-request-reviewer[bot]","type":"Bot"}}' '{"user":{"login":"me","type":"User"}}'
+	;;
 *)
 	echo "fake gh: unexpected call: \$*" >&2
 	exit 1
@@ -78,6 +82,24 @@ with open(sys.argv[1], "w") as out:
 EOF_FILES
 dry_run "a path beyond the 3000-file listing is reported as uncheckable" 1 "GitHub lists only the PR's first 3000 files" \
 	'[{"path":"zzz.py","line":1,"body":"x"}]'
+
+rerequest() { # name, expected exit, expected output substring, rerequest JSON
+	local out status=0
+	printf '{"pr":7,"head_sha":"%s","header":"h","rerequest":%s}\n' "$head_sha" "$4" >"$tmp/batch.json"
+	out="$(python3 "$script" --dry-run "$tmp/batch.json" 2>&1)" || status=$?
+	if [ "$status" -ne "$2" ] || [[ "$out" != *"$3"* ]]; then
+		echo "FAIL $1: exit $status, wanted $2 and output containing '$3':" >&2
+		echo "$out" >&2
+		failures=$((failures + 1))
+	else
+		echo "ok $1"
+	fi
+}
+
+rerequest "a human who reviewed can be re-requested" 0 "all checks passed" '["ada"]'
+rerequest "a bot reviewer is refused" 1 "is a bot" '["copilot-pull-request-reviewer[bot]"]'
+rerequest "someone who never reviewed is refused" 1 "has not reviewed this PR" '["grace"]'
+rerequest "I can't re-request myself" 1 "is me" '["me"]'
 
 [ "$failures" -eq 0 ] || exit 1
 echo "all tests passed"

@@ -4,7 +4,7 @@ Reference for `scripts/post.py` and `scripts/feedback.py`, and for the anchoring
 
 ## Reading the conversation
 
-`scripts/feedback.py <pr>` prints the PR's whole review conversation as JSON: identity (`author`, `viewer`, `head_sha`, `base_branch`), the inline `threads`, the summary bodies of `reviews`, and the conversation `comments`. Each thread carries its `thread_id`, its `root_comment_id` (the only id a reply or a resolution can target), `resolved`, `outdated`, `started_by_me`, `replied_by_me` (I wrote a comment after its first), and `unanswered` (unresolved, and the latest comment is someone else's). Reviews and conversation comments cannot be threaded, so whether one still needs an answer is a judgment rather than a recorded fact. Their `after_my_latest` marks those someone else wrote after `my_latest`, the newest thing I posted anywhere on the PR (the rule `watch-pr` wakes on); an older one may or may not have been answered. Bots are included and flagged `bot`.
+`scripts/feedback.py <pr>` prints the PR's whole review conversation as JSON: identity (`author`, `viewer`, `head_sha`, `base_branch`), the inline `threads`, the summary bodies of `reviews`, and the conversation `comments`. Each thread carries its `thread_id`, its `root_comment_id` (the only id a reply or a resolution can target), `resolved`, `outdated`, `started_by_me`, `replied_by_me` (I wrote a comment after its first), and `unanswered` (unresolved, and the latest comment is someone else's). `changes_requested_by` lists the human reviewers whose review stands at changes requested, the latest review from each that wasn't only a comment. Reviews and conversation comments cannot be threaded, so whether one still needs an answer is a judgment rather than a recorded fact. Their `after_my_latest` marks those someone else wrote after `my_latest`, the newest thing I posted anywhere on the PR (the rule `watch-pr` wakes on); an older one may or may not have been answered. Bots are included and flagged `bot`.
 
 A reviewer reads its own `started_by_me` threads to find prior findings, and other reviewers' threads it hasn't replied in, review bodies, and conversation comments to take a stance on. An author reads every `unanswered` thread, whoever started it, and every review body and conversation comment that is not its own.
 
@@ -23,6 +23,7 @@ A reviewer reads its own `started_by_me` threads to find prior findings, and oth
   "thread_replies": [{ "in_reply_to": 987654, "body": "Fixed in 4f1c2e9: the token now expires after ..." }],
   "issue_comment": { "body": "Replying to the summary points: ..." },
   "resolve": [987600],
+  "rerequest": ["ada"],
   "commits": ["4f1c2e9"]
 }
 ```
@@ -34,6 +35,7 @@ A reviewer reads its own `started_by_me` threads to find prior findings, and oth
 - `thread_replies`: replies on existing inline threads, each with a non-empty `body`. Each `in_reply_to` must be a thread's `root_comment_id`, since GitHub accepts no reply to a reply.
 - `issue_comment`: one conversation comment on the PR, an object with a non-empty `body`, for answering what has no thread: review summary bodies and earlier conversation comments.
 - `resolve`: root comment ids of threads to mark resolved. Only threads I started can be resolved here; a thread someone else started is refused.
+- `rerequest`: logins of reviewers to ask for another review, posted last. Each must be a human who has reviewed the PR, and not me.
 - `commits`: every commit the batch's text cites, at least seven characters each. Each must be one of the PR's commits.
 
 Run it two ways:
@@ -43,7 +45,7 @@ scripts/post.py --dry-run batch.json   # run every check, post nothing
 scripts/post.py batch.json             # check again, then post
 ```
 
-Always dry-run first and fix everything it reports. The checks run again before posting, and nothing is posted while any fails. The batch posts in order: the review, the thread replies, the conversation comment, then the resolutions. Each is a separate call, so one that fails afterward is reported without undoing what already landed, and the poster prints a remainder batch of the steps still owed. Retry with that remainder, never the original batch, which would post the review a second time.
+Always dry-run first and fix everything it reports. The checks run again before posting, and nothing is posted while any fails. The batch posts in order: the review, the thread replies, the conversation comment, the resolutions, then the re-requests. Each is a separate call, so one that fails afterward is reported without undoing what already landed, and the poster prints a remainder batch of the steps still owed. Retry with that remainder, never the original batch, which would post the review a second time.
 
 ### Re-review posting
 
@@ -55,7 +57,7 @@ A review's Agree or Dispute on another reviewer's inline comment goes in `thread
 
 ### Response posting
 
-An author's replies post without a review: `thread_replies` for inline threads, and at most one `issue_comment` that answers review summary bodies and conversation comments by quoting or naming each point it addresses. The response never resolves a thread; resolving is the reviewer's confirmation that a fix holds. Every commit a reply cites as a fix goes in `commits`.
+An author's replies post without a review: `thread_replies` for inline threads, and at most one `issue_comment` that answers review summary bodies and conversation comments by quoting or naming each point it addresses. The response never resolves a thread; resolving is the reviewer's confirmation that a fix holds. Every commit a reply cites as a fix goes in `commits`, and the reviewers the user confirmed re-requesting, by default everyone in `changes_requested_by`, go in `rerequest`, so they are asked to look only once the replies are there.
 
 ## Anchoring: prefer inline, fall back to a named body finding
 

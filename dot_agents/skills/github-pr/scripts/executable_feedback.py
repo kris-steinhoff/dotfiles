@@ -6,6 +6,7 @@
 Output:
 
   {pr, url, title, author, viewer, base_branch, head_branch, head_sha, my_latest,
+   changes_requested_by: [login],
    threads:  [{thread_id, root_comment_id, path, line, resolved, outdated,
                started_by_me, replied_by_me, unanswered,
                comments: [{id, author, bot, body, created_at, url}]}],
@@ -23,6 +24,10 @@ conversation comments. Neither can be threaded, so whether one still needs an
 answer is a judgment, not a fact the API records. `after_my_latest` marks those
 someone else wrote after `my_latest`, the newest thing I posted anywhere on the
 PR (the rule watch-pr wakes on); an older one may or may not have been answered.
+
+`changes_requested_by` lists the human reviewers whose review currently stands
+at changes requested: their latest review that wasn't only a comment requested
+changes, which is how GitHub decides what blocks a merge.
 
 Nothing is filtered out. A reviewer reads its own `started_by_me` threads for
 its prior findings, and other reviewers' threads, review bodies, and comments
@@ -85,6 +90,13 @@ def main():
                         "body": r.get("body") or "", "submitted_at": r.get("submitted_at"),
                         "url": r.get("html_url")})
 
+    # A comment-only review leaves a reviewer's standing decision as it was.
+    standing = {}
+    for r in sorted(reviews, key=lambda r: r["submitted_at"] or ""):
+        if not r["bot"] and r["state"] in ("APPROVED", "CHANGES_REQUESTED", "DISMISSED"):
+            standing[r["author"]] = r["state"]
+    changes_requested_by = sorted(a for a, state in standing.items() if state == "CHANGES_REQUESTED")
+
     comments = []
     for c in rest_list(f"repos/{slug}/issues/{pr}/comments"):
         login, bot = person(c.get("user"))
@@ -113,6 +125,7 @@ def main():
         "head_branch": view["headRefName"],
         "head_sha": view["headRefOid"],
         "my_latest": my_latest,
+        "changes_requested_by": changes_requested_by,
         "threads": threads,
         "reviews": reviews,
         "comments": comments,

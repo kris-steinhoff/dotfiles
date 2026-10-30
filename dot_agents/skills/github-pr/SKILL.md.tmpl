@@ -124,9 +124,11 @@ Draft one reply for each item, grounded in evidence rather than intent:
 
 When nothing settles an item (no commit addresses it and no one has said whether it will be fixed), don't invent a stance. Show the user the comment, mark the reply undecided, and let triage settle it.
 
-Triage follows [Triage with the user](#triage-with-the-user), with the drafts as its items: show each reviewer's comment and its draft reply, and `Other` edits the reply. The final confirmation shows every reply that will post and where it lands.
+Triage follows [Triage with the user](#triage-with-the-user), with the drafts as its items: show each reviewer's comment and its draft reply, and `Other` edits the reply. The final confirmation shows every reply that will post and where it lands, and whose review will be re-requested.
 
-Render the confirmed replies into a batch with no review: `thread_replies` for inline threads, and at most one `issue_comment` that answers review summary bodies and conversation comments by naming or quoting each point it addresses. List every commit a reply cites in `commits`. Never resolve a thread in this mode, even one whose fix has landed: that confirmation is the reviewer's to give.
+When a human reviewer's review stands at changes requested (`changes_requested_by`), re-request their review by default once the replies post, since their request otherwise keeps blocking the merge until they happen to look again. Name them in the confirmation, where the user can drop one or add another human who reviewed. Bots aren't re-requested; their reviews run on their own triggers.
+
+Render the confirmed replies into a batch with no review: `thread_replies` for inline threads, and at most one `issue_comment` that answers review summary bodies and conversation comments by naming or quoting each point it addresses. List every commit a reply cites in `commits`, and the reviewers to re-request in `rerequest`. Never resolve a thread in this mode, even one whose fix has landed: that confirmation is the reviewer's to give.
 
 ## Triage with the user
 
