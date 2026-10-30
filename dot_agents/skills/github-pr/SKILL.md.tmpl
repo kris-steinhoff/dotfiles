@@ -59,7 +59,7 @@ A review reads the PR from git's object store rather than a checkout. Start with
 
 Read the PR title, author, body, and changed files, and run `scripts/feedback.py <n>` for the review conversation so far: my prior findings in the threads I started, and the open comments of other reviewers (see [Other reviewers' comments](#other-reviewers-comments)).
 
-Invoke the shared `review` skill once per head with a self-contained brief containing:
+Invoke the shared `review` skill once per head with a self-contained brief. A queue's reviewer subagent runs it inline, in its own context, rather than starting another subagent: it already is the fresh context the `review` skill asks for, and a second layer would only sit idle holding a copy of the brief. Inline `review <n>` may still give it to a subagent. The brief contains:
 
 - the PR's stated intent and base branch
 - the change scope, `git diff <merge_base> <head_sha>`, which is the diff GitHub shows

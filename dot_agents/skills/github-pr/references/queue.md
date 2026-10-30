@@ -66,7 +66,7 @@ A claim lapses after twelve hours, since nothing can tell whether the session th
 
 Start one background subagent per group, with a fresh context rather than a fork of this conversation, so it reviews the PR rather than this session's view of it. Its prompt:
 
-> Review PR #<n> (<url>) against `<base_branch>`, in the checkout at `<repo root>`, for a github-pr review queue. Load the `github-pr` skill and follow its "Review the PR" section, then return its results as your final message. Don't triage, ask anyone anything, or post; the session that started you does that with the user.
+> Review PR #<n> (<url>) against `<base_branch>`, in the checkout at `<repo root>`, for a github-pr review queue. Load the `github-pr` skill and follow its "Review the PR" section, running the shared `review` skill yourself rather than in another subagent, then return its results as your final message. Don't triage, ask anyone anything, or post; the session that started you does that with the user.
 
 For a group, add which PRs it reviews, in what order, and why, such as `You'll review #254 and then #255, which is stacked on it; this is #254, and #255 comes once you've returned this one.` When it returns a PR's results, send it the group's next PR as a message to the same subagent (SendMessage in Claude Code, `send_input` in Codex), so it keeps what it read; add that findings it raised on the earlier PR needn't be raised again. If the harness can't continue a finished subagent, start a new one and name the earlier PRs as context.
 
