@@ -3,7 +3,7 @@
 
   summary.py <pr>
 
-  | **#<n>** <title, cut at 60 characters> |
+  | **[#<n>](<url>)** <title, cut at 60 characters> |
   | --- |
   | **<author's display name>** · <url> |
   | Ready <Thu, Oct 8, 14:03> · stacked on #<n> |
@@ -109,7 +109,7 @@ def main():
                             "--json", "number", "--limit", "1"))
     if stacked:
         status += f" · stacked on #{stacked[0]['number']}"
-    lines = [f"| **#{pr}** {cell(title)} |", "| --- |", f"| **{cell(display_name(view['author']))}** · {view['url']} |",
+    lines = [f"| **[#{pr}]({view['url']})** {cell(title)} |", "| --- |", f"| **{cell(display_name(view['author']))}** · {view['url']} |",
              f"| {status} |"]
 
     reviews = []
