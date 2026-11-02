@@ -60,6 +60,10 @@ The shebang pulls `tomlkit` via `uv run --with tomlkit`, not PEP 723 inline meta
 
 The filename attribute order is `modify_private_` (type prefix before the `private_` permission attribute); `private_modify_` is not recognized and chezmoi treats the leftover `modify_` as a literal filename.
 
+## Herdr app settings
+
+The Herdr desktop app (`herdr-app`) keeps its whole interface as files in `~/.config/herdr-app/`, and its Settings screen writes `settings.json` itself (zoom, appearance, contrast, telemetry). So that file's source is a chezmoi modify-template, `dot_config/herdr-app/modify_settings.json`, which reads the live file and sets only the keys we manage, as the `modify_` scripts above do; it needs no interpreter because chezmoi's own `fromJson` and `setValueAtPath` are enough. The app ships no Tokyo Night, so `themes/tokyo-night.json` is ours; the app leaves theme files it didn't write alone. Keys stay on the app's defaults, and the shipped layouts and mods are left unmanaged, because Herdr replaces them on every start and personal changes to them go through clones. The older terminal Herdr's `~/.config/herdr/config.toml` is a separate program's config and stays as it is.
+
 ## Config architecture
 
 Shared configs live under `dot_config/kris-steinhoff/` (deployed to `~/.config/kris-steinhoff/`) and are _included_ by the machine-local config files (not replaced). This lets local overrides coexist with the shared baseline:

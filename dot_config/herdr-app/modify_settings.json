@@ -1,0 +1,12 @@
+{{- /* chezmoi:modify-template */ -}}
+{{- /*
+  The Herdr app's Settings screen writes this file too (zoom, appearance,
+  contrast), so only the keys below are managed and everything else is kept.
+  Sounds are off because with many agents in flight the done and blocked
+  chimes were constant; toasts and the sidebar still show agent state.
+*/ -}}
+{{- $s := dict -}}
+{{- if .chezmoi.stdin }}{{ $s = fromJson .chezmoi.stdin }}{{ end -}}
+{{- $s = setValueAtPath "theme" "tokyo-night" $s -}}
+{{- $s = setValueAtPath "sounds.enabled" false $s -}}
+{{ toPrettyJson "  " $s -}}
