@@ -1,0 +1,600 @@
+<title>__RUN_TITLE__</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* One reading column, laid out as a plan: the run's state, what needs the reader, the plan, then the record. */
+:root {
+  --bg: #f3f5f7;
+  --surface: #ffffff;
+  --ink: #17202a;
+  --muted: #5b6876;
+  --line: #d9dfe5;
+  --accent: #2f5d8a;
+  --attn: #b26a00;
+  --attn-soft: #fff4e0;
+  --ok: #2d7a4b;
+  --bad: #b23a3a;
+  --idle: #aab4be;
+  --font-ui: "Instrument Sans", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12171c; --surface: #1a2128; --ink: #e6ebf0; --muted: #93a1ae; --line: #2c3640;
+    --accent: #7fb0e0; --attn: #f0a940; --attn-soft: #2e2414; --ok: #5fbf85; --bad: #e57373; --idle: #4a5662;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12171c; --surface: #1a2128; --ink: #e6ebf0; --muted: #93a1ae; --line: #2c3640;
+  --accent: #7fb0e0; --attn: #f0a940; --attn-soft: #2e2414; --ok: #5fbf85; --bad: #e57373; --idle: #4a5662;
+  color-scheme: dark;
+}
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--font-ui); font-size: 15px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 64px;
+}
+main { max-width: 880px; margin: 0 auto; display: flex; flex-direction: column; gap: 40px; }
+h1 { font-size: 28px; line-height: 1.2; margin: 0; text-wrap: balance; font-weight: 700; }
+h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 0 0 12px; font-weight: 600; display: flex; gap: 8px; align-items: baseline; }
+h2 .count { font-family: var(--font-mono); letter-spacing: 0; }
+.part-title { font-size: 20px; font-weight: 700; margin: 0; padding-bottom: 8px; border-bottom: 2px solid var(--ink); }
+h3 { font-size: 16px; margin: 0; line-height: 1.35; text-wrap: balance; }
+p { margin: 0; }
+.mono { font-family: var(--font-mono); font-size: 12.5px; }
+.muted { color: var(--muted); }
+.prose { white-space: pre-wrap; max-width: 68ch; overflow-wrap: anywhere; }
+a { color: var(--accent); }
+a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.part { display: flex; flex-direction: column; gap: 28px; }
+
+/* Header */
+.head { display: flex; flex-direction: column; gap: 14px; }
+.head-top { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; justify-content: space-between; }
+.objective { color: var(--muted); max-width: 68ch; }
+.meta { display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: 13px; color: var(--muted); }
+.meta b { color: var(--ink); font-weight: 500; }
+.how { font-size: 13px; color: var(--muted); }
+.chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
+.chip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.s-ok { color: var(--ok); } .s-attn { color: var(--attn); } .s-bad { color: var(--bad); } .s-run { color: var(--accent); } .s-idle { color: var(--muted); }
+.chip.big { font-size: 14px; padding: 4px 12px; }
+
+/* Task strip: one segment per task, in plan order */
+.progress { display: flex; flex-direction: column; gap: 6px; }
+.strip { display: flex; gap: 3px; height: 12px; }
+.strip span { flex: 1; border-radius: 2px; background: var(--idle); min-width: 4px; }
+.strip .s-ok { background: var(--ok); } .strip .s-attn { background: var(--attn); } .strip .s-bad { background: var(--bad); } .strip .s-run { background: var(--accent); }
+.strip-legend { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* Dependency graph */
+.graph { overflow-x: auto; padding: 8px 0 4px; }
+.graph svg { display: block; }
+.graph .edge { fill: none; stroke: var(--muted); stroke-width: 1.25; opacity: 0.7; }
+.graph .arrow { fill: var(--muted); }
+.graph .node rect { fill: var(--surface); stroke: var(--idle); stroke-width: 1.5; }
+.graph .node .nid { fill: var(--muted); font-family: var(--font-mono); font-size: 11px; }
+.graph .node .ntitle { fill: var(--ink); font-family: var(--font-ui); font-size: 12.5px; font-weight: 500; }
+.graph .node.s-ok rect { stroke: var(--ok); } .graph .node.s-run rect { stroke: var(--accent); }
+.graph .node.s-attn rect { stroke: var(--attn); } .graph .node.s-bad rect { stroke: var(--bad); }
+.graph .node.s-ok .dot { fill: var(--ok); } .graph .node.s-run .dot { fill: var(--accent); }
+.graph .node.s-attn .dot { fill: var(--attn); } .graph .node.s-bad .dot { fill: var(--bad); } .graph .node.s-idle .dot { fill: var(--idle); }
+.graph .node.dropped rect { stroke-dasharray: 4 3; }
+.graph .node.dropped .ntitle { fill: var(--muted); text-decoration: line-through; }
+
+/* Cards */
+.stack { display: flex; flex-direction: column; gap: 12px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.card.ask { border-color: var(--attn); background: var(--attn-soft); }
+.card-top { display: flex; gap: 8px 12px; align-items: baseline; justify-content: space-between; flex-wrap: wrap; }
+.card-top .left { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; min-width: 0; }
+.label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; }
+.options { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.options li { display: grid; grid-template-columns: auto 1fr; gap: 0 8px; }
+.options li::before { content: "○"; color: var(--muted); }
+.options li.rec::before { content: "●"; color: var(--attn); }
+.options .cost { grid-column: 2; color: var(--muted); font-size: 13.5px; }
+.card-foot { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; font-size: 13px; color: var(--muted); }
+.quiet { color: var(--muted); padding: 14px 16px; border: 1px dashed var(--line); border-radius: 8px; }
+.fields { display: grid; grid-template-columns: 6.5rem 1fr; gap: 6px 14px; margin: 0; }
+.fields dt { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; padding-top: 2px; }
+.fields dd { margin: 0; min-width: 0; }
+.fields ul, .bullets { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 2px; }
+
+/* Blocked banner */
+.blocked { border: 2px solid var(--attn); background: var(--attn-soft); }
+.blocked-label { font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 700; color: var(--attn); }
+#blocked-on { font-size: 16px; font-weight: 500; }
+
+/* Handover */
+.handover { border-color: var(--ok); }
+
+/* Done check */
+.checks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.checks li { display: grid; grid-template-columns: 22px 1fr; gap: 2px 8px; }
+.checks .mark { font-weight: 700; text-align: center; }
+.checks .note { grid-column: 2; color: var(--muted); font-size: 13.5px; }
+
+/* Journal */
+.journal { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.journal li { display: grid; grid-template-columns: 6.5rem 1fr; gap: 12px; padding: 7px 0; border-top: 1px solid var(--line); font-size: 14px; }
+.journal li:first-child { border-top: 0; }
+.journal time { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 13px; }
+.journal p { min-width: 0; overflow-wrap: anywhere; }
+
+details > summary { cursor: pointer; color: var(--muted); font-size: 14px; }
+details[open] > summary { margin-bottom: 10px; }
+
+@media (max-width: 560px) {
+  h1 { font-size: 23px; }
+  .fields { grid-template-columns: 1fr; gap: 2px; }
+  .fields dd { margin-bottom: 8px; }
+  .journal li { grid-template-columns: 1fr; gap: 0; }
+}
+</style>
+
+<main>
+  <header class="head">
+    <div class="head-top">
+      <h1 id="title">Run</h1>
+      <span id="status" class="chip big s-idle">Starting</span>
+    </div>
+    <p id="objective" class="objective prose">The driver hasn't written the plan yet. This page fills in as it does.</p>
+    <div class="progress" id="progress" hidden>
+      <div class="strip" id="strip" aria-hidden="true"></div>
+      <p class="strip-legend" id="strip-legend"></p>
+      <details id="graph-wrap">
+        <summary>Dependency graph</summary>
+        <div class="graph" id="graph"></div>
+      </details>
+    </div>
+    <div class="meta" id="meta"></div>
+    <p class="how">To answer a question or change anything on this page, comment on it and send the comment to Claude.</p>
+  </header>
+
+  <section id="blocked" class="card blocked" data-comment-target hidden>
+    <p class="blocked-label">Blocked</p>
+    <p class="prose" id="blocked-on"></p>
+  </section>
+
+  <section id="handover-section" hidden>
+    <h2>Ready for your review</h2>
+    <div id="handover"></div>
+  </section>
+
+  <section>
+    <h2>Needs you <span class="count" id="ask-count"></span></h2>
+    <div class="stack" id="asks"></div>
+    <details id="answered-wrap" hidden>
+      <summary id="answered-summary"></summary>
+      <div class="stack" id="answered"></div>
+    </details>
+  </section>
+
+  <div class="part">
+    <h2 class="part-title">Plan</h2>
+
+    <section id="plan-approach" data-comment-target>
+      <h2>Approach</h2>
+      <p class="prose" id="approach"><span class="muted">The approach appears here once the driver has read the spec and the code.</span></p>
+    </section>
+
+    <section id="plan-done" data-comment-target>
+      <h2>Done when</h2>
+      <ul class="checks" id="checks"><li><span></span><span class="muted">Not written yet.</span></li></ul>
+    </section>
+
+    <section>
+      <h2>Tasks <span class="count" id="task-count"></span></h2>
+      <div class="stack" id="tasks"><p class="quiet">No tasks yet. The driver breaks the spec into tasks as it plans.</p></div>
+    </section>
+
+    <section id="plan-scope" data-comment-target hidden>
+      <h2>Out of scope</h2>
+      <ul class="bullets" id="scope"></ul>
+    </section>
+
+    <section id="plan-risks" data-comment-target hidden>
+      <h2>Risks</h2>
+      <ul class="bullets" id="risks"></ul>
+    </section>
+  </div>
+
+  <div class="part">
+    <h2 class="part-title">Record</h2>
+
+    <section>
+      <h2>Decisions <span class="count" id="decision-count"></span></h2>
+      <div class="stack" id="decisions"><p class="quiet">Decisions the driver makes without asking show up here, with its reasons.</p></div>
+    </section>
+
+    <section>
+      <h2>Journal</h2>
+      <ul class="journal" id="journal"><li><time></time><p class="muted">Nothing yet.</p></li></ul>
+    </section>
+  </div>
+</main>
+
+<script>
+(() => {
+  const SVG = "http://www.w3.org/2000/svg";
+  const state = { run: null, tasks: [], questions: [], decisions: [], journal: [] };
+
+  const RUN_STATUS = {
+    planning: ["Planning", "s-run"], running: ["Running", "s-run"], blocked: ["Blocked", "s-attn"],
+    verifying: ["Checking done", "s-run"], ready_for_review: ["Ready for review", "s-ok"], stopped: ["Stopped", "s-bad"],
+  };
+  const TASK_STATUS = {
+    pending: ["Pending", "s-idle"], implementing: ["Implementing", "s-run"], in_review: ["In review", "s-run"],
+    fixing: ["Fixing", "s-run"], blocked: ["Blocked", "s-attn"], merged: ["Merged", "s-ok"], dropped: ["Dropped", "s-idle"],
+  };
+  const CHECK_MARK = { met: ["✓", "s-ok"], unmet: ["✗", "s-bad"], unchecked: ["·", "s-idle"] };
+
+  const $ = (id) => document.getElementById(id);
+  function el(tag, cls, text) {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null && text !== "") n.textContent = String(text);
+    return n;
+  }
+  function svg(tag, attrs, text) {
+    const n = document.createElementNS(SVG, tag);
+    for (const k in attrs) n.setAttribute(k, attrs[k]);
+    if (text != null) n.textContent = text;
+    return n;
+  }
+  const statusClass = (map, key) => (map[key] || [, "s-idle"])[1];
+  function chip(map, key, extra) {
+    const [label, cls] = map[key] || [key || "Unknown", "s-idle"];
+    return el("span", "chip " + cls + (extra ? " " + extra : ""), label);
+  }
+  function ago(iso) {
+    const t = Date.parse(iso);
+    if (!t) return "";
+    const s = Math.round((Date.now() - t) / 1000);
+    if (s < 60) return "just now";
+    const m = Math.round(s / 60);
+    if (m < 60) return m + " min ago";
+    const h = Math.round(m / 60);
+    if (h < 36) return h + " h ago";
+    return new Date(t).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  }
+  function timeEl(iso) {
+    const t = el("time", null, ago(iso));
+    if (iso) { t.dateTime = iso; t.title = new Date(iso).toLocaleString(); }
+    return t;
+  }
+  function metaItem(label, value, mono) {
+    const span = el("span", null, label + " ");
+    span.appendChild(el("b", mono ? "mono" : null, value));
+    return span;
+  }
+  function list(items, cls) {
+    const ul = el("ul", cls);
+    for (const item of items) ul.appendChild(el("li", null, item));
+    return ul;
+  }
+  const arr = (v) => (Array.isArray(v) ? v : []);
+  const byTime = (field, dir) => (a, b) => (dir === "desc" ? -1 : 1) * String(a[field] || "").localeCompare(String(b[field] || ""));
+  const sortedTasks = () => [...state.tasks].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+  function renderHeader() {
+    const r = state.run;
+    if (!r) return;
+    $("title").textContent = r.title || "Run";
+    $("status").replaceWith(Object.assign(chip(RUN_STATUS, r.status, "big"), { id: "status" }));
+    $("objective").textContent = r.objective || "";
+    const meta = $("meta");
+    meta.replaceChildren();
+    if (r.now) meta.appendChild(metaItem("Now", r.now));
+    if (r.branch) meta.appendChild(metaItem("Branch", r.branch, true));
+    if (r.spec) meta.appendChild(metaItem("Spec", r.spec, true));
+    if (r.approved_at) meta.appendChild(metaItem("Plan approved", ago(r.approved_at)));
+    if (r.updated_at) meta.appendChild(metaItem("Updated", ago(r.updated_at)));
+  }
+
+  function renderProgress() {
+    const tasks = sortedTasks();
+    $("progress").hidden = tasks.length === 0;
+    const strip = $("strip");
+    strip.replaceChildren();
+    let merged = 0, live = 0;
+    for (const t of tasks) {
+      const seg = el("span", statusClass(TASK_STATUS, t.status));
+      seg.title = t.id + " " + (t.title || "");
+      strip.appendChild(seg);
+      if (t.status === "merged") merged++;
+      if (t.status !== "dropped") live++;
+    }
+    $("strip-legend").textContent = merged + " of " + live + " tasks merged";
+    renderGraph(tasks);
+  }
+
+  // Layered layout: a task's column is one past its deepest dependency.
+  function renderGraph(tasks) {
+    const host = $("graph");
+    host.replaceChildren();
+    if (!tasks.length) return;
+    const byId = new Map(tasks.map((t) => [t.id, t]));
+    const depth = new Map();
+    const layerOf = (t, seen) => {
+      if (depth.has(t.id)) return depth.get(t.id);
+      if (seen.has(t.id)) return 0;
+      seen.add(t.id);
+      let d = 0;
+      for (const dep of arr(t.depends_on)) {
+        const du = byId.get(dep);
+        if (du) d = Math.max(d, layerOf(du, seen) + 1);
+      }
+      depth.set(t.id, d);
+      return d;
+    };
+    for (const t of tasks) layerOf(t, new Set());
+    const cols = [];
+    for (const t of tasks) (cols[depth.get(t.id)] ||= []).push(t);
+    const W = 168, H = 46, GX = 52, GY = 14, PAD = 8;
+    const pos = new Map();
+    cols.forEach((col, c) => col.forEach((t, r) => pos.set(t.id, { x: PAD + c * (W + GX), y: PAD + r * (H + GY) })));
+    const width = PAD * 2 + cols.length * W + (cols.length - 1) * GX;
+    const height = PAD * 2 + Math.max(...cols.map((c) => c.length)) * (H + GY) - GY;
+    const root = svg("svg", { width, height, viewBox: `0 0 ${width} ${height}`, role: "img", "aria-label": "Tasks and their dependencies" });
+    const defs = svg("defs", {});
+    const marker = svg("marker", { id: "arrow", viewBox: "0 0 8 8", refX: "7", refY: "4", markerWidth: "7", markerHeight: "7", orient: "auto" });
+    marker.appendChild(svg("path", { d: "M0,0 L8,4 L0,8 z", class: "arrow" }));
+    defs.appendChild(marker);
+    root.appendChild(defs);
+    for (const t of tasks) {
+      const to = pos.get(t.id);
+      for (const dep of arr(t.depends_on)) {
+        const from = pos.get(dep);
+        if (!from) continue;
+        const x1 = from.x + W, y1 = from.y + H / 2, x2 = to.x - 2, y2 = to.y + H / 2, mx = (x1 + x2) / 2;
+        root.appendChild(svg("path", { d: `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`, class: "edge", "marker-end": "url(#arrow)" }));
+      }
+    }
+    for (const t of tasks) {
+      const p = pos.get(t.id);
+      const g = svg("g", { class: "node " + statusClass(TASK_STATUS, t.status) + (t.status === "dropped" ? " dropped" : ""), transform: `translate(${p.x},${p.y})` });
+      g.appendChild(svg("title", {}, t.id + " · " + (t.title || "") + " · " + (TASK_STATUS[t.status] || [t.status])[0]));
+      g.appendChild(svg("rect", { width: W, height: H, rx: 6 }));
+      g.appendChild(svg("circle", { class: "dot", cx: 12, cy: 15, r: 3.5 }));
+      g.appendChild(svg("text", { class: "nid", x: 21, y: 19 }, t.id));
+      const label = t.title || "";
+      g.appendChild(svg("text", { class: "ntitle", x: 10, y: 36 }, label.length > 22 ? label.slice(0, 21) + "…" : label));
+      root.appendChild(g);
+    }
+    host.appendChild(root);
+  }
+
+  function renderBlocked() {
+    const r = state.run;
+    const on = r && r.status === "blocked" ? r.blocked_on || "The driver needs you. Check its session." : "";
+    $("blocked").hidden = !on;
+    $("blocked-on").textContent = on;
+  }
+
+  function renderHandover() {
+    const h = state.run && state.run.handover;
+    $("handover-section").hidden = !h;
+    if (!h) return;
+    const card = el("article", "card handover");
+    card.id = "handover-card";
+    card.setAttribute("data-comment-target", "");
+    if (h.summary) card.appendChild(el("p", "prose", h.summary));
+    const where = el("div", "card-foot");
+    if (h.branch) where.appendChild(metaItem("Branch", h.branch, true));
+    if (h.pr_url) {
+      const a = el("a", null, h.pr_url);
+      a.href = h.pr_url; a.target = "_blank"; a.rel = "noopener";
+      where.appendChild(a);
+    }
+    card.appendChild(where);
+    for (const [key, label] of [["look_first", "Look at first"], ["risks", "Least sure of"]]) {
+      if (arr(h[key]).length) {
+        card.appendChild(el("p", "label", label));
+        card.appendChild(list(h[key], "bullets"));
+      }
+    }
+    $("handover").replaceChildren(card);
+  }
+
+  function questionCard(q, open) {
+    const card = el("article", "card" + (open ? " ask" : ""));
+    card.id = "q-" + q.id;
+    card.setAttribute("data-comment-target", "");
+    const top = el("div", "card-top");
+    top.appendChild(el("h3", null, q.title || q.id));
+    top.appendChild(el("span", "mono muted", q.id + (q.task ? " · " + q.task : "")));
+    card.appendChild(top);
+    if (q.context) card.appendChild(el("p", "prose", q.context));
+    if (arr(q.options).length) {
+      const ul = el("ul", "options");
+      for (const o of q.options) {
+        const rec = o.label === q.recommendation;
+        const li = el("li", rec ? "rec" : null);
+        li.appendChild(el("span", null, o.label + (rec ? " (recommended)" : "")));
+        if (o.cost) li.appendChild(el("span", "cost", o.cost));
+        ul.appendChild(li);
+      }
+      card.appendChild(ul);
+    } else if (q.recommendation) {
+      card.appendChild(el("p", null, "Recommended: " + q.recommendation));
+    }
+    if (!open) card.appendChild(el("p", "prose", (q.status === "withdrawn" ? "Withdrawn: " : "Answer: ") + (q.answer || "")));
+    const foot = el("div", "card-foot");
+    if (open && q.blocks) foot.appendChild(el("span", null, "Holding up: " + q.blocks));
+    foot.appendChild(timeEl(open ? q.asked_at : q.answered_at));
+    card.appendChild(foot);
+    return card;
+  }
+
+  function renderQuestions() {
+    const open = state.questions.filter((q) => q.status === "open").sort(byTime("asked_at"));
+    const closed = state.questions.filter((q) => q.status !== "open").sort(byTime("answered_at", "desc"));
+    $("ask-count").textContent = open.length ? String(open.length) : "";
+    const asks = $("asks");
+    asks.replaceChildren();
+    if (!open.length) {
+      asks.appendChild(el("p", "quiet", "Nothing needs you right now."));
+    }
+    for (const q of open) asks.appendChild(questionCard(q, true));
+    $("answered-wrap").hidden = closed.length === 0;
+    $("answered-summary").textContent = closed.length + " answered";
+    $("answered").replaceChildren(...closed.map((q) => questionCard(q, false)));
+  }
+
+  function renderPlan() {
+    const r = state.run;
+    if (!r) return;
+    if (r.approach) $("approach").textContent = r.approach;
+    const checks = arr(r.done_check);
+    if (checks.length) {
+      const ul = $("checks");
+      ul.replaceChildren();
+      for (const c of checks) {
+        const [mark, cls] = CHECK_MARK[c.state] || CHECK_MARK.unchecked;
+        const li = el("li");
+        li.appendChild(el("span", "mark " + cls, mark));
+        li.appendChild(el("span", null, c.text));
+        if (c.note) li.appendChild(el("span", "note", c.note));
+        ul.appendChild(li);
+      }
+    }
+    $("plan-scope").hidden = arr(r.out_of_scope).length === 0;
+    $("scope").replaceChildren(...arr(r.out_of_scope).map((s) => el("li", null, s)));
+    $("plan-risks").hidden = arr(r.risks).length === 0;
+    $("risks").replaceChildren(...arr(r.risks).map((s) => el("li", null, s)));
+  }
+
+  function field(dl, label, value) {
+    if (value == null || value === "" || (Array.isArray(value) && !value.length)) return;
+    dl.appendChild(el("dt", null, label));
+    const dd = el("dd");
+    if (Array.isArray(value)) dd.appendChild(list(value));
+    else dd.appendChild(el("p", "prose", value));
+    dl.appendChild(dd);
+  }
+
+  function renderTasks() {
+    const tasks = sortedTasks();
+    $("task-count").textContent = tasks.length ? String(tasks.length) : "";
+    if (!tasks.length) return;
+    const wrap = $("tasks");
+    wrap.replaceChildren();
+    for (const t of tasks) {
+      const card = el("article", "card");
+      card.id = "t-" + t.id;
+      card.setAttribute("data-comment-target", "");
+      const top = el("div", "card-top");
+      const left = el("div", "left");
+      left.appendChild(el("span", "mono muted", t.id));
+      left.appendChild(el("h3", null, t.title || ""));
+      top.appendChild(left);
+      top.appendChild(chip(TASK_STATUS, t.status));
+      card.appendChild(top);
+      const dl = el("dl", "fields");
+      field(dl, "Goal", t.goal);
+      field(dl, "Approach", t.approach);
+      field(dl, "Touches", arr(t.touches));
+      field(dl, "Verified by", t.verify);
+      field(dl, "After", arr(t.depends_on).join(", "));
+      field(dl, "Outcome", t.outcome);
+      if (dl.childElementCount) card.appendChild(dl);
+      if (t.branch) card.appendChild(el("p", "mono muted", t.branch));
+      wrap.appendChild(card);
+    }
+  }
+
+  function renderDecisions() {
+    const items = [...state.decisions].sort(byTime("at", "desc"));
+    $("decision-count").textContent = items.length ? String(items.length) : "";
+    if (!items.length) return;
+    const wrap = $("decisions");
+    wrap.replaceChildren();
+    for (const d of items) {
+      const card = el("article", "card");
+      card.id = "d-" + d.id;
+      card.setAttribute("data-comment-target", "");
+      const top = el("div", "card-top");
+      top.appendChild(el("h3", null, d.title || d.id));
+      top.appendChild(el("span", "mono muted", d.id + (d.task ? " · " + d.task : "")));
+      card.appendChild(top);
+      if (d.choice) card.appendChild(el("p", "prose", d.choice));
+      const dl = el("dl", "fields");
+      field(dl, "Why", d.why);
+      field(dl, "Set aside", d.alternatives);
+      if (dl.childElementCount) card.appendChild(dl);
+      const foot = el("div", "card-foot");
+      foot.appendChild(timeEl(d.at));
+      card.appendChild(foot);
+      wrap.appendChild(card);
+    }
+  }
+
+  function renderJournal() {
+    const items = [...state.journal].sort(byTime("at", "desc"));
+    if (!items.length) return;
+    const ul = $("journal");
+    ul.replaceChildren();
+    for (const j of items) {
+      const li = el("li");
+      li.appendChild(timeEl(j.at));
+      li.appendChild(el("p", null, j.text));
+      ul.appendChild(li);
+    }
+  }
+
+  function render() {
+    renderHeader();
+    renderProgress();
+    renderBlocked();
+    renderHandover();
+    renderQuestions();
+    renderPlan();
+    renderTasks();
+    renderDecisions();
+    renderJournal();
+  }
+
+  function showProblem(text) {
+    $("objective").textContent = text;
+  }
+
+  async function boot() {
+    render();
+    if (!window.claude || typeof window.claude.use !== "function") {
+      showProblem("Open this page on claude.ai to see the run.");
+      return;
+    }
+    const db = await claude.use("db");
+    if (!db) {
+      showProblem("This view can't read the run's data. Sign in to claude.ai, or ask the owner for access.");
+      return;
+    }
+    const stalled = setTimeout(() => showProblem("The run's data hasn't loaded yet. It may still be on its way."), 10000);
+    const onErr = (e) => {
+      clearTimeout(stalled);
+      if (e && e.code === "revoked") showProblem("This view no longer has access to the run.");
+    };
+    db.doc("run/main").onSnapshot((s) => {
+      clearTimeout(stalled);
+      state.run = s.exists ? s.data() : null;
+      render();
+    }, onErr);
+    const subscribe = (name, query) => query.onSnapshot((s) => {
+      clearTimeout(stalled);
+      state[name] = s.docs.map((d) => Object.assign({ id: d.id }, d.data()));
+      render();
+    }, onErr);
+    subscribe("tasks", db.collection("tasks"));
+    subscribe("questions", db.collection("questions"));
+    subscribe("decisions", db.collection("decisions"));
+    subscribe("journal", db.collection("journal").orderBy("at", "desc").limit(80));
+    setInterval(render, 60000);
+  }
+  boot();
+})();
+</script>
