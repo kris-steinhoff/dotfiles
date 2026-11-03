@@ -21,6 +21,11 @@ CATALOG_WAIT_SECONDS = float(os.environ.get("DISPATCH_ORCA_CATALOG_WAIT") or 15)
 # Handle errors that mean the terminal is gone, not that Orca failed.
 GONE_CODES = {"terminal_handle_stale", "terminal_not_found", "selector_not_found"}
 
+# Orca sets ORCA_PANE_KEY in its terminals. A chat session has no pane, so Orca
+# strips the pane, tab, and worktree variables and sets its agent session id
+# and a structured-session marker instead.
+SESSION_VARS = ("ORCA_PANE_KEY", "ORCA_AGENT_SESSION_ID", "ORCA_STRUCTURED_SESSION")
+
 
 class OrcaError(Exception):
     """An orca command failed. `code` is Orca's own error code when it gave one."""
@@ -32,6 +37,31 @@ class OrcaError(Exception):
 
 def run(argv, cwd=None):
     return subprocess.run(argv, capture_output=True, text=True, cwd=cwd)
+
+
+def in_session():
+    """Whether this runs in an Orca terminal or an Orca chat session."""
+    return any(os.environ.get(name) for name in SESSION_VARS)
+
+
+def caller_worktree_id():
+    """The caller's Orca worktree id. A terminal has it in ORCA_WORKTREE_ID; a
+    chat session doesn't, so it is the worktree holding the working directory."""
+    worktree_id = os.environ.get("ORCA_WORKTREE_ID")
+    if worktree_id:
+        return worktree_id
+    proc = run(["git", "rev-parse", "--show-toplevel"])
+    if proc.returncode != 0:
+        return None
+    record = worktree(f"path:{proc.stdout.strip()}")
+    return record["id"] if record else None
+
+
+def caller_terminal():
+    """The caller's own terminal handle, or None in a chat session, where
+    ORCA_TERMINAL_HANDLE, when set, names its structured worker, not a terminal."""
+    handle = os.environ.get("ORCA_TERMINAL_HANDLE") or ""
+    return handle if handle.startswith("term_") else None
 
 
 def orca(*args):

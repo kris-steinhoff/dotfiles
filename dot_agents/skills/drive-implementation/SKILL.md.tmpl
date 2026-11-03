@@ -35,7 +35,7 @@ Running the command again for the same ref **resumes**: it reads the existing st
 
 ## Dependencies
 
-- A workspace tool the `dispatch` skill supports: Herdr (`HERDR_ENV=1`) or Orca (`ORCA_PANE_KEY` set). Every agent you start runs in it.
+- A workspace tool the `dispatch` skill supports: Herdr or Orca. Every agent you start runs in it.
 - The `worktree-layout` skill, when the repository uses that layout. Load it before touching worktrees there.
 - The `dispatch` skill for placing and launching agents and talking to them, `choose-agent` for picking each one's kind, and `cleanup-worktrees` for teardown. Load each once and run its script when its step calls for it.
 - The `investigate` skill for pre-investigation, and the `watch-pr` skill for waiting on CI and reviews when the repository's flow has PRs.

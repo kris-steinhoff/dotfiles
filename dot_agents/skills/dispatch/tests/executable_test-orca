@@ -258,6 +258,45 @@ class OrcaTests(unittest.TestCase):
                                           "--title", "Reviews 1/3"])
         self.assertNotIn("--title", renames[1])
 
+    def chat_session(self):
+        """An Orca chat session: no pane, tab, or worktree variables, and a
+        structured worker's handle in place of a terminal's."""
+        for key in ("ORCA_PANE_KEY", "ORCA_WORKTREE_ID"):
+            del self.env[key]
+        self.env.update({"ORCA_AGENT_SESSION_ID": "s1", "ORCA_STRUCTURED_SESSION": "1",
+                         "ORCA_TERMINAL_HANDLE": "structworker_1"})
+
+    def test_a_chat_session_creates_worktrees_beneath_its_own(self):
+        self.chat_session()
+        result = self.ok("worktree", "create", "--branch", "chat",
+                         "--path", str(self.root / "wt" / "chat"))
+        self.assertTrue(result["place"].startswith("term_"))
+        labeled = self.calls("worktree", "set")[0]
+        self.assertEqual(labeled[labeled.index("--parent-worktree") + 1], f"id:r1::{self.repo}")
+        place = self.ok("terminal", "create", "--cwd", str(self.repo))["place"]
+        self.ok("agent", "launch", "--place", place, "--kind", "codex", "--report-back")
+
+    def test_a_chat_session_wont_remove_its_own_worktree(self):
+        path = self.root / "wt" / "own"
+        subprocess.run(["git", "-C", str(self.repo), "worktree", "add", "-q", "-b", "own",
+                        str(path)], check=True)
+        subprocess.run(["git", "-C", str(path), "branch", "-q", "--set-upstream-to=main"],
+                       check=True)
+        self.chat_session()
+        result = subprocess.run([sys.executable, str(SCRIPT), "worktree", "remove",
+                                 "--worktree", str(path), "--repo", str(self.repo)],
+                                cwd=path, capture_output=True, text=True, env=self.env)
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn("caller's own worktree", json.loads(result.stdout)["reason"])
+        self.assertTrue(path.exists())
+
+    def test_a_chat_session_has_no_tab_to_label(self):
+        self.chat_session()
+        result = self.dispatch("terminal", "label", "--text", "Reviews")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("no terminal of its own", json.loads(result.stdout)["reason"])
+        self.assertEqual(self.calls("terminal", "rename"), [])
+
     def test_terminal_in_a_subdirectory_starts_there(self):
         (self.repo / "src").mkdir()
         self.ok("terminal", "create", "--cwd", str(self.repo / "src"), "--tab", "--label", "x")

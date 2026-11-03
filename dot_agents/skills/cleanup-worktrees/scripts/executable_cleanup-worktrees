@@ -29,7 +29,7 @@ worktree rm` isn't used, because it deletes the branch without the `-d` check.
 One with no workspace is removed with `git worktree remove`, or pruned when
 its directory is already gone.
 
-Requires a workspace tool, Herdr (HERDR_ENV=1) or Orca (ORCA_PANE_KEY):
+Requires a workspace tool, Herdr (HERDR_ENV=1) or Orca (a terminal or chat session):
 without one it cannot see live agents, so it refuses rather than guess. Orca
 reports an agent's state only for worktrees its sidebar shows; an agent it
 can't report on counts as `unknown`, which holds its worktree like `working`.
@@ -59,6 +59,11 @@ import sys
 
 # Orca exports ORCA_CLI_COMMAND for sessions that need another executable.
 ORCA = os.environ.get("ORCA_CLI_COMMAND") or "orca"
+
+# An Orca terminal sets ORCA_PANE_KEY. A chat session has no pane and sets its
+# agent session id instead, without ORCA_WORKTREE_ID, so there the caller's own
+# worktree is held back only by the working-directory check.
+ORCA_SESSION_VARS = ("ORCA_PANE_KEY", "ORCA_AGENT_SESSION_ID", "ORCA_STRUCTURED_SESSION")
 
 
 class CleanupError(Exception):
@@ -369,10 +374,11 @@ def main():
 
     if os.environ.get("HERDR_ENV") == "1":
         tool, find_workspaces, find_agents = "herdr", open_workspaces, live_agents
-    elif os.environ.get("ORCA_PANE_KEY"):
+    elif any(os.environ.get(name) for name in ORCA_SESSION_VARS):
         tool, find_workspaces, find_agents = "orca", orca_workspaces, orca_agents
     else:
-        emit_judgment("no workspace tool is running (neither HERDR_ENV=1 nor ORCA_PANE_KEY is set)")
+        emit_judgment("no workspace tool is running "
+                      "(neither HERDR_ENV=1 nor an Orca terminal or chat session)")
 
     try:
         git_dir = common_dir(args.repo)

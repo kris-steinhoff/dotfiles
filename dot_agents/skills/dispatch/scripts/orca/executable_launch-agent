@@ -24,12 +24,12 @@ user, then goes with `dispatch agent send`.
 Report-back has no prompt to type into, as under Herdr. A claude agent with
 --report-to-session reports by SendMessage. Otherwise --report-back gives the
 agent the caller's Orca orchestration Run (creating and binding one to the
-caller's terminal if it has none) and has it report with `orca orchestration
+caller's terminal or chat session if it has none) and has it report with `orca orchestration
 send --to run:<id>`, which lands in that Run's inbox, marked as the agent's.
 
 Names aren't suffixed, because Orca has no registry of them to check against.
 
-Requires ORCA_PANE_KEY (an Orca terminal) and the `orca` CLI.
+Requires an Orca terminal or chat session, and the `orca` CLI.
 
 Exit codes (shared across the dispatch primitives):
   0  success. The JSON result object is printed to stdout.
@@ -45,7 +45,7 @@ import shlex
 import sys
 import time
 
-from orca_cli import OrcaError, agent_in, orca, terminal
+from orca_cli import OrcaError, agent_in, in_session, orca, terminal
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from agent_cli import KINDS, Refusal, check_request, compose_prompt, extra_args  # noqa: E402
@@ -135,8 +135,8 @@ def main():
                         help="the caller's Claude session name; a claude agent reports there by SendMessage")
     args = parser.parse_args()
 
-    if not os.environ.get("ORCA_PANE_KEY"):
-        emit_judgment("not running inside an Orca terminal (ORCA_PANE_KEY is not set)")
+    if not in_session():
+        emit_judgment("not running in an Orca terminal or chat session")
 
     handle = args.terminal
     name = args.name or args.persona or args.kind

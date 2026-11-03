@@ -7,7 +7,9 @@ message to that agent) rather than how Herdr or Orca does it. The backend comes
 from the environment:
 
   HERDR_ENV=1        Herdr, through the scripts in herdr/ and the herdr CLI
-  ORCA_PANE_KEY set  Orca, through the scripts in orca/ and the orca CLI
+  ORCA_PANE_KEY set  Orca, through the scripts in orca/ and the orca CLI; an
+                     Orca chat session, which has no pane, sets
+                     ORCA_AGENT_SESSION_ID instead
 
 A place is somewhere an agent can be launched, in whatever form the backend
 needs to find it again: a pane id under Herdr, a terminal handle under Orca.
@@ -52,9 +54,10 @@ def emit_error(message):
 def backend():
     if os.environ.get("HERDR_ENV") == "1":
         return "herdr"
-    if os.environ.get("ORCA_PANE_KEY"):
+    if orca_cli().in_session():
         return "orca"
-    emit_judgment("no workspace tool is running (neither HERDR_ENV=1 nor ORCA_PANE_KEY is set)")
+    emit_judgment("no workspace tool is running "
+                  "(neither HERDR_ENV=1 nor an Orca terminal or chat session)")
 
 
 def backend_script(directory, name):
@@ -184,7 +187,7 @@ def orca_terminal_create(orca, args):
     proc = subprocess.run(["git", "-C", cwd, "rev-parse", "--show-toplevel"],
                           capture_output=True, text=True)
     record = orca.worktree(f"path:{proc.stdout.strip()}") if proc.returncode == 0 else None
-    worktree_id = record["id"] if record else os.environ.get("ORCA_WORKTREE_ID")
+    worktree_id = record["id"] if record else orca.caller_worktree_id()
     if not worktree_id:
         emit_judgment(f"no Orca worktree holds {args.cwd}, and the caller's own is unknown")
     root = os.path.realpath(worktree_id.split("::", 1)[-1])
@@ -269,10 +272,10 @@ def herdr_result(*command):
 
 
 def orca_terminal_label(orca, args):
-    place = args.place or os.environ.get("ORCA_TERMINAL_HANDLE")
+    place = args.place or orca.caller_terminal()
     if not place:
-        emit_judgment("no --place, and the caller's own terminal is unknown "
-                      "(ORCA_TERMINAL_HANDLE is not set)")
+        emit_judgment("no --place, and the caller has no terminal of its own "
+                      "(ORCA_TERMINAL_HANDLE names no term_ handle, as in a chat session)")
     rename = ["terminal", "rename", "--terminal", orca_terminal_handle(place)]
     if args.text:
         rename += ["--title", args.text]

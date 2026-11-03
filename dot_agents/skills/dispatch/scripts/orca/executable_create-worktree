@@ -46,7 +46,7 @@ came into use carry it, and teardown recognizes dispatch-created worktrees by
 it. It is excluded through the repo's .git/info/exclude, so it
 never makes a clean worktree look dirty.
 
-Requires ORCA_PANE_KEY (an Orca terminal) and the `orca` CLI.
+Requires an Orca terminal or chat session, and the `orca` CLI.
 
 Exit codes (shared across the dispatch primitives):
   0  success. The JSON result object is printed to stdout.
@@ -62,7 +62,8 @@ import json
 import os
 import sys
 
-from orca_cli import OrcaError, agent_in, create_terminal, orca, run, terminals, wait_for_worktree
+from orca_cli import (OrcaError, agent_in, caller_worktree_id, create_terminal, in_session, orca,
+                      run, terminals, wait_for_worktree)
 
 MARKER_NAME = ".herdr-dispatch.json"
 MARKER_TAG = "herdr-dispatch"
@@ -216,7 +217,7 @@ def adopt(path, label, repo_id):
     args = ["worktree", "set", "--worktree", f"id:{worktree_id}"]
     if label:
         args += ["--display-name", label]
-    parent = os.environ.get("ORCA_WORKTREE_ID")
+    parent = caller_worktree_id()
     if parent and parent != worktree_id and not record.get("parentWorktreeId"):
         args += ["--parent-worktree", f"id:{parent}"]
     if len(args) > 4:
@@ -248,8 +249,8 @@ def main():
     parser.add_argument("--path", help="explicit worktree path (default: Orca's worktree folder)")
     args = parser.parse_args()
 
-    if not os.environ.get("ORCA_PANE_KEY"):
-        emit_judgment("not running inside an Orca terminal (ORCA_PANE_KEY is not set)")
+    if not in_session():
+        emit_judgment("not running in an Orca terminal or chat session")
 
     try:
         repo = os.path.abspath(args.repo or os.getcwd())

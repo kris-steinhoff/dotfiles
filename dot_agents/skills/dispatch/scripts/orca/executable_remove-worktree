@@ -9,7 +9,8 @@ any of these hold:
   2. The branch's work isn't verifiably pushed: no upstream configured at all,
      or real commits ahead of its upstream.
   3. A live agent still runs in one of the worktree's Orca terminals.
-  4. It is the caller's own worktree ($ORCA_WORKTREE_ID).
+  4. It is the caller's own worktree ($ORCA_WORKTREE_ID, or in a chat session
+     the one holding the working directory).
 
 Past the gate it closes every terminal Orca has open in the worktree
 (`orca terminal close --all`, which ends whatever runs there), then removes the
@@ -26,7 +27,7 @@ delete git's record of it, as happens in a sandbox that can't write the repo's
 
 `--worktree` is a path or an Orca worktree id (<repoId>::<path>).
 
-Requires ORCA_PANE_KEY (an Orca terminal) and the `orca` CLI.
+Requires an Orca terminal or chat session, and the `orca` CLI.
 
 Exit codes (shared across the dispatch primitives):
   0  success. The JSON result object is printed to stdout.
@@ -39,7 +40,7 @@ import json
 import os
 import sys
 
-from orca_cli import OrcaError, agent_in, orca, run, terminals, worktree
+from orca_cli import OrcaError, agent_in, caller_worktree_id, in_session, orca, run, terminals, worktree
 
 
 def emit_success(obj):
@@ -128,8 +129,8 @@ def main():
                         help="git repo for the worktree-list lookup (default: cwd)")
     args = parser.parse_args()
 
-    if not os.environ.get("ORCA_PANE_KEY"):
-        emit_judgment("not running inside an Orca terminal (ORCA_PANE_KEY is not set)")
+    if not in_session():
+        emit_judgment("not running in an Orca terminal or chat session")
 
     try:
         path = resolve(args.worktree, args.repo)
@@ -147,7 +148,7 @@ def main():
             if worktree_id and any(agent_in(t) for t in terminals(worktree_id)):
                 emit_judgment("a live agent still runs in one of this worktree's terminals",
                               path=path, worktree_id=worktree_id)
-            if worktree_id and worktree_id == os.environ.get("ORCA_WORKTREE_ID"):
+            if worktree_id and worktree_id == caller_worktree_id():
                 emit_judgment("this is the caller's own worktree", path=path, worktree_id=worktree_id)
 
         if worktree_id and terminals(worktree_id):

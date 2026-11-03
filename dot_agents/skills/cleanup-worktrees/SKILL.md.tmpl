@@ -1,6 +1,6 @@
 ---
 name: cleanup-worktrees
-description: Removes a repo's worktrees that are safe to remove, closing their Herdr workspaces or Orca terminals, then deletes their branches with `git branch -d`, which leaves unmerged ones behind. A worktree is safe when its tree is clean and nothing is running there; a live agent holding one is asked whether it is done, and ended with its worktree if it says so. Invoke as `/cleanup-worktrees` to sweep the current repo, or name specific worktrees. Requires Herdr (HERDR_ENV=1) or Orca (ORCA_PANE_KEY).
+description: Removes a repo's worktrees that are safe to remove, closing their Herdr workspaces or Orca terminals, then deletes their branches with `git branch -d`, which leaves unmerged ones behind. A worktree is safe when its tree is clean and nothing is running there; a live agent holding one is asked whether it is done, and ended with its worktree if it says so. Invoke as `/cleanup-worktrees` to sweep the current repo, or name specific worktrees. Requires Herdr or Orca.
 {{- with get . "custom" }}
 {{ . }}
 {{- end }}
@@ -14,7 +14,7 @@ Remove every worktree that can go without losing work or interrupting anything, 
 scripts/cleanup-worktrees [--repo <path>] [--worktree <path-or-workspace-id>]... [--done-agent <agent>]... [--dry-run]
 ```
 
-`--repo` (default: cwd) is any checkout or repo directory of the repo. With no `--worktree` it sweeps every linked worktree; with one or more, it considers only those. Requires a workspace tool, Herdr (`HERDR_ENV=1`) or Orca (`ORCA_PANE_KEY` set), because without one it can't see live agents. Under Orca, a workspace is an Orca worktree and its terminals, and `--worktree` also takes an Orca worktree id.
+`--repo` (default: cwd) is any checkout or repo directory of the repo. With no `--worktree` it sweeps every linked worktree; with one or more, it considers only those. Requires a workspace tool, Herdr (`HERDR_ENV=1`) or Orca (an Orca terminal or chat session), because without one it can't see live agents. Under Orca, a workspace is an Orca worktree and its terminals, and `--worktree` also takes an Orca worktree id.
 
 ## What it removes
 

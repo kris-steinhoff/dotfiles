@@ -92,7 +92,7 @@ Under Herdr or Orca, also keep this session's tab label on the progress, so it s
 dispatch terminal label --text "Reviews 2/5 · #255"
 ```
 
-The count is PRs posted or skipped out of the board's total, followed by the PR in triage, or `reviewing` when triage is waiting on a review. Keep the first call's `previous`, and put the label back when the run ends. Outside a workspace tool, the board alone does.
+The count is PRs posted or skipped out of the board's total, followed by the PR in triage, or `reviewing` when triage is waiting on a review. Keep the first call's `previous`, and put the label back when the run ends. Outside a workspace tool, or in an Orca chat session, which has no tab of its own and answers the label with needs-judgment, the board alone does.
 
 ### Triage each PR
 

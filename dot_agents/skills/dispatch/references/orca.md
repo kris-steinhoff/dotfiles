@@ -2,11 +2,11 @@
 
 Under Orca, `dispatch` runs the scripts in `scripts/orca/`, or the `orca` CLI directly, and passes their results through with `place` added. A place is an Orca terminal handle (`term_…`). Handles belong to one run of Orca: after Orca restarts, a stored place reads as closed, and `worktree create` run again returns a fresh one.
 
-All of it requires `ORCA_PANE_KEY`, which Orca sets in its own terminals, and uses the executable in `ORCA_CLI_COMMAND` when Orca sets one, else `orca`. The CLI reaches Orca through a socket in `~/Library/Application Support/orca`, which Claude Code's sandbox allows. Codex's blocks it, so a Codex session requests escalated sandbox permissions for `dispatch` from the first call.
+All of it requires an Orca session: a terminal, where Orca sets `ORCA_PANE_KEY`, or a chat session, the structured chat Orca opens by default, where it sets `ORCA_AGENT_SESSION_ID` and `ORCA_STRUCTURED_SESSION` instead. A chat session has no pane, so Orca also leaves out `ORCA_WORKTREE_ID`, and its `ORCA_TERMINAL_HANDLE`, when set, names its structured worker rather than a terminal. Wherever dispatch needs the caller's worktree, a chat session's is the Orca worktree holding its working directory. It uses the executable in `ORCA_CLI_COMMAND` when Orca sets one, else `orca`. The CLI reaches Orca through a socket in `~/Library/Application Support/orca`, which Claude Code's sandbox allows. Codex's blocks it, so a Codex session requests escalated sandbox permissions for `dispatch` from the first call.
 
 ## `worktree create`
 
-Runs `scripts/orca/create-worktree`. git creates the worktree, not `orca worktree create`, because Orca's command takes neither a path nor an exact branch: asked for an existing branch's name, it cuts a new suffixed branch instead. Orca then adopts the checkout as one of the repo's non-Orca worktrees. The script labels it with `--label`, records the caller's worktree (`ORCA_WORKTREE_ID`) as its parent, which is how Orca nests its sidebar, and opens a terminal tab in it, which is the place.
+Runs `scripts/orca/create-worktree`. git creates the worktree, not `orca worktree create`, because Orca's command takes neither a path nor an exact branch: asked for an existing branch's name, it cuts a new suffixed branch instead. Orca then adopts the checkout as one of the repo's non-Orca worktrees. The script labels it with `--label`, records the caller's worktree as its parent, which is how Orca nests its sidebar, and opens a terminal tab in it, which is the place.
 
 Two things must hold first, or it stops with needs-judgment before touching git:
 
@@ -40,7 +40,7 @@ Result: `{ terminal, worktree_id, place }`.
 
 ## `terminal label`
 
-`orca terminal rename --terminal <place> --title <text>`, on the caller's own terminal, `$ORCA_TERMINAL_HANDLE`, without `--place`. Without `--text` it clears the custom title, and Orca goes back to its automatic one, so `previous` is always null.
+`orca terminal rename --terminal <place> --title <text>`, on the caller's own terminal, `$ORCA_TERMINAL_HANDLE`, without `--place`. A chat session has no terminal of its own, so without `--place` it is needs-judgment there. Without `--text` it clears the custom title, and Orca goes back to its automatic one, so `previous` is always null.
 
 ## `agent launch`
 
@@ -49,7 +49,7 @@ Runs `scripts/orca/launch-agent`, which types the agent's command line into the 
 - If the terminal already runs an agent of the requested kind, it returns that agent (`converged: true`) without starting another or re-sending the seed. A different kind there is needs-judgment. Orca knows nothing of dispatch's names, so the result carries the name this launch would have used.
 - Names aren't suffixed, because there is no registry of them to check. The name must still fit `[a-z][a-z0-9_-]{0,31}`.
 - After typing the command it waits up to a minute for Orca to see the agent and for its prompt to settle, then sends the seed. It waits even with no seed, because a caller's next `agent send` would otherwise reach an agent still starting up, where it could be lost or answer a startup dialog for the user. If the agent never gets there, or Orca refuses the seed because a permission or trust prompt is showing, the result is needs-judgment `agent_not_ready`. A Claude started in a subdirectory of a repo whose `CLAUDE.md` imports a file above it stops at such a prompt. Tell the user, and once they've answered it, deliver the seed with `agent send`.
-- `--report-back` without a claude `--report-to-session` gives the agent the caller's orchestration Run, creating and binding one to the caller's terminal if it has none, and tells it to report with `orca orchestration send --to run:<id> --type status|question --subject "[<name>] …"`. The result carries `run_id`. A Run is only a namespace with an inbox here: no Orca Task or Dispatch is created, so the agent has no worker lifecycle to follow, and the caller owes Orca no settlement or release.
+- `--report-back` without a claude `--report-to-session` gives the agent the caller's orchestration Run, creating and binding one to the caller's terminal or chat session if it has none, and tells it to report with `orca orchestration send --to run:<id> --type status|question --subject "[<name>] …"`. The result carries `run_id`. A Run is only a namespace with an inbox here: no Orca Task or Dispatch is created, so the agent has no worker lifecycle to follow, and the caller owes Orca no settlement or release.
 
 Kinds and their flags are the Herdr list: `claude`, `codex`, `gemini`, `copilot`, `opencode`, `pi`.
 

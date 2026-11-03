@@ -33,7 +33,7 @@ Read [references/queue.md](references/queue.md), then run the queue flow there. 
 It runs one of two ways, chosen by what the harness can do:
 
 - **Subagents**, whenever the harness can start subagents that run in the background while you keep working, such as Claude Code's Agent tool or Codex's `spawn_agent`. Subagents review the PRs, and this session holds every triage: as each review lands, it triages that PR with the user, hands the confirmed review to a posting subagent, and moves to the next PR while that one posts. A board shows where each PR stands.
-- **Tabs**, only when the harness has no such subagents. This needs a workspace tool the `dispatch` skill supports, Herdr (`HERDR_ENV=1`) or Orca (`ORCA_PANE_KEY` set). Each tab's reviewer triages and posts with the user itself, and this session only launches, advances, and closes them.
+- **Tabs**, only when the harness has no such subagents. This needs a workspace tool the `dispatch` skill supports, Herdr or Orca. Each tab's reviewer triages and posts with the user itself, and this session only launches, advances, and closes them.
 
 With neither, say so and stop. Either way, look across the queue for PRs that belong together before reviewing, such as a stack or two halves of one change, and give each group one reviewer that takes its PRs in order; say how you grouped them and why.
 
