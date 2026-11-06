@@ -1,0 +1,82 @@
+#!/usr/bin/env python3
+"""Turn a plan page's database, saved by ArtifactData's `out_dir`, into a fixture.
+
+    capture <saved dir> --out <file.json> [--people <names.json>]
+
+<saved dir> holds run/, tasks/, prs/, questions/ and journal/, each with one JSON file per document, which
+is what `list` with `out_dir` writes. <names.json> maps person ids to names, from ArtifactData's `profiles`.
+Prints the ids it has no name for.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+COLLECTIONS = ("run", "tasks", "prs", "questions", "journal")
+VIEWER = "u_viewer"
+NOT_PEOPLE = {"claude", "owner"}
+
+
+def read_docs(saved: Path) -> dict:
+    docs = {}
+    for collection in COLLECTIONS:
+        for path in sorted((saved / collection).glob("*.json")):
+            docs[f"{collection}/{path.name[:-len('.json')]}"] = json.loads(path.read_text(encoding="utf-8"))
+    return docs
+
+
+def person_ids(docs: dict) -> list:
+    ids = set()
+    for path, doc in docs.items():
+        if path.startswith("journal/"):
+            ids.add(doc.get("by"))
+        elif path.startswith("questions/"):
+            ids.add(doc.get("answered_by"))
+    return sorted(ids - NOT_PEOPLE - {None})
+
+
+def latest_moment(docs: dict) -> str:
+    moments = [docs["run/main"].get("updated_at", "")]
+    for path, doc in docs.items():
+        if path.startswith("journal/"):
+            moments.append(doc.get("at", ""))
+        elif path.startswith("questions/"):
+            moments.append(doc.get("answered_at") or doc.get("asked_at", ""))
+    return max(moments)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Turn a saved plan page database into a fixture.")
+    parser.add_argument("saved", type=Path, help="the folder ArtifactData's out_dir wrote")
+    parser.add_argument("--out", type=Path, required=True, help="the fixture file to write")
+    parser.add_argument("--people", type=Path, help="a JSON file mapping person ids to names")
+    args = parser.parse_args()
+    out = args.out.resolve()
+    docs = read_docs(args.saved)
+    if "run/main" not in docs:
+        print(f"No run/main.json under {args.saved}.", file=sys.stderr)
+        return 2
+    names = json.loads(args.people.read_text(encoding="utf-8")) if args.people else {}
+    ids = person_ids(docs)
+    people = {person: names.get(person) for person in ids}
+    people[VIEWER] = "You"
+    fixture = {
+        "about": f"Captured from the live plan page \"{docs['run/main'].get('title', 'untitled')}\".",
+        "now": latest_moment(docs),
+        "viewer": VIEWER,
+        "people": people,
+        "docs": docs,
+    }
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(fixture, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    print(f"Wrote {out}: {len(docs)} documents.")
+    unnamed = [person for person in ids if not names.get(person)]
+    if unnamed:
+        print("No name for: " + " ".join(unnamed))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

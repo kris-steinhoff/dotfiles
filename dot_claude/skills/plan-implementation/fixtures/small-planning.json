@@ -1,0 +1,75 @@
+{
+  "about": "A bare plan page with no tasks, PRs, approach, or done-check, to show the page's empty states with only open questions and a short journal.",
+  "now": "2026-10-13T17:35:00Z",
+  "viewer": "u_marisol",
+  "people": {
+    "u_marisol": "Marisol Okonkwo-Reyes",
+    "u_tuan": "Tuấn Nguyễn"
+  },
+  "docs": {
+    "run/main": {
+      "title": "Late-return reminders for the Tidewater lending app",
+      "objective": "Send borrowers an automatic reminder before and after a tool's due date, so volunteers at the desk stop phoning people by hand. Reminders go by email first, with the channel and timing settled by the questions on this plan page.",
+      "source": "https://tracker.tidewatertools.example/browse/TTL-41",
+      "status": "pending",
+      "started_at": "2026-10-13T14:05:00Z",
+      "updated_at": "2026-10-13T16:20:00Z"
+    },
+    "questions/Q1": {
+      "title": "Which loans does a reminder cover?",
+      "context": "The lending app has two kinds of loan. Standard loans are one week, renewable once. Long-term loans (the tile saw, the post-hole auger, the trailer) are set by a volunteer at checkout with an arbitrary due date, sometimes months out. A reminder job that treats both the same would nag people about a trailer that is not due until January. I need to know whether reminders apply to every loan with a due date or only to standard ones.",
+      "options": [
+        { "label": "All loans", "cost": "Simplest query, but long-term borrowers get reminders on a date a volunteer picked by hand." },
+        { "label": "Standard loans only", "cost": "Long-term loans stay a manual phone call, which is the problem we are trying to remove for the items most worth chasing." }
+      ],
+      "recommendation": "All loans",
+      "blocks": "The shape of the due-date query and the reminder schedule.",
+      "status": "answered",
+      "asked_at": "2026-10-13T14:48:00Z",
+      "answered_at": "2026-10-13T15:30:00Z",
+      "answered_by": "u_tuan",
+      "answer": "All loans. Long-term borrowers are the ones who forget, and a reminder a week before is welcome there. Just don't send more than one reminder a day to one person."
+    },
+    "questions/Q2": {
+      "title": "Where should the reminder text come from?",
+      "context": "Right now the only message the app sends is the checkout receipt, and its wording is hard-coded in app/mailers/receipt_mailer.rb. The library has a house style the volunteers care about (friendly, no scolding), and the coordinators have asked to tweak it without a deploy. I can either ship fixed wording that we all review here, or put the templates in the database with an admin screen. The second is more work than the whole job so far, so I would rather not guess. What do the coordinators actually want to change, and how often?",
+      "blocks": "Whether a template admin screen is part of this plan at all.",
+      "status": "open",
+      "asked_at": "2026-10-13T15:52:00Z"
+    },
+    "questions/Q3": {
+      "title": "How many reminders, and when?",
+      "context": "Borrowers currently get nothing between checkout and the day a volunteer notices the tool is overdue. I can send reminders relative to the due date, and the app has no existing scheduler beyond the nightly rake sweep:expired_memberships cron job, so any option here runs once a day at 07:00 local time. Per Q1, no one gets more than one reminder a day.",
+      "options": [
+        { "label": "Two: 2 days before, and the day after", "cost": "Fewest emails. A borrower who ignores the first nudge hears nothing more until a volunteer steps in." },
+        { "label": "Three: 2 days before, the day after, 7 days after", "cost": "Covers the borrower who ignores the first one, at the price of one more email to people who already know." },
+        { "label": "Weekly after due until returned", "cost": "Never goes quiet. Some borrowers will find it nagging, and a lost tool means a reminder every week indefinitely." }
+      ],
+      "recommendation": "Three: 2 days before, the day after, 7 days after",
+      "blocks": "The reminder schedule table and its tests.",
+      "status": "open",
+      "asked_at": "2026-10-13T16:12:00Z"
+    },
+    "journal/2026-10-13T14:05:00Z": {
+      "at": "2026-10-13T14:05:00Z",
+      "text": "Started planning from TTL-41. Nothing is built, and no tasks are written yet.",
+      "by": "claude"
+    },
+    "journal/2026-10-13T14:48:00Z": {
+      "at": "2026-10-13T14:48:00Z",
+      "text": "Read the loans model and the nightly sweep job. Loans have a nullable due_on and no kind column, so \"long-term\" is only a long due date. Asked Q1 before deciding which loans to query.",
+      "by": "claude"
+    },
+    "journal/2026-10-13T15:30:00Z": {
+      "at": "2026-10-13T15:30:00Z",
+      "text": "Reminders cover all loans, at most one per person per day. Task breakdown can now start on that basis.",
+      "by": "u_tuan",
+      "questions": ["Q1"]
+    },
+    "journal/2026-10-13T16:20:00Z": {
+      "at": "2026-10-13T16:20:00Z",
+      "text": "Held off on writing tasks until Q2 and Q3 are answered, since both change the shape of the work: Q2 decides whether there is a template admin screen, Q3 the schedule. Email only for now; the app stores no phone numbers and I am not proposing to add them.",
+      "by": "claude"
+    }
+  }
+}

@@ -1,0 +1,320 @@
+{
+  "about": "A finished, straight-line plan with no epics and one answered question, handed over on a single open PR.",
+  "now": "2026-06-09T17:30:00Z",
+  "viewer": "u_nguyen",
+  "people": {
+    "u_ingrid": "Ingrid Halvorsen-Okafor",
+    "u_nguyen": "Nguyễn Thị Bảo",
+    "u_zoe": "Zoë Castellanos"
+  },
+  "docs": {
+    "run/main": {
+      "title": "Add --json output to every tessel subcommand",
+      "objective": "Every tessel subcommand accepts --json and then writes machine-readable output to stdout only, with progress and logs on stderr and errors as JSON with a stable exit code. Scripts and CI jobs stop scraping the human tables.",
+      "source": "docs/proposals/0007-json-output.md",
+      "status": "done",
+      "approach": "Add one Emitter in tessel/output.py that every command talks to instead of calling click.echo or printing tables itself. In human mode it renders what the command renders today; in JSON mode it writes a versioned envelope {\"schema\": 1, \"command\": ..., \"data\": ...} to stdout. --json is a flag on the root group, so tessel --json tile ... and tessel tile --json ... both work.\n\nCommands are converted one at a time, simplest first, so each task is a small reviewable diff and the golden-output tests grow with them. Long-running commands (tile, combine) stream NDJSON progress events on stderr when --json is set, and the final document goes to stdout.\n\nThe schema is written down once in docs/json-schema/envelope.schema.json and the tests validate every command's output against it, so the docs cannot drift from the code.",
+      "delivery": "One PR off main on branch json-output-all-subcommands, tasks landed onto it in order. The collective requires one maintainer review and green CI before merge; nobody here merges their own PR.",
+      "done_check": [
+        {
+          "text": "tessel <cmd> --json exists for all six subcommands: info, projections, tile, combine, crop, verify",
+          "state": "met",
+          "note": "Checked with for c in info projections tile combine crop verify; do tessel $c --help | grep -q -- --json; done; all six pass."
+        },
+        {
+          "text": "In JSON mode stdout holds exactly one JSON document and nothing else",
+          "state": "met",
+          "note": "tests/cli/test_stdout_purity.py runs every command with --json and parses stdout with json.loads; passes in CI."
+        },
+        {
+          "text": "Every command's output validates against the published schema",
+          "state": "met",
+          "note": "tests/cli/test_golden_json.py validates 23 golden files against envelope.schema.json."
+        },
+        {
+          "text": "Errors in JSON mode are a JSON document on stderr with a non-zero exit code from the documented table",
+          "state": "met",
+          "note": "tests/cli/test_error_json.py triggers each of exit codes 2, 3, 4 and 5 and parses the stderr document."
+        },
+        {
+          "text": "Human output is byte-for-byte unchanged without --json",
+          "state": "met",
+          "note": "The pre-existing human-output snapshots in tests/cli/snapshots/ pass unmodified."
+        }
+      ],
+      "out_of_scope": [
+        "YAML or CSV output",
+        "--json on the tessel-gui wrapper",
+        "Changing any existing human-readable format",
+        "A --jq filter flag"
+      ],
+      "risks": [
+        "Plugins that print directly to stdout will corrupt JSON mode; only first-party commands are covered.",
+        "Large mosaics: tile --json on 40k tiles produces a big summary document."
+      ],
+      "handover": {
+        "summary": "All six subcommands take --json. Output goes through one Emitter in tessel/output.py, wrapped in a versioned envelope, validated against docs/json-schema/envelope.schema.json. Errors are JSON on stderr with exit codes 2 (usage), 3 (input unreadable), 4 (projection mismatch) and 5 (internal). Human output is unchanged.",
+        "branch": "json-output-all-subcommands",
+        "pr_url": "https://code.tessellate-collective.example/tessel/tessel/pull/318",
+        "look_first": [
+          "tessel/output.py, since every command now depends on Emitter",
+          "tessel/commands/tile.py: the NDJSON progress events on stderr",
+          "docs/json-schema/envelope.schema.json"
+        ],
+        "risks": [
+          "combine reports overlap_px as an integer, but a fractional overlap from --blend feather is rounded; I think that is fine but nobody has asked a user.",
+          "The stdout-purity test does not cover third-party plugins, and exit code 5 is only tested with a forced internal error."
+        ]
+      },
+      "started_at": "2026-06-02T09:10:00Z",
+      "updated_at": "2026-06-09T15:40:00Z"
+    },
+    "tasks/T1": {
+      "title": "Emitter and envelope",
+      "goal": "One place that decides how a command's result becomes text.",
+      "approach": "Add tessel/output.py with Emitter(mode, stream). emit(command, data) prints the human rendering via a callback in human mode, or {\"schema\": 1, \"command\": command, \"data\": data} as compact sorted-key JSON in JSON mode. Dataclasses and pathlib.Path serialise through a small default= hook; anything else raises, so a command cannot silently emit repr() output.",
+      "touches": [
+        "tessel/output.py",
+        "tests/unit/test_output.py"
+      ],
+      "verify": "Unit tests cover both modes, Path and dataclass values, and an unserialisable value raising TypeError.",
+      "status": "merged",
+      "order": 1,
+      "depends_on": [],
+      "pr": "P1",
+      "branch": "json-output/t1-emitter-and-envelope",
+      "outcome": "Added tessel/output.py (Emitter, OutputMode) and 9 unit tests. Keys are sorted and separators are (\",\", \":\") so golden files diff cleanly. Decimals are not supported yet because no command returns one."
+    },
+    "tasks/T2": {
+      "title": "Global --json flag, stdout/stderr split",
+      "goal": "Accept the flag anywhere on the command line and keep logs off stdout.",
+      "approach": "Declare --json on the root click group and also on a shared decorator json_option in tessel/cli.py so it works after the subcommand name. Store the mode in the click context. In JSON mode, route the logging handler and progress bars to stderr; today the progress bar writes to stdout when stdout is a TTY.",
+      "touches": [
+        "tessel/cli.py",
+        "tessel/logging_setup.py",
+        "tests/cli/test_flag_placement.py"
+      ],
+      "verify": "tessel --json info x.tif and tessel info --json x.tif behave identically; with stdout redirected to a file, nothing but the final document lands in it.",
+      "status": "merged",
+      "order": 2,
+      "depends_on": [
+        "T1"
+      ],
+      "pr": "P1",
+      "branch": "json-output/t2-global-flag-and-stderr-routing",
+      "outcome": "Root flag plus json_option decorator done. Progress bars now always draw on stderr in both modes (a tiny change to human mode: previously a piped tessel tile | cat mixed bar redraws into the pipe). Added tests/cli/test_flag_placement.py."
+    },
+    "tasks/T3": {
+      "title": "Convert info and projections",
+      "goal": "The two read-only commands, as the first real users of the Emitter.",
+      "approach": "tessel info returns {path, width, height, bands, dtype, crs, bounds}; tessel projections list returns [{code, name, units}]. The human renderers are moved into callbacks unchanged. Add the first golden files under tests/cli/golden/ and the schema validation helper they share.",
+      "touches": [
+        "tessel/commands/info.py",
+        "tessel/commands/projections.py",
+        "tests/cli/golden/info_geotiff.json",
+        "tests/cli/test_golden_json.py"
+      ],
+      "verify": "Golden JSON for a GeoTIFF and a plain PNG; human snapshots unchanged.",
+      "status": "merged",
+      "order": 3,
+      "depends_on": [
+        "T2"
+      ],
+      "pr": "P1",
+      "branch": "json-output/t3-info-and-projections",
+      "outcome": "Both commands converted. bounds is null for a PNG with no georeferencing rather than omitted, so consumers see a stable key set. 6 golden files added."
+    },
+    "tasks/T4": {
+      "title": "tile: NDJSON progress events on stderr, one summary document on stdout",
+      "goal": "Make the long-running command usable from scripts without losing progress reporting.",
+      "approach": "With --json, tessel tile writes one event per finished tile to stderr as {\"event\": \"tile\", \"x\": 3, \"y\": 7, \"bytes\": 48211} and, at the end, a single summary on stdout: {output_dir, tile_size, zoom_levels, tiles_written, tiles_skipped, elapsed_s}. Per Q1 the per-tile list is not part of the stdout document.\n\nThe event writer lives in tessel/output.py as Emitter.event(), so combine can reuse it.",
+      "touches": [
+        "tessel/commands/tile.py",
+        "tessel/output.py",
+        "tests/cli/test_tile_events.py",
+        "tests/cli/golden/tile_summary.json"
+      ],
+      "verify": "A 4x4 fixture mosaic yields 16 events and one summary; --resume reports skipped tiles in tiles_skipped.",
+      "status": "merged",
+      "order": 4,
+      "depends_on": [
+        "T3",
+        "Q1"
+      ],
+      "pr": "P1",
+      "branch": "json-output/t4-tile-ndjson-progress-events-and-final-summary",
+      "outcome": "Implemented as in Q1: tessel tile in.tif out/ --zoom 0-4 --json 2>events.ndjson >summary.json. Added Emitter.event(). Found that --resume double-counted skipped tiles in the human summary; fixed in the same PR since the JSON would have exposed it (2-line change in tile.py)."
+    },
+    "tasks/T5": {
+      "title": "combine, with overlap and blend fields",
+      "goal": "Convert the two-input merge command.",
+      "approach": "tessel combine a.tif b.tif -o out.tif --blend feather --json returns {output, inputs, overlap_px, blend, size}. Reuse Emitter.event() for the stripe-by-stripe progress. overlap_px is an integer; with feather blending the true overlap is fractional, so we round half up and document it.",
+      "touches": [
+        "tessel/commands/combine.py",
+        "tests/cli/test_combine_json.py",
+        "tests/cli/golden/combine_feather.json"
+      ],
+      "verify": "Golden output for hard-edge and feather blends; progress events appear only on stderr.",
+      "status": "merged",
+      "order": 5,
+      "depends_on": [
+        "T4"
+      ],
+      "pr": "P1",
+      "branch": "json-output/t5-combine-overlap-and-blend",
+      "outcome": "Converted. Rounding of overlap_px is documented in the schema description. The two inputs having different CRS now raises ProjectionMismatch before any work starts, which T6 maps to exit code 4."
+    },
+    "tasks/T6": {
+      "title": "Errors as JSON, documented exit codes",
+      "goal": "A failed command in JSON mode is as parseable as a successful one.",
+      "approach": "Wrap the click entry point in tessel/errors.py: known exception types map to {\"schema\": 1, \"error\": {\"code\": \"input_unreadable\", \"message\": ..., \"exit\": 3}} on stderr. Exit codes: 2 usage, 3 input unreadable, 4 projection mismatch, 5 internal. Usage errors from click are caught via ctx.fail override so they get the same shape. Unknown exceptions become code 5 with the message only, never a traceback, in JSON mode.\n\nAlso convert crop and verify here, since each has only one error path of its own.",
+      "touches": [
+        "tessel/errors.py",
+        "tessel/commands/crop.py",
+        "tessel/commands/verify.py",
+        "tests/cli/test_error_json.py"
+      ],
+      "verify": "Each exit code has a test that triggers it; crop and verify have golden files.",
+      "status": "merged",
+      "order": 6,
+      "depends_on": [
+        "T5"
+      ],
+      "pr": "P1",
+      "branch": "json-output/t6-json-errors-exit-codes-crop-verify",
+      "outcome": "Added tessel/errors.py. crop --box 10,10,200,200 --json and verify --json converted. verify reports {ok, problems:[{tile, reason}]} and exits 1 when ok is false, as before. Click's own Missing argument messages needed the ctx.fail override; without it they bypassed the wrapper."
+    },
+    "tasks/T7": {
+      "title": "Schema file, docs, and stdout-purity test",
+      "goal": "Publish the contract and fail CI if any command breaks it.",
+      "approach": "Write docs/json-schema/envelope.schema.json (JSON Schema 2020-12) with a $defs entry per command, a docs/json-output.md page with one example per command, and tests/cli/test_stdout_purity.py, which runs every subcommand with --json and requires json.loads(stdout) to succeed. Add the validation step to ci/pipeline.yml.",
+      "touches": [
+        "docs/json-schema/envelope.schema.json",
+        "docs/json-output.md",
+        "tests/cli/test_stdout_purity.py",
+        "ci/pipeline.yml"
+      ],
+      "verify": "CI is green with the new job; deleting a field from a command makes the schema test fail.",
+      "status": "merged",
+      "order": 7,
+      "depends_on": [
+        "T6"
+      ],
+      "pr": "P1",
+      "branch": "json-output/t7-schema-docs-and-stdout-purity-test",
+      "outcome": "Schema, docs page and purity test added; ci/pipeline.yml gained a json-contract job that takes about 40 s. Checked by deleting tiles_skipped from the tile summary locally: schema test failed as expected."
+    },
+    "prs/P1": {
+      "title": "Add --json output to every subcommand",
+      "summary": "Adds a global --json flag, an Emitter all commands use, a versioned envelope, JSON errors with documented exit codes, and a published JSON Schema. Human output is unchanged.",
+      "order": 1,
+      "branch": "json-output-all-subcommands",
+      "base": "main",
+      "status": "open",
+      "url": "https://code.tessellate-collective.example/tessel/tessel/pull/318"
+    },
+    "questions/Q1": {
+      "title": "Should tile --json list every tile in the summary?",
+      "context": "tessel tile on a large mosaic can write tens of thousands of tiles. We can put a tiles array in the final stdout document, which is simple to consume but grows without bound (about 90 bytes per tile, so roughly 3.5 MB at 40k tiles), or we can stream one NDJSON event per tile on stderr and keep the stdout summary small.",
+      "options": [
+        {
+          "label": "Summary only, events on stderr",
+          "cost": "Scripts that want the tile list must read stderr"
+        },
+        {
+          "label": "Full tiles array on stdout",
+          "cost": "Multi-MB documents; the whole thing is buffered before printing"
+        },
+        {
+          "label": "Both, behind --list-tiles"
+        }
+      ],
+      "recommendation": "Summary only, events on stderr",
+      "blocks": "The shape of the tile output in T4",
+      "task": "T4",
+      "status": "answered",
+      "asked_at": "2026-06-03T11:25:00Z",
+      "answered_at": "2026-06-04T08:50:00Z",
+      "answered_by": "u_ingrid",
+      "answer": "Summary only, events on stderr. Keep stdout small. If anyone asks for the list later we add a flag then."
+    },
+    "journal/2026-06-02T09:10:00Z": {
+      "at": "2026-06-02T09:10:00Z",
+      "text": "Plan written from docs/proposals/0007-json-output.md. Six subcommands, one PR; the work is a straight line because each command is converted on top of the Emitter.",
+      "by": "claude"
+    },
+    "journal/2026-06-02T09:55:00Z": {
+      "at": "2026-06-02T09:55:00Z",
+      "text": "Approved. Go ahead, and start with the flag plumbing.",
+      "by": "owner"
+    },
+    "journal/2026-06-02T10:05:00Z": {
+      "at": "2026-06-02T10:05:00Z",
+      "text": "Branch json-output-all-subcommands created off main and PR P1 planned. Starting T1.",
+      "by": "claude"
+    },
+    "journal/2026-06-02T13:40:00Z": {
+      "at": "2026-06-02T13:40:00Z",
+      "text": "T1 merged. Chose compact sorted-key JSON so golden files diff line by line.",
+      "by": "claude"
+    },
+    "journal/2026-06-02T17:15:00Z": {
+      "at": "2026-06-02T17:15:00Z",
+      "text": "T2 merged. Progress bars were drawing on stdout; moved them to stderr in both modes. That touches human behaviour slightly, but only for piped output.",
+      "by": "claude"
+    },
+    "journal/2026-06-03T11:25:00Z": {
+      "at": "2026-06-03T11:25:00Z",
+      "text": "T3 merged. Asked Q1 about the tile output shape before starting T4.",
+      "by": "claude"
+    },
+    "journal/2026-06-03T16:30:00Z": {
+      "at": "2026-06-03T16:30:00Z",
+      "text": "Nguyễn Thị Bảo: stderr progress is fine for CI logs, we already do that for verify.",
+      "by": "u_nguyen"
+    },
+    "journal/2026-06-04T08:50:00Z": {
+      "at": "2026-06-04T08:50:00Z",
+      "text": "Q1 answered: summary only, events on stderr.",
+      "by": "u_ingrid",
+      "questions": [
+        "Q1"
+      ]
+    },
+    "journal/2026-06-04T14:20:00Z": {
+      "at": "2026-06-04T14:20:00Z",
+      "text": "T4 merged using the answer to Q1. --resume was double-counting skipped tiles in the human summary too, so I fixed it here instead of shipping JSON with a wrong number.",
+      "by": "claude"
+    },
+    "journal/2026-06-05T10:45:00Z": {
+      "at": "2026-06-05T10:45:00Z",
+      "text": "T5 merged. Mixed-CRS inputs now fail early with ProjectionMismatch.",
+      "by": "claude"
+    },
+    "journal/2026-06-06T09:00:00Z": {
+      "at": "2026-06-06T09:00:00Z",
+      "text": "Weekend. Nothing scheduled; will pick up T6 on Monday.",
+      "by": "owner"
+    },
+    "journal/2026-06-08T12:10:00Z": {
+      "at": "2026-06-08T12:10:00Z",
+      "text": "T6 merged. Folded crop and verify into it because they only needed the error path; saves two near-empty PRs' worth of tasks.",
+      "by": "claude"
+    },
+    "journal/2026-06-09T10:30:00Z": {
+      "at": "2026-06-09T10:30:00Z",
+      "text": "T7 merged. All tasks are in. Running the done-check.",
+      "by": "claude"
+    },
+    "journal/2026-06-09T14:05:00Z": {
+      "at": "2026-06-09T14:05:00Z",
+      "text": "Done-check: all five conditions met. Exit code 5 is only tested with a forced internal error, not a real plugin crash, so that goes in the handover risks.",
+      "by": "claude"
+    },
+    "journal/2026-06-09T15:40:00Z": {
+      "at": "2026-06-09T15:40:00Z",
+      "text": "Pushed the branch, opened PR 318 and marked it ready for review. Handover written; driver cleared.",
+      "by": "claude"
+    }
+  }
+}

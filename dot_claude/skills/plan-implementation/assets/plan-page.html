@@ -1,0 +1,1060 @@
+<title>__PLAN_TITLE__</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="agent-guide" content="This plan page's working rules for agents are the markdown document at meta/guide in its database: read it with the ArtifactData tool (collection meta, doc_id guide) before acting.">
+<!-- For agents: this page is a viewer. The plan, tasks, questions and journal live in this plan page's database; start with the document at meta/guide. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* One reading column, laid out as a plan: its state, what needs the reader, the plan, then the record. */
+:root {
+  --bg: #f3f5f7;
+  --surface: #ffffff;
+  --ink: #17202a;
+  --muted: #5b6876;
+  --line: #d9dfe5;
+  --accent: #2f5d8a;
+  --attn: #b26a00;
+  --attn-soft: #fff4e0;
+  --ok: #2d7a4b;
+  --bad: #b23a3a;
+  --idle: #aab4be;
+  --font-ui: "Instrument Sans", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12171c; --surface: #1a2128; --ink: #e6ebf0; --muted: #93a1ae; --line: #2c3640;
+    --accent: #7fb0e0; --attn: #f0a940; --attn-soft: #2e2414; --ok: #5fbf85; --bad: #e57373; --idle: #4a5662;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12171c; --surface: #1a2128; --ink: #e6ebf0; --muted: #93a1ae; --line: #2c3640;
+  --accent: #7fb0e0; --attn: #f0a940; --attn-soft: #2e2414; --ok: #5fbf85; --bad: #e57373; --idle: #4a5662;
+  color-scheme: dark;
+}
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--font-ui); font-size: 15px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 64px;
+  /* Long URLs, branches and paths wrap wherever they sit, rather than widening the page on a phone. */
+  overflow-wrap: anywhere;
+}
+main { max-width: 880px; margin: 0 auto; display: flex; flex-direction: column; gap: 40px; }
+h1 { font-size: 28px; line-height: 1.2; margin: 0; text-wrap: balance; font-weight: 700; }
+h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 0 0 12px; font-weight: 600; display: flex; gap: 8px; align-items: baseline; }
+h2 .count { font-family: var(--font-mono); letter-spacing: 0; }
+.part-title { font-size: 20px; font-weight: 700; margin: 0; padding-bottom: 8px; border-bottom: 2px solid var(--ink); }
+h3 { font-size: 16px; margin: 0; line-height: 1.35; text-wrap: balance; }
+p { margin: 0; }
+.mono { font-family: var(--font-mono); font-size: 12.5px; }
+.muted { color: var(--muted); }
+.prose { white-space: pre-wrap; overflow-wrap: anywhere; }
+a { color: var(--accent); }
+a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.part { display: flex; flex-direction: column; gap: 28px; }
+
+/* Header */
+.head { display: flex; flex-direction: column; gap: 14px; }
+/* The subtitle sits below the title on narrow windows and to its right on wide ones. */
+.titles { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.subtitle { flex: none; white-space: nowrap; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+@media (min-width: 1024px) {
+  .titles { flex-direction: row; align-items: baseline; gap: 14px; }
+}
+/* The header sits above the content column on narrow windows, and spans the graph and content columns on wide ones. */
+.layout > .head { max-width: 880px; margin: 0 auto 40px; }
+.head-top { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; justify-content: space-between; }
+.objective { color: var(--muted); max-width: 68ch; }
+.chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
+.chip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.s-ok { color: var(--ok); } .s-attn { color: var(--attn); } .s-bad { color: var(--bad); } .s-run { color: var(--accent); } .s-idle { color: var(--muted); }
+.chip.big { font-size: 14px; padding: 4px 12px; }
+
+/* Progress bar: one continuous track, filled by the share of live tasks completed */
+.progress { display: flex; flex-direction: column; gap: 6px; }
+.strip { display: flex; height: 10px; border-radius: 999px; background: var(--line); overflow: hidden; }
+.strip-fill { height: 100%; width: 0; transition: width 0.4s ease; }
+#strip-done { background: var(--ok); }
+#strip-progress { background: var(--accent); }
+@media (prefers-reduced-motion: reduce) { .strip-fill { transition: none; } }
+
+/* Dependency graph */
+.progress-row { display: flex; align-items: center; gap: 10px; }
+.progress-row .strip { flex: 1; }
+.graph-toggle {
+  align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px 5px 9px;
+  font: inherit; font-size: 13.5px; font-weight: 500;
+  border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--muted); cursor: pointer;
+}
+.graph-toggle:hover { color: var(--ink); border-color: var(--muted); }
+.graph-toggle[aria-expanded="true"] { color: var(--accent); border-color: var(--accent); }
+.graph-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.graph-toggle svg { width: 18px; height: 18px; display: block; }
+/* Narrow windows: the graph opens under the progress bar from the icon button, closed to start. */
+.graph { overflow-x: auto; padding: 8px 0 4px; }
+.graph svg { display: block; margin-inline: auto; }
+/* Wide windows: the graph is always shown in a column to the left of the content, and stays in view while the page scrolls. */
+.side { display: none; }
+@media (min-width: 1024px) {
+  .layout { display: grid; grid-template-columns: max-content minmax(0, 880px); gap: 40px; justify-content: center; align-items: start; }
+  .layout:has(> .side[hidden]) { grid-template-columns: minmax(0, 880px); justify-content: center; }
+  /* In-page links land below the sticky header, whatever height it has right now. */
+  html { scroll-padding-top: calc(env(safe-area-inset-top, 0px) + var(--head-h, 0px) + 28px); }
+  .layout > main { margin: 0; max-width: none; min-width: 0; }
+  /* Size containment keeps the spanning header's one-line width from widening the graph column.
+     The header sticks to the top of the window, and the graph column sticks just below it. */
+  .layout > .head {
+    grid-column: 1 / -1; margin: 0; max-width: none; contain: inline-size;
+    position: sticky; top: env(safe-area-inset-top, 0px); z-index: 2;
+    background: var(--bg); padding-block: 16px;
+  }
+  /* A short fade under the sticky header, so text scrolling up softens into it instead of being cut. */
+  .layout > .head::after {
+    content: ""; position: absolute; left: 0; right: 0; top: 100%; height: 20px;
+    background: linear-gradient(var(--bg), transparent); pointer-events: none;
+  }
+  .side:not([hidden]) {
+    display: block; position: sticky; top: calc(env(safe-area-inset-top, 0px) + var(--head-h, 0px) + 16px);
+    max-height: calc(100vh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - var(--head-h, 0px) - 32px); overflow-y: auto;
+  }
+  .graph-toggle, #graph { display: none !important; }
+}
+.graph .edge { fill: none; stroke: var(--muted); stroke-width: 1.25; opacity: 0.7; }
+.graph .arrow { fill: var(--muted); }
+.graph .node rect { fill: var(--surface); stroke: var(--idle); stroke-width: 1.5; }
+.graph .node .nid { fill: var(--muted); font-family: var(--font-mono); font-size: 11px; }
+.graph .node .ntitle { fill: var(--ink); font-family: var(--font-ui); font-size: 12.5px; font-weight: 500; }
+.graph .node.s-ok rect { stroke: var(--ok); } .graph .node.s-run rect { stroke: var(--accent); }
+.graph .node.s-attn rect { stroke: var(--attn); } .graph .node.s-bad rect { stroke: var(--bad); }
+.graph .node.s-ok .dot { fill: var(--ok); } .graph .node.s-run .dot { fill: var(--accent); }
+.graph .node.s-attn .dot { fill: var(--attn); } .graph .node.s-bad .dot { fill: var(--bad); } .graph .node.s-idle .dot { fill: var(--idle); }
+.graph .node { cursor: pointer; }
+.graph .node:focus { outline: none; }
+.graph .node:focus-visible rect { stroke: var(--accent); stroke-width: 2.5; }
+/* A selected task lights up its chain: everything it waits on, everything waiting on it, and the edges between. */
+.graph .node, .graph .edge { transition: opacity 0.15s ease; }
+@media (prefers-reduced-motion: reduce) { .graph .node, .graph .edge { transition: none; } }
+.graph svg.has-sel .node:not(.rel) { opacity: 0.3; }
+.graph svg.has-sel .edge:not(.rel) { opacity: 0.12; }
+.graph .edge.rel { stroke: var(--accent); stroke-width: 2; opacity: 1; }
+.graph .arrow-rel { fill: var(--accent); }
+.graph .node.sel rect { stroke-width: 3; fill: var(--attn-soft); }
+.graph .node.dropped rect { stroke-dasharray: 4 3; }
+.graph .node.dropped .ntitle { fill: var(--muted); text-decoration: line-through; }
+
+/* Cards */
+.stack { display: flex; flex-direction: column; gap: 12px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.card.ask { border-color: var(--attn); background: var(--attn-soft); }
+.card.pr { padding: 8px 14px; }
+.card-top { display: flex; gap: 8px 12px; align-items: baseline; justify-content: space-between; flex-wrap: wrap; }
+.card-top .left { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; min-width: 0; }
+.label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; }
+.options { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.options li { display: grid; grid-template-columns: auto 1fr; gap: 0 8px; }
+.options li::before { content: "○"; color: var(--muted); }
+.options li.rec::before { content: "●"; color: var(--attn); }
+.options .cost { grid-column: 2; color: var(--muted); font-size: 13.5px; }
+.card-foot { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; font-size: 13px; color: var(--muted); }
+.quiet { color: var(--muted); padding: 14px 16px; border: 1px dashed var(--line); border-radius: 8px; }
+.fields { display: grid; grid-template-columns: 6.5rem 1fr; gap: 6px 14px; margin: 0; }
+.fields dt { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; padding-top: 2px; }
+.fields dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.fields ul, .bullets { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 2px; }
+.fields ul.links { list-style: none; padding-left: 0; gap: 4px; }
+
+/* Handover */
+.handover { border-color: var(--ok); }
+
+/* Done check */
+.checks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.checks li { display: grid; grid-template-columns: 22px 1fr; gap: 2px 8px; }
+.checks .mark { font-weight: 700; text-align: center; }
+.checks .note { grid-column: 2; color: var(--muted); font-size: 13.5px; }
+
+/* Journal */
+.journal { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.journal li { display: grid; grid-template-columns: 6.5rem 1fr; gap: 12px; padding: 7px 0; border-top: 1px solid var(--line); font-size: 14px; }
+.journal li:first-child { border-top: 0; }
+.journal time { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 13px; }
+.journal p { min-width: 0; overflow-wrap: anywhere; }
+.journal .entry { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.journal .entry details > summary { font-size: 13.5px; }
+.journal .by { font-size: 12.5px; color: var(--muted); }
+
+/* Answering an open question */
+.answer { display: flex; flex-direction: column; gap: 10px; }
+.answer fieldset { border: 0; margin: 0; padding: 0; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.answer legend { padding: 0; margin-bottom: 4px; }
+.choice { display: grid; grid-template-columns: auto 1fr; gap: 0 10px; align-items: start; cursor: pointer; }
+.choice input[type="radio"] { margin: 4px 0 0; accent-color: var(--attn); }
+.choice-text { display: flex; flex-direction: column; min-width: 0; }
+.choice-text .cost { color: var(--muted); font-size: 13.5px; }
+.answer .text {
+  font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--line);
+  border-radius: 6px; padding: 6px 8px; width: 100%; box-sizing: border-box; resize: vertical;
+}
+.answer .text:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.answer-actions { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+.answer button {
+  font: inherit; font-weight: 600; padding: 6px 18px; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--attn); background: var(--attn); color: var(--surface);
+}
+.answer button:disabled { opacity: 0.6; cursor: default; }
+.answer button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.answer .status { font-size: 13px; color: var(--muted); }
+.asks-note { font-size: 13.5px; margin-bottom: 10px; }
+.agent-note { font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 12px; }
+
+details > summary { cursor: pointer; color: var(--muted); font-size: 14px; }
+details[open] > summary { margin-bottom: 10px; }
+
+@media (max-width: 560px) {
+  h1 { font-size: 23px; }
+  .fields { grid-template-columns: 1fr; gap: 2px; }
+  .fields dd { margin-bottom: 8px; }
+  .journal li { grid-template-columns: 1fr; gap: 0; }
+}
+</style>
+
+<div class="layout">
+  <header class="head">
+    <div class="head-top">
+      <div class="titles">
+        <h1 id="title">Plan</h1>
+        <p class="subtitle">Implementation Plan</p>
+      </div>
+      <span id="status" class="chip big s-idle">Starting</span>
+    </div>
+    <div class="progress" id="progress" hidden>
+      <div class="progress-row">
+        <div class="strip" id="strip" role="progressbar" aria-label="Tasks completed" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="strip-fill" id="strip-done"></div><div class="strip-fill" id="strip-progress"></div></div>
+      </div>
+      <button type="button" class="graph-toggle" id="graph-toggle" aria-expanded="false" aria-controls="graph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2.5" width="6" height="5" rx="1"/><rect x="2.5" y="16.5" width="6" height="5" rx="1"/><rect x="15.5" y="16.5" width="6" height="5" rx="1"/><path d="M12 7.5v4M5.5 16.5V14a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v2.5"/></svg><span id="graph-toggle-label">Show Task Dependency Graph</span></button>
+      <div class="graph" id="graph" hidden></div>
+    </div>
+    <p id="objective" class="objective prose">The plan hasn't been written yet. This page fills in as it is.</p>
+  </header>
+
+<aside class="side" id="side" aria-label="Dependency graph" hidden>
+  <div class="graph" id="graph-side"></div>
+</aside>
+
+<main>
+  <section id="handover-section" hidden>
+    <h2>Ready for your review</h2>
+    <div id="handover"></div>
+  </section>
+
+  <section>
+    <h2>Needs attention <span class="count" id="ask-count"></span></h2>
+    <p class="muted asks-note" id="asks-note" role="status" hidden></p>
+    <div class="stack" id="asks"></div>
+  </section>
+
+  <div class="part">
+    <h2 class="part-title">Plan</h2>
+
+    <section id="plan-approach" data-comment-target>
+      <h2>Approach</h2>
+      <p class="prose" id="approach"><span class="muted">The approach appears here once the code has been read.</span></p>
+    </section>
+
+    <section id="plan-delivery" data-comment-target hidden>
+      <h2>Delivery</h2>
+      <p class="prose" id="delivery"></p>
+    </section>
+
+    <section id="plan-done" data-comment-target>
+      <h2>Done when</h2>
+      <ul class="checks" id="checks"><li><span></span><span class="muted">Not written yet.</span></li></ul>
+    </section>
+
+    <section id="plan-prs" hidden>
+      <h2>Pull requests <span class="count" id="pr-count"></span></h2>
+      <div class="stack" id="prs"></div>
+    </section>
+
+    <section>
+      <h2>Tasks <span class="count" id="task-count"></span></h2>
+      <div class="stack" id="tasks"><p class="quiet">No tasks yet. They appear here as the plan takes shape.</p></div>
+    </section>
+
+    <section id="plan-scope" data-comment-target hidden>
+      <h2>Out of scope</h2>
+      <ul class="bullets" id="scope"></ul>
+    </section>
+
+    <section id="plan-risks" data-comment-target hidden>
+      <h2>Risks</h2>
+      <ul class="bullets" id="risks"></ul>
+    </section>
+  </div>
+
+  <div class="part">
+    <h2 class="part-title">Record</h2>
+
+    <section>
+      <h2>Journal</h2>
+      <ul class="journal" id="journal"><li><time></time><p class="muted">Nothing yet.</p></li></ul>
+    </section>
+
+    <p class="agent-note">Agents work this plan by the guide stored with it, at <span class="mono">meta/guide</span> in this plan page's database. To have one pick it up, give a Claude Code session this page's link.</p>
+  </div>
+</main>
+</div>
+
+<script>
+(() => {
+  const SVG = "http://www.w3.org/2000/svg";
+  const state = { run: null, tasks: [], questions: [], journal: [], prs: [] };
+  // Set once the page knows who is viewing: editors answer open questions here.
+  let dbRef = null, viewerUser = null, commentsRef = null, canAnswer = false, myId = null;
+  const drafts = new Map();
+
+  // "blocked" is never stored: the page works it out (see planBlocked).
+  const RUN_STATUS = {
+    pending: ["Pending", "s-idle"], running: ["Running", "s-run"], blocked: ["Blocked", "s-attn"],
+    done: ["Done", "s-ok"], stopped: ["Stopped", "s-bad"],
+  };
+  const TASK_STATUS = {
+    pending: ["Pending", "s-idle"], in_progress: ["In Progress", "s-run"],
+    blocked: ["Blocked", "s-attn"], merged: ["Done", "s-ok"], dropped: ["Dropped", "s-idle"],
+  };
+  const PR_STATUS = {
+    planned: ["Planned", "s-idle"], draft: ["Draft", "s-run"], open: ["Open", "s-run"], merged: ["Merged", "s-ok"], closed: ["Closed", "s-bad"],
+  };
+  const CHECK_MARK = { met: ["✓", "s-ok"], unmet: ["✗", "s-bad"], unchecked: ["·", "s-idle"] };
+
+  const $ = (id) => document.getElementById(id);
+  function el(tag, cls, text) {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null && text !== "") n.textContent = String(text);
+    return n;
+  }
+  function svg(tag, attrs, text) {
+    const n = document.createElementNS(SVG, tag);
+    for (const k in attrs) n.setAttribute(k, attrs[k]);
+    if (text != null) n.textContent = text;
+    return n;
+  }
+  const statusClass = (map, key) => (map[key] || [, "s-idle"])[1];
+  function chip(map, key, extra) {
+    const [label, cls] = map[key] || [key || "Unknown", "s-idle"];
+    return el("span", "chip " + cls + (extra ? " " + extra : ""), label);
+  }
+  function ago(iso) {
+    const t = Date.parse(iso);
+    if (!t) return "";
+    const s = Math.round((Date.now() - t) / 1000);
+    if (s < 60) return "just now";
+    const m = Math.round(s / 60);
+    if (m < 60) return m + " min ago";
+    const h = Math.round(m / 60);
+    if (h < 36) return h + " h ago";
+    return new Date(t).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  }
+  function timeEl(iso) {
+    const t = el("time", null, ago(iso));
+    if (iso) { t.dateTime = iso; t.title = new Date(iso).toLocaleString(); }
+    return t;
+  }
+  function metaItem(label, value, mono) {
+    const span = el("span", null, label + " ");
+    span.appendChild(el("b", mono ? "mono" : null, value));
+    return span;
+  }
+  function list(items, cls) {
+    const ul = el("ul", cls);
+    for (const item of items) ul.appendChild(el("li", null, item));
+    return ul;
+  }
+  const arr = (v) => (Array.isArray(v) ? v : []);
+  const byTime = (field, dir) => (a, b) => (dir === "desc" ? -1 : 1) * String(a[field] || "").localeCompare(String(b[field] || ""));
+  const sortedTasks = () => [...state.tasks].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+  function renderHeader() {
+    const r = state.run;
+    if (!r) return;
+    $("title").textContent = r.title || "Plan";
+    $("status").replaceWith(Object.assign(chip(RUN_STATUS, r.status === "running" && planBlocked() ? "blocked" : r.status, "big"), { id: "status" }));
+    $("objective").hidden = true;
+  }
+
+  function renderProgress() {
+    const tasks = sortedTasks();
+    $("progress").hidden = tasks.length === 0;
+    // Done, then In Progress, filling from the left. Blocked and Pending stay as empty track.
+    const count = { merged: 0, in_progress: 0 };
+    let live = 0;
+    for (const t of tasks) {
+      if (t.status in count) count[t.status]++;
+      if (t.status !== "dropped") live++;
+    }
+    const share = (n) => (live ? (n / live) * 100 : 0);
+    $("strip-done").style.width = share(count.merged) + "%";
+    $("strip-progress").style.width = share(count.in_progress) + "%";
+    const summary = count.merged + " done, " + count.in_progress + " in progress, of " + live + " tasks";
+    $("strip").setAttribute("aria-valuenow", String(Math.round(share(count.merged))));
+    $("strip").setAttribute("aria-valuetext", summary);
+    $("strip").title = summary;
+    $("side").hidden = tasks.length === 0;
+    drawGraphs();
+  }
+
+  // Portrait layout: the graph flows top to bottom, one row per dependency level, so a row's position
+  // always means "waits on the rows above". Its shape never depends on the window: when it's wider than
+  // the space it's given, it scrolls sideways instead of rearranging.
+  function drawGraphs() {
+    for (const id of ["graph", "graph-side"]) renderGraph($(id), sortedTasks());
+  }
+
+  // Clicking a task selects it; clicking it again, the graph's background, or pressing Escape clears it.
+  let selected = null;
+  function select(id, hostId) {
+    selected = id && id !== selected ? id : null;
+    drawGraphs();
+    if (id && hostId) {
+      const again = $(hostId).querySelector(`[data-id="${CSS.escape(id)}"]`);
+      if (again) again.focus();
+    }
+  }
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && selected) select(null);
+  });
+  // The sticky graph column sits below the sticky header, whose height changes with the title and window width.
+  const head = document.querySelector(".layout > .head");
+  new ResizeObserver(() => {
+    document.documentElement.style.setProperty("--head-h", head.offsetHeight + "px");
+  }).observe(head);
+
+  $("graph-toggle").addEventListener("click", () => {
+    const open = $("graph").hidden;
+    $("graph").hidden = !open;
+    $("graph-toggle").setAttribute("aria-expanded", String(open));
+    $("graph-toggle-label").textContent = (open ? "Hide" : "Show") + " Task Dependency Graph";
+  });
+
+  function wrapTitle(text, max) {
+    const lines = [];
+    let cur = "";
+    for (const w of String(text || "").split(/\s+/).filter(Boolean)) {
+      if (cur && (cur + " " + w).length > max) { lines.push(cur); cur = w; }
+      else cur = cur ? cur + " " + w : w;
+    }
+    if (cur) lines.push(cur);
+    const out = lines.slice(0, 2);
+    if (lines.length > 2) out[1] = lines.slice(1).join(" ");
+    return out.map((l) => (l.length > max ? l.slice(0, max - 1).trimEnd() + "…" : l));
+  }
+
+  // A path through right-angled points, with its corners rounded.
+  function roundedPath(points, radius) {
+    const pts = points.filter((p, i) => !i || p[0] !== points[i - 1][0] || p[1] !== points[i - 1][1]);
+    let d = "M" + pts[0];
+    for (let i = 1; i < pts.length - 1; i++) {
+      const [px, py] = pts[i - 1], [x, y] = pts[i], [nx, ny] = pts[i + 1];
+      const inLen = Math.hypot(x - px, y - py), outLen = Math.hypot(nx - x, ny - y);
+      const r = Math.min(radius, inLen / 2, outLen / 2);
+      d += ` L${x + ((px - x) * r) / inLen},${y + ((py - y) * r) / inLen}`;
+      d += ` Q${x},${y} ${x + ((nx - x) * r) / outLen},${y + ((ny - y) * r) / outLen}`;
+    }
+    return d + " L" + pts[pts.length - 1];
+  }
+
+  function renderGraph(host, tasks) {
+    host.replaceChildren();
+    if (!tasks.length) return;
+    const byId = new Map(tasks.map((t) => [t.id, t]));
+    const depth = new Map();
+    const layerOf = (t, seen) => {
+      if (depth.has(t.id)) return depth.get(t.id);
+      if (seen.has(t.id)) return 0;
+      seen.add(t.id);
+      let d = 0;
+      for (const dep of arr(t.depends_on)) {
+        const du = byId.get(dep);
+        if (du) d = Math.max(d, layerOf(du, seen) + 1);
+      }
+      depth.set(t.id, d);
+      return d;
+    };
+    for (const t of tasks) layerOf(t, new Set());
+    const layers = [];
+    for (const t of tasks) (layers[depth.get(t.id)] ||= []).push(t);
+    // At most MAX tasks sit side by side; a level with more wraps onto extra rows, packed closer (GW) than levels (GY).
+    // Tasks sit on a fixed grid of columns, so the gutters between them stay clear from top to bottom and an edge
+    // that has to pass other rows can run down one (SIDE is the outer gutter) instead of behind unrelated tasks.
+    const W = 128, H = 58, GX = 24, GY = 48, GW = 26, PAD = 8, SIDE = 18, CHARS = 15, MAX = 3, LANES = 4, LANE = 4;
+    const perRow = Math.min(MAX, Math.max(...layers.map((l) => (l ? l.length : 0))));
+    const width = SIDE * 2 + perRow * W + (perRow - 1) * GX;
+    const colX = (c) => SIDE + c * (W + GX);
+    const pos = new Map();
+    const rows = [];
+    let y = PAD;
+    for (const layer of layers) {
+      if (!layer) continue;
+      // Each task goes under the tasks it waits on, which keeps edges short and uncrossed.
+      const under = (t) => {
+        const cs = arr(t.depends_on).map((d) => pos.get(d)).filter(Boolean).map((p) => p.col);
+        return cs.length ? cs.reduce((a, b) => a + b, 0) / cs.length : (perRow - 1) / 2;
+      };
+      const ordered = layer.map((t, i) => ({ t, k: under(t), i })).sort((a, b) => (a.k - b.k) || (a.i - b.i));
+      for (let r = 0; r < ordered.length; r += MAX) {
+        const free = Array.from({ length: perRow }, (_, c) => c);
+        for (const { t, k } of ordered.slice(r, r + MAX)) {
+          const col = free.reduce((best, c) => (Math.abs(c - k) < Math.abs(best - k) ? c : best));
+          free.splice(free.indexOf(col), 1);
+          pos.set(t.id, { x: colX(col), y, col, row: rows.length });
+        }
+        const gap = r + MAX < ordered.length ? GW : GY;
+        rows.push(gap);
+        y += H + gap;
+      }
+    }
+    const height = y - rows[rows.length - 1] + PAD;
+
+    // An edge to the next row stays in the gap between them. A longer one drops into the gap below its task, runs
+    // along it to the nearest gutter, down that, and along the gap above its target. Edges from one task share a
+    // lane, so they read as one line that forks.
+    const gutterX = (g) => (g === 0 ? SIDE / 2 : g === perRow ? width - SIDE / 2 : colX(g) - GX / 2);
+    const laneOf = new Map(tasks.map((t, i) => [t.id, ((i % LANES) - (LANES - 1) / 2) * LANE]));
+    function edgePath(dep, from, to) {
+      const x1 = from.x + W / 2, y1 = from.y + H, x2 = to.x + W / 2, y2 = to.y - 2;
+      if (to.row === from.row + 1) {
+        const my = (y1 + y2) / 2;
+        return `M${x1},${y1} C${x1},${my} ${x2},${my} ${x2},${y2}`;
+      }
+      const off = laneOf.get(dep);
+      let gx = gutterX(0);
+      for (let g = 1; g <= perRow; g++) {
+        const x = gutterX(g);
+        if (Math.abs(x - x1) + Math.abs(x - x2) < Math.abs(gx - x1) + Math.abs(gx - x2)) gx = x;
+      }
+      gx += off;
+      const ya = y1 + rows[from.row] / 2 + off, yb = to.y - rows[to.row - 1] / 2 + off;
+      return roundedPath([[x1, y1], [x1, ya], [gx, ya], [gx, yb], [x2, yb], [x2, y2]], 6);
+    }
+
+    // The selected task's chain: what it waits on (up) and what waits on it (down), all the way through.
+    const sel = selected && byId.has(selected) ? selected : null;
+    const kids = new Map();
+    for (const t of tasks) for (const dep of arr(t.depends_on)) {
+      if (!kids.has(dep)) kids.set(dep, []);
+      kids.get(dep).push(t.id);
+    }
+    const walk = (start, next) => {
+      const seen = new Set(), stack = [start];
+      while (stack.length) {
+        for (const n of next(stack.pop())) if (byId.has(n) && !seen.has(n)) { seen.add(n); stack.push(n); }
+      }
+      return seen;
+    };
+    const up = sel ? walk(sel, (id) => arr(byId.get(id).depends_on)) : new Set();
+    const down = sel ? walk(sel, (id) => kids.get(id) || []) : new Set();
+    const inChain = (id) => id === sel || up.has(id) || down.has(id);
+
+    const markerId = "arrow-" + host.id;
+    const root = svg("svg", { width, height, viewBox: `0 0 ${width} ${height}`, role: "group", "aria-label": "Tasks and their dependencies, top to bottom. Select a task to highlight its chain.", class: sel ? "has-sel" : "" });
+    root.addEventListener("click", () => { if (selected) select(null); });
+    const defs = svg("defs", {});
+    for (const [id, cls] of [[markerId, "arrow"], [markerId + "-rel", "arrow-rel"]]) {
+      const marker = svg("marker", { id, viewBox: "0 0 8 8", refX: "7", refY: "4", markerWidth: "7", markerHeight: "7", orient: "auto" });
+      marker.appendChild(svg("path", { d: "M0,0 L8,4 L0,8 z", class: cls }));
+      defs.appendChild(marker);
+    }
+    root.appendChild(defs);
+    for (const t of tasks) {
+      const to = pos.get(t.id);
+      for (const dep of arr(t.depends_on)) {
+        const from = pos.get(dep);
+        if (!from) continue;
+        const rel = sel && ((up.has(dep) && (t.id === sel || up.has(t.id))) || ((dep === sel || down.has(dep)) && down.has(t.id)));
+        root.appendChild(svg("path", { d: edgePath(dep, from, to), class: rel ? "edge rel" : "edge", "marker-end": `url(#${rel ? markerId + "-rel" : markerId})` }));
+      }
+    }
+    for (const t of tasks) {
+      const p = pos.get(t.id);
+      const cls = "node " + statusClass(TASK_STATUS, t.status) + (t.status === "dropped" ? " dropped" : "")
+        + (sel && inChain(t.id) ? " rel" : "") + (t.id === sel ? " sel" : "");
+      const g = svg("g", {
+        class: cls, transform: `translate(${p.x},${p.y})`, "data-id": t.id,
+        tabindex: "0", role: "button", "aria-pressed": String(t.id === sel),
+        "aria-label": t.id + " " + (t.title || "") + ", " + (TASK_STATUS[t.status] || [t.status])[0],
+      });
+      g.addEventListener("click", (e) => { e.stopPropagation(); select(t.id, host.id); });
+      g.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(t.id, host.id); }
+      });
+      g.appendChild(svg("title", {}, t.id + " · " + (t.title || "") + " · " + (TASK_STATUS[t.status] || [t.status])[0]));
+      g.appendChild(svg("rect", { width: W, height: H, rx: 6 }));
+      g.appendChild(svg("circle", { class: "dot", cx: 12, cy: 15, r: 3.5 }));
+      g.appendChild(svg("text", { class: "nid", x: 21, y: 19 }, t.id));
+      wrapTitle(t.title, CHARS).forEach((line, i) => g.appendChild(svg("text", { class: "ntitle", x: 10, y: 36 + i * 15 }, line)));
+      root.appendChild(g);
+    }
+    host.appendChild(root);
+  }
+
+  // A running plan is blocked when it has unfinished tasks and none of them is in progress or ready to start.
+  function planBlocked() {
+    const byId = new Map(state.tasks.map((t) => [t.id, t]));
+    const open = new Set(state.questions.filter((q) => q.status === "open").map((q) => q.id));
+    const cleared = (dep) => !open.has(dep) && (!byId.has(dep) || ["merged", "dropped"].includes(byId.get(dep).status));
+    const ready = (t) => t.status === "pending" && arr(t.depends_on).every(cleared);
+    const left = state.tasks.filter((t) => !["merged", "dropped"].includes(t.status));
+    return left.length > 0 && !left.some((t) => t.status === "in_progress" || ready(t));
+  }
+
+  function renderHandover() {
+    const h = state.run && state.run.handover;
+    $("handover-section").hidden = !h;
+    if (!h) return;
+    const card = el("article", "card handover");
+    card.id = "handover-card";
+    card.setAttribute("data-comment-target", "");
+    if (h.summary) card.appendChild(el("p", "prose", h.summary));
+    const where = el("div", "card-foot");
+    if (h.branch) where.appendChild(metaItem("Branch", h.branch, true));
+    if (h.pr_url) {
+      const a = el("a", null, h.pr_url);
+      a.href = h.pr_url; a.target = "_blank"; a.rel = "noopener";
+      where.appendChild(a);
+    }
+    card.appendChild(where);
+    for (const [key, label] of [["look_first", "Look at first"], ["risks", "Least sure of"]]) {
+      if (arr(h[key]).length) {
+        card.appendChild(el("p", "label", label));
+        card.appendChild(list(h[key], "bullets"));
+      }
+    }
+    $("handover").replaceChildren(card);
+  }
+
+  function questionCard(q, open) {
+    const card = el("article", "card" + (open ? " ask" : ""));
+    card.id = "q-" + q.id;
+    card.setAttribute("data-comment-target", "");
+    const top = el("div", "card-top");
+    top.appendChild(el("h3", null, q.title || q.id));
+    top.appendChild(el("span", "mono muted", q.id + (q.task ? " · " + q.task : "")));
+    card.appendChild(top);
+    if (q.context) card.appendChild(el("p", "prose", q.context));
+    if (open && canAnswer) {
+      card.appendChild(answerForm(q));
+    } else if (arr(q.options).length) {
+      const ul = el("ul", "options");
+      for (const o of q.options) {
+        const rec = o.label === q.recommendation;
+        const li = el("li", rec ? "rec" : null);
+        li.appendChild(el("span", null, o.label + (rec ? " (recommended)" : "")));
+        if (o.cost) li.appendChild(el("span", "cost", o.cost));
+        ul.appendChild(li);
+      }
+      card.appendChild(ul);
+    } else if (q.recommendation) {
+      card.appendChild(el("p", null, "Recommended: " + q.recommendation));
+    }
+    if (!open) card.appendChild(el("p", "prose", (q.status === "withdrawn" ? "Withdrawn: " : "Answer: ") + (q.answer || "")));
+    const foot = el("div", "card-foot");
+    if (open && q.blocks) foot.appendChild(el("span", null, "Holding up: " + q.blocks));
+    foot.appendChild(timeEl(open ? q.asked_at : q.answered_at));
+    card.appendChild(foot);
+    return card;
+  }
+
+  // An open question's answer form: its options as choices with the recommendation picked, an "Other"
+  // answer. Saving answers the question and adds a journal entry naming who answered.
+  function answerForm(q) {
+    const form = el("form", "answer");
+    const group = "ans-" + q.id;
+    const draft = drafts.get(q.id) || {};
+    const opts = arr(q.options);
+    const fs = el("fieldset");
+    fs.appendChild(el("legend", "label", "Your answer"));
+    for (const o of opts) {
+      const rec = o.label === q.recommendation;
+      const lab = el("label", "choice");
+      const input = el("input");
+      input.type = "radio"; input.name = group; input.value = o.label;
+      input.checked = draft.choice ? draft.choice === o.label : rec;
+      const txt = el("span", "choice-text");
+      txt.appendChild(el("span", null, o.label + (rec ? " (recommended)" : "")));
+      if (o.cost) txt.appendChild(el("span", "cost", o.cost));
+      lab.append(input, txt);
+      fs.appendChild(lab);
+    }
+    const otherLab = el("label", "choice");
+    const otherRadio = el("input");
+    otherRadio.type = "radio"; otherRadio.name = group; otherRadio.value = "__other__";
+    otherRadio.checked = draft.choice ? draft.choice === "__other__" : !opts.length;
+    const otherText = el("input", "text");
+    otherText.type = "text"; otherText.placeholder = opts.length ? "Something else" : "Your answer";
+    otherText.setAttribute("aria-label", "Other answer");
+    otherText.value = draft.other || "";
+    otherText.addEventListener("input", () => { otherRadio.checked = true; });
+    const otherWrap = el("span", "choice-text");
+    otherWrap.appendChild(otherText);
+    otherLab.append(otherRadio, otherWrap);
+    fs.appendChild(otherLab);
+    form.appendChild(fs);
+    const actions = el("div", "answer-actions");
+    const btn = el("button", null, "Answer");
+    btn.type = "submit";
+    const status = el("span", "status");
+    status.setAttribute("role", "status");
+    actions.append(btn, status);
+    form.appendChild(actions);
+
+    const read = () => {
+      const picked = form.querySelector(`input[name="${CSS.escape(group)}"]:checked`);
+      return { choice: picked ? picked.value : "", other: otherText.value };
+    };
+    form.addEventListener("input", () => drafts.set(q.id, read()));
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const d = read();
+      const answer = d.choice === "__other__" ? d.other.trim() : d.choice;
+      if (!answer) { status.textContent = "Pick an option or write an answer."; return; }
+      const at = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+      btn.disabled = true;
+      status.textContent = "Saving…";
+      // Started inside the click so it counts as the viewer's own gesture; it wakes the Claude session watching this plan page.
+      const told = notifyClaude(form.closest(".card"), q.id + " answered on the plan page: " + answer);
+      try {
+        await dbRef.doc("questions/" + q.id).update({ status: "answered", answer, answered_at: at, answered_by: myId });
+        await dbRef.doc("journal/" + at).set({ at, text: q.id + " answered: " + answer, questions: [q.id], by: myId });
+        drafts.delete(q.id);
+        const outcome = await told;
+        showAsksNote(outcome === "sent" ? "" : q.id + " is answered, but no Claude session was told: none is watching this plan page right now.");
+      } catch (err) {
+        btn.disabled = false;
+        status.textContent = err && err.code === "invalid_argument"
+          ? "This plan page didn't accept the answer; only its editors can answer."
+          : "Couldn't save the answer. Try again.";
+      }
+    });
+    return form;
+  }
+
+  // Posts a comment on the item and sends it to Claude, as the viewer's "Send to Claude" would. Resolves
+  // "sent", or why not ("no_session", a rejection code); never throws.
+  async function notifyClaude(card, text) {
+    if (!commentsRef) return "unavailable";
+    try {
+      if ((await commentsRef.canSendToClaude()) !== "available") return "no_session";
+      const anchor = await commentsRef.anchorFor(card);
+      await commentsRef.sendToClaude({ anchor, text });
+      return "sent";
+    } catch (e) {
+      return (e && e.code) || "failed";
+    }
+  }
+  // Once per page load, when the owner views the plan page, entries marked "owner" take the owner's real id.
+  let ownerClaimed = false;
+  async function claimOwnerEntries() {
+    if (ownerClaimed || !myId || !viewerUser) return;
+    const mine = state.journal.filter((j) => j.by === "owner");
+    if (!mine.length) return;
+    ownerClaimed = true;
+    if (!(await viewerUser.isOwner())) return;
+    for (const j of mine) {
+      try { await dbRef.doc("journal/" + j.id).update({ by: myId }); } catch (e) { /* left marked "owner" */ }
+    }
+  }
+
+  function showAsksNote(text) {
+    $("asks-note").textContent = text;
+    $("asks-note").hidden = !text;
+  }
+
+  // Re-rendered only when the open questions change, so a half-written answer isn't wiped by a refresh.
+  let asksKey = "";
+  function renderQuestions() {
+    const open = state.questions.filter((q) => q.status === "open").sort(byTime("asked_at"));
+    const key = JSON.stringify([canAnswer, open]);
+    if (key === asksKey) return;
+    asksKey = key;
+    $("ask-count").textContent = open.length ? String(open.length) : "";
+    const asks = $("asks");
+    asks.replaceChildren();
+    if (!open.length) {
+      asks.appendChild(el("p", "quiet", "Nothing needs attention right now."));
+    }
+    for (const q of open) asks.appendChild(questionCard(q, true));
+  }
+
+  function renderPlan() {
+    const r = state.run;
+    if (!r) return;
+    if (r.approach) $("approach").textContent = r.approach;
+    $("plan-delivery").hidden = !r.delivery;
+    $("delivery").textContent = r.delivery || "";
+    const checks = arr(r.done_check);
+    if (checks.length) {
+      const ul = $("checks");
+      ul.replaceChildren();
+      for (const c of checks) {
+        const [mark, cls] = CHECK_MARK[c.state] || CHECK_MARK.unchecked;
+        const li = el("li");
+        li.appendChild(el("span", "mark " + cls, mark));
+        li.appendChild(el("span", null, c.text));
+        if (c.note) li.appendChild(el("span", "note", c.note));
+        ul.appendChild(li);
+      }
+    }
+    $("plan-scope").hidden = arr(r.out_of_scope).length === 0;
+    $("scope").replaceChildren(...arr(r.out_of_scope).map((s) => el("li", null, s)));
+    $("plan-risks").hidden = arr(r.risks).length === 0;
+    $("risks").replaceChildren(...arr(r.risks).map((s) => el("li", null, s)));
+  }
+
+  function field(dl, label, value) {
+    if (value == null || value === "" || (Array.isArray(value) && !value.length)) return;
+    dl.appendChild(el("dt", null, label));
+    const dd = el("dd");
+    if (Array.isArray(value)) dd.appendChild(list(value));
+    else dd.appendChild(el("p", "prose", value));
+    dl.appendChild(dd);
+  }
+
+  function linkEl(href, text) {
+    const a = el("a", null, text);
+    a.href = href; a.target = "_blank"; a.rel = "noopener";
+    return a;
+  }
+
+  // The tracker epics a task belongs to: keys on the task, names and the browse URL on the run.
+  function epicsField(dl, keys) {
+    if (!keys.length) return;
+    const r = state.run || {};
+    const names = r.epics || {};
+    dl.appendChild(el("dt", null, keys.length > 1 ? "Epics" : "Epic"));
+    const dd = el("dd");
+    const ul = el("ul", "links");
+    for (const k of keys) {
+      const li = el("li");
+      li.appendChild(r.jira_browse_url ? linkEl(r.jira_browse_url + k, k) : el("span", null, k));
+      if (names[k]) li.appendChild(el("span", "muted", " · " + names[k]));
+      ul.appendChild(li);
+    }
+    dd.appendChild(ul);
+    dl.appendChild(dd);
+  }
+
+  // A PR's own number, from the end of its URL. A planned PR has no URL yet, so it has none.
+  function prNumber(p) {
+    const m = String(p.url || "").match(/(\d+)\/?$/);
+    return m ? "#" + m[1] : "";
+  }
+
+  // The PR a task lands in, linked to its card in the Pull requests section.
+  function prField(dl, id) {
+    if (!id) return;
+    const p = state.prs.find((x) => x.id === id);
+    dl.appendChild(el("dt", null, "PR"));
+    const dd = el("dd");
+    const number = p && prNumber(p);
+    const a = el("a", null, [number, p && p.title].filter(Boolean).join(" · ") || id);
+    a.href = "#pr-" + id;
+    dd.appendChild(a);
+    dl.appendChild(dd);
+  }
+
+  // A plan lands as one or more PRs. Each lists its branch, what it's based on, its tasks and its link.
+  function renderPrs() {
+    const prs = [...state.prs].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    $("plan-prs").hidden = prs.length === 0;
+    $("pr-count").textContent = prs.length > 1 ? String(prs.length) : "";
+    const wrap = $("prs");
+    wrap.replaceChildren();
+    for (const p of prs) {
+      const card = el("article", "card pr");
+      card.id = "pr-" + p.id;
+      card.setAttribute("data-comment-target", "");
+      if (p.summary) card.title = p.summary;
+      const top = el("div", "card-top");
+      const left = el("div", "left");
+      const number = prNumber(p);
+      if (number) left.appendChild(linkEl(p.url, number));
+      left.appendChild(el("h3", null, p.title || ""));
+      top.appendChild(left);
+      top.appendChild(chip(PR_STATUS, p.status));
+      card.appendChild(top);
+      wrap.appendChild(card);
+    }
+  }
+
+  // What a task waits on: other tasks (drawn in the graph) and questions (listed here only, with their state).
+  function afterField(dl, deps) {
+    if (!deps.length) return;
+    const qs = new Map(state.questions.map((q) => [q.id, q]));
+    const tasks = deps.filter((d) => !qs.has(d));
+    const questions = deps.filter((d) => qs.has(d));
+    dl.appendChild(el("dt", null, "After"));
+    const dd = el("dd");
+    if (tasks.length) dd.appendChild(el("p", null, tasks.join(", ")));
+    if (questions.length) {
+      const ul = el("ul", "links");
+      for (const id of questions) {
+        const q = qs.get(id);
+        const open = q.status === "open";
+        const li = el("li");
+        if (open) {
+          const a = el("a", null, id + " · " + (q.title || ""));
+          a.href = "#q-" + id;
+          li.appendChild(a);
+        } else {
+          li.appendChild(el("span", null, id + " · " + (q.title || "")));
+        }
+        li.appendChild(el("span", "muted", open ? " (open)" : " (answered)"));
+        ul.appendChild(li);
+      }
+      dd.appendChild(ul);
+    }
+    dl.appendChild(dd);
+  }
+
+  function renderTasks() {
+    const tasks = sortedTasks();
+    $("task-count").textContent = tasks.length ? String(tasks.length) : "";
+    if (!tasks.length) return;
+    const wrap = $("tasks");
+    wrap.replaceChildren();
+    for (const t of tasks) {
+      const card = el("article", "card");
+      card.id = "t-" + t.id;
+      card.setAttribute("data-comment-target", "");
+      const top = el("div", "card-top");
+      const left = el("div", "left");
+      left.appendChild(el("span", "mono muted", t.id));
+      left.appendChild(el("h3", null, t.title || ""));
+      top.appendChild(left);
+      top.appendChild(chip(TASK_STATUS, t.status));
+      card.appendChild(top);
+      const dl = el("dl", "fields");
+      epicsField(dl, arr(t.epics));
+      field(dl, "Goal", t.goal);
+      field(dl, "Approach", t.approach);
+      field(dl, "Touches", arr(t.touches));
+      field(dl, "Verified by", t.verify);
+      afterField(dl, arr(t.depends_on));
+      prField(dl, t.pr);
+      field(dl, "Outcome", t.outcome);
+      if (dl.childElementCount) card.appendChild(dl);
+      if (t.branch) card.appendChild(el("p", "mono muted", t.branch));
+      wrap.appendChild(card);
+    }
+  }
+
+  // Answered questions live in the journal, each in an expandable under the entry that names it in `questions`.
+  // An answered question no entry names gets an entry of its own at the time it was answered.
+  const openDetails = new Set();
+  function renderJournal() {
+    const closed = new Map(state.questions.filter((q) => q.status !== "open").map((q) => [q.id, q]));
+    const named = new Set(state.journal.flatMap((j) => arr(j.questions)));
+    const items = [...state.journal];
+    for (const q of closed.values()) {
+      if (named.has(q.id)) continue;
+      const verb = q.status === "withdrawn" ? "Withdrew " : "Answered ";
+      items.push({ at: q.answered_at, text: verb + q.id + ": " + (q.title || ""), questions: [q.id], by: q.answered_by });
+    }
+    items.sort(byTime("at", "desc"));
+    if (!items.length) return;
+    const ul = $("journal");
+    ul.replaceChildren();
+    for (const j of items) {
+      const li = el("li");
+      li.appendChild(timeEl(j.at));
+      const body = el("div", "entry");
+      body.appendChild(el("p", null, j.text));
+      if (j.by) {
+        const by = el("span", "by", j.by === "claude" ? "by Claude" : j.by === "owner" ? "by the plan page's owner" : "");
+        by.dataset.by = j.by;
+        body.appendChild(by);
+      }
+      for (const id of arr(j.questions)) {
+        const q = closed.get(id);
+        if (!q) continue;
+        const d = el("details");
+        d.open = openDetails.has(id);
+        d.addEventListener("toggle", () => { if (d.open) openDetails.add(id); else openDetails.delete(id); });
+        d.appendChild(el("summary", null, q.id + " · " + (q.title || "")));
+        d.appendChild(questionCard(q, false));
+        body.appendChild(d);
+      }
+      li.appendChild(body);
+      ul.appendChild(li);
+    }
+    fillNames();
+  }
+
+  // A journal entry's `by` is a person's id, "claude" for what Claude decided, or "owner" for the plan page's owner
+  // when Claude recorded it without knowing the owner's id. Names resolve per viewer, every render.
+  async function fillNames() {
+    const spans = [...document.querySelectorAll(".by[data-by]")].filter((s) => s.dataset.by !== "claude" && s.dataset.by !== "owner");
+    const ids = [...new Set(spans.map((s) => s.dataset.by))];
+    if (!ids.length) return;
+    const ps = viewerUser ? await viewerUser.profiles(ids) : {};
+    for (const s of spans) s.textContent = "by " + ((ps[s.dataset.by] && ps[s.dataset.by].name) || "someone");
+  }
+
+  function render() {
+    renderHeader();
+    renderProgress();
+    renderHandover();
+    renderQuestions();
+    renderPlan();
+    renderPrs();
+    renderTasks();
+    renderJournal();
+  }
+
+  function showProblem(text) {
+    $("objective").textContent = text;
+    $("objective").hidden = false;
+  }
+
+  async function boot() {
+    render();
+    if (!window.claude || typeof window.claude.use !== "function") {
+      showProblem("Open this page on claude.ai to see the plan.");
+      return;
+    }
+    const [db, user, comments] = await Promise.all([claude.use("db"), claude.use("user"), claude.use("comments")]);
+    commentsRef = comments;
+    if (!db) {
+      showProblem("This view can't read the plan's data. Sign in to claude.ai, or ask the owner for access.");
+      return;
+    }
+    dbRef = db;
+    viewerUser = user;
+    if (user) [canAnswer, myId] = await Promise.all([user.canEdit(), user.id()]);
+    const stalled = setTimeout(() => showProblem("The plan's data hasn't loaded yet. It may still be on its way."), 10000);
+    const onErr = (e) => {
+      clearTimeout(stalled);
+      if (e && e.code === "revoked") showProblem("This view no longer has access to the plan.");
+    };
+    db.doc("run/main").onSnapshot((s) => {
+      clearTimeout(stalled);
+      state.run = s.exists ? s.data() : null;
+      render();
+    }, onErr);
+    const subscribe = (name, query) => query.onSnapshot((s) => {
+      clearTimeout(stalled);
+      state[name] = s.docs.map((d) => Object.assign({ id: d.id }, d.data()));
+      render();
+      if (name === "journal") claimOwnerEntries();
+    }, onErr);
+    subscribe("tasks", db.collection("tasks"));
+    subscribe("questions", db.collection("questions"));
+    subscribe("prs", db.collection("prs"));
+    subscribe("journal", db.collection("journal").orderBy("at", "desc").limit(80));
+    setInterval(render, 60000);
+  }
+  boot();
+})();
+</script>

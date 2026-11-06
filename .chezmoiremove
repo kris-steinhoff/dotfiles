@@ -159,3 +159,4 @@
 # worktree helper went with it; without this they linger and fail if run.
 .agents/skills/github-pr/tests/test-dispatch-advance
 .agents/skills/github-pr/tests/test-dispatch-cleanup
+.claude/skills/plan-implementation/assets/board.html

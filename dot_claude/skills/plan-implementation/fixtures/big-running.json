@@ -1,0 +1,2248 @@
+{
+  "about": "A large mid-run plan with every task status, three tracker epics, 18 questions, five PRs including a stacked one, and a wide dependency graph with a very long title.",
+  "now": "2026-10-22T17:05:00Z",
+  "viewer": "u_ilse",
+  "people": {
+    "u_ilse": "Ilse Vandermeulen",
+    "u_oluwaseun": "Oluwaseun Adebayo",
+    "u_nguyen": "Nguyễn Thị Hạnh",
+    "u_zoe": "Zoë Kaczmarek",
+    "u_tavita": "Tavita Faleolo"
+  },
+  "docs": {
+    "journal/2026-08-31T09:12:00Z": {
+      "at": "2026-08-31T09:12:00Z",
+      "text": "Started the plan from docs/specs/wms-rewrite-v2.md. Read the spec, the old service's schema dump, and the three tracker epics, WMS-401 to WMS-403.",
+      "by": "claude"
+    },
+    "journal/2026-08-31T11:48:00Z": {
+      "at": "2026-08-31T11:48:00Z",
+      "text": "The spec treats receiving, slotting, picking, counts, replenishment, transfers, and the handheld app as one release. I'm planning it as five areas that can land separately; first pass is about 40 rough items, to be sized properly.",
+      "by": "claude"
+    },
+    "journal/2026-08-31T15:20:00Z": {
+      "at": "2026-08-31T15:20:00Z",
+      "text": "The legacy balances query is per item and location with no lot. That is why a recall today means days of phone calls, and it settles that the new ledger has to know lots.",
+      "by": "claude"
+    },
+    "journal/2026-09-01T10:50:00Z": {
+      "at": "2026-09-01T10:50:00Z",
+      "text": "Asked three questions that shape the schema: ledger granularity (Q1), which items need best-before dates (Q2), and how to cut over balances (Q3). Everything else in the foundation can be planned without them.",
+      "by": "claude"
+    },
+    "journal/2026-09-01T14:05:00Z": {
+      "at": "2026-09-01T14:05:00Z",
+      "text": "Item + lot + location. Row count is not a concern at this size.",
+      "by": "u_oluwaseun",
+      "questions": [
+        "Q1"
+      ]
+    },
+    "journal/2026-09-01T16:30:00Z": {
+      "at": "2026-09-01T16:30:00Z",
+      "text": "Sized the work at 57 tasks. The foundation (schema, skeleton, outbox, auth, legacy reader, CI) has no dependencies and can all start together; the ledger is the one thing 24 later tasks wait on, so it goes early.",
+      "by": "claude"
+    },
+    "journal/2026-09-02T08:20:00Z": {
+      "at": "2026-09-02T08:20:00Z",
+      "text": "Bakery needs dates too, so: chilled, produce, and bakery. Everything else by receipt date.",
+      "by": "u_oluwaseun",
+      "questions": [
+        "Q2"
+      ]
+    },
+    "journal/2026-09-02T09:10:00Z": {
+      "at": "2026-09-02T09:10:00Z",
+      "text": "Snapshot import in the weekend window. Two rehearsals on staging first.",
+      "by": "u_nguyen",
+      "questions": [
+        "Q3"
+      ]
+    },
+    "journal/2026-09-02T11:35:00Z": {
+      "at": "2026-09-02T11:35:00Z",
+      "text": "Wrote up the objective, approach, and done-check. Dependencies are drawn; the graph is broad rather than deep, with the handheld app and replenishment hanging off the picking and slotting work.",
+      "by": "claude"
+    },
+    "journal/2026-09-02T16:50:00Z": {
+      "at": "2026-09-02T16:50:00Z",
+      "text": "Plan set to pending for a go-ahead. Biggest risk I can see: the handheld app is the last thing built and the first thing the pickers will touch, so its API contract needs to settle early. Noted under risks.",
+      "by": "claude"
+    },
+    "journal/2026-09-03T09:00:00Z": {
+      "at": "2026-09-03T09:00:00Z",
+      "text": "One PR cannot hold 57 tasks. Asked Q6 about splitting into five by area.",
+      "by": "claude"
+    },
+    "journal/2026-09-03T10:12:00Z": {
+      "at": "2026-09-03T10:12:00Z",
+      "text": "Approved the plan. Five PRs by area, as proposed.",
+      "by": "owner",
+      "questions": [
+        "Q6"
+      ]
+    },
+    "journal/2026-09-03T10:25:00Z": {
+      "at": "2026-09-03T10:25:00Z",
+      "text": "Plan is running. I'm the driver. Created P1 to P5 as planned with branch names, and put every live task on one.",
+      "by": "claude"
+    },
+    "journal/2026-09-03T11:02:00Z": {
+      "at": "2026-09-03T11:02:00Z",
+      "text": "Started T1, T2, and T6 together; the three touch different directories and share nothing. Each in its own worktree off the P1 branch.",
+      "by": "claude"
+    },
+    "journal/2026-09-03T16:45:00Z": {
+      "at": "2026-09-03T16:45:00Z",
+      "text": "Reviewer on T2 found that unknown WMS_ variables were silently ignored. Config validation now rejects them; the skeleton is in fixing.",
+      "by": "claude"
+    },
+    "journal/2026-09-04T09:30:00Z": {
+      "at": "2026-09-04T09:30:00Z",
+      "text": "T2 merged into the P1 branch. Pushed P1 and opened it as a draft.",
+      "by": "claude"
+    },
+    "journal/2026-09-04T14:15:00Z": {
+      "at": "2026-09-04T14:15:00Z",
+      "text": "T1 merged. Location codes are unique per warehouse, not globally, because Dunmore reuses the main building's codes.",
+      "by": "claude"
+    },
+    "journal/2026-09-04T17:00:00Z": {
+      "at": "2026-09-04T17:00:00Z",
+      "text": "T6 merged. The integration job is 7 minutes on the shared runners.",
+      "by": "claude"
+    },
+    "journal/2026-09-07T09:50:00Z": {
+      "at": "2026-09-07T09:50:00Z",
+      "text": "T3 is in review. Started T4 and T5 in parallel.",
+      "by": "claude"
+    },
+    "journal/2026-09-07T15:30:00Z": {
+      "at": "2026-09-07T15:30:00Z",
+      "text": "Heads up: the identity team renames the claim from roles to wms_roles this week. Accept both until their cutover on the 18th.",
+      "by": "u_nguyen"
+    },
+    "journal/2026-09-08T11:30:00Z": {
+      "at": "2026-09-08T11:30:00Z",
+      "text": "Asked Q4: are dock appointments mandatory in the first release? It decides whether T24 needs a refusal path.",
+      "by": "claude"
+    },
+    "journal/2026-09-08T15:55:00Z": {
+      "at": "2026-09-08T15:55:00Z",
+      "text": "Advisory for now. Revisit in the new year once we see how many carriers book.",
+      "by": "u_oluwaseun",
+      "questions": [
+        "Q4"
+      ]
+    },
+    "journal/2026-09-08T16:20:00Z": {
+      "at": "2026-09-08T16:20:00Z",
+      "text": "T3 merged. The reviewer asked for the delivery guarantee to be written down; it's at-least-once, documented in docs/events/ordering.md.",
+      "by": "claude"
+    },
+    "journal/2026-09-09T10:05:00Z": {
+      "at": "2026-09-09T10:05:00Z",
+      "text": "T4 merged, accepting both claim names as Nguyễn said.",
+      "by": "claude"
+    },
+    "journal/2026-09-09T13:40:00Z": {
+      "at": "2026-09-09T13:40:00Z",
+      "text": "T5 merged. Page size is 5000: the replica's statement timeout killed anything bigger.",
+      "by": "claude"
+    },
+    "journal/2026-09-10T09:15:00Z": {
+      "at": "2026-09-10T09:15:00Z",
+      "text": "Asked Q5 on the velocity window. The slotting job can't start without it.",
+      "by": "claude"
+    },
+    "journal/2026-09-10T16:40:00Z": {
+      "at": "2026-09-10T16:40:00Z",
+      "text": "13 weeks with the override table. My team will own the override list.",
+      "by": "u_tavita",
+      "questions": [
+        "Q5"
+      ]
+    },
+    "journal/2026-09-10T17:05:00Z": {
+      "at": "2026-09-10T17:05:00Z",
+      "text": "Proposing to drop T13. The bus already dead-letters poison messages, and the relay only fails on connectivity, so a second queue would park events that should simply retry.",
+      "by": "claude"
+    },
+    "journal/2026-09-10T17:30:00Z": {
+      "at": "2026-09-10T17:30:00Z",
+      "text": "Agreed, drop it.",
+      "by": "owner"
+    },
+    "journal/2026-09-11T10:30:00Z": {
+      "at": "2026-09-11T10:30:00Z",
+      "text": "T7 and T8 merged. The catalog gained shelf_life_days and temp_zone because slotting needs them.",
+      "by": "claude"
+    },
+    "journal/2026-09-14T09:25:00Z": {
+      "at": "2026-09-14T09:25:00Z",
+      "text": "Started T9, T10, T11, and T12.",
+      "by": "claude"
+    },
+    "journal/2026-09-14T14:00:00Z": {
+      "at": "2026-09-14T14:00:00Z",
+      "text": "Review of T11 found a window where a movement could post before its balance row existed, on first use of a new lot. The balance upsert is now inside the same statement block; back to review.",
+      "by": "claude"
+    },
+    "journal/2026-09-15T11:10:00Z": {
+      "at": "2026-09-15T11:10:00Z",
+      "text": "T9 merged. The FEFO view uses the warehouse's time zone: Dunmore is an hour ahead and 'expires today' was flipping early.",
+      "by": "claude"
+    },
+    "journal/2026-09-15T15:45:00Z": {
+      "at": "2026-09-15T15:45:00Z",
+      "text": "T12 merged. Supervisors inherit counter and picker permissions, rather than carrying three role claims.",
+      "by": "claude"
+    },
+    "journal/2026-09-16T10:20:00Z": {
+      "at": "2026-09-16T10:20:00Z",
+      "text": "About 300 of the old overflow-cage locations have no aisle. I'll sort them by hand once the importer lists them.",
+      "by": "u_oluwaseun"
+    },
+    "journal/2026-09-16T16:55:00Z": {
+      "at": "2026-09-16T16:55:00Z",
+      "text": "T10 merged. 311 locations land under LEGACY-UNMAPPED and are listed in the report for Oluwaseun.",
+      "by": "claude"
+    },
+    "journal/2026-09-18T09:00:00Z": {
+      "at": "2026-09-18T09:00:00Z",
+      "text": "Asked Q11 on whether the service should render pallet labels. Not blocking: the handheld label task is far down the graph.",
+      "by": "claude"
+    },
+    "journal/2026-09-18T12:10:00Z": {
+      "at": "2026-09-18T12:10:00Z",
+      "text": "T11 merged. Decision: the balance writer is Go code in the same transaction, not a trigger, so tests exercise it; a nightly ledger verify job catches drift.",
+      "by": "claude"
+    },
+    "journal/2026-09-21T09:35:00Z": {
+      "at": "2026-09-21T09:35:00Z",
+      "text": "Started T15, T16, T18, and T17.",
+      "by": "claude"
+    },
+    "journal/2026-09-21T15:20:00Z": {
+      "at": "2026-09-21T15:20:00Z",
+      "text": "The 40 sample ASNs have 6 with one stale SKU each. Rejecting the whole ASN, as planned, would turn away those deliveries, so I'm accepting the ASN and holding the bad lines in asn_line_error for the buyer. A change from the plan, and a small one.",
+      "by": "claude"
+    },
+    "journal/2026-09-22T10:30:00Z": {
+      "at": "2026-09-22T10:30:00Z",
+      "text": "Withdrew Q11. The print server's templates are staying, so there's nothing to decide.",
+      "by": "claude",
+      "questions": [
+        "Q11"
+      ]
+    },
+    "journal/2026-09-22T14:00:00Z": {
+      "at": "2026-09-22T14:00:00Z",
+      "text": "T15 merged.",
+      "by": "claude"
+    },
+    "journal/2026-09-22T16:30:00Z": {
+      "at": "2026-09-22T16:30:00Z",
+      "text": "CI on the P1 branch is up to 11 minutes. Can the integration job reuse the Postgres image between runs?",
+      "by": "u_nguyen"
+    },
+    "journal/2026-09-23T10:15:00Z": {
+      "at": "2026-09-23T10:15:00Z",
+      "text": "T16 merged. Receipts post to the RECEIVING-STAGE bin, with tolerance stored per vendor class.",
+      "by": "claude"
+    },
+    "journal/2026-09-23T16:40:00Z": {
+      "at": "2026-09-23T16:40:00Z",
+      "text": "T18 merged. 1,870 items have no recorded dimensions; they are treated as manual-slot.",
+      "by": "claude"
+    },
+    "journal/2026-09-23T17:20:00Z": {
+      "at": "2026-09-23T17:20:00Z",
+      "text": "T17 merged. First cut used units picked, and one 40-case pallet pick skewed the top of the list; switched to a 70/30 blend of lines and units. Opened P2 as a draft with this as its first merged task.",
+      "by": "claude"
+    },
+    "journal/2026-09-24T10:00:00Z": {
+      "at": "2026-09-24T10:00:00Z",
+      "text": "Asked Q8: should counters see the expected quantity? It shapes the counting API before anyone writes it.",
+      "by": "claude"
+    },
+    "journal/2026-09-24T11:20:00Z": {
+      "at": "2026-09-24T11:20:00Z",
+      "text": "Blind. That's what the audit team wants.",
+      "by": "u_oluwaseun",
+      "questions": [
+        "Q8"
+      ]
+    },
+    "journal/2026-09-24T13:50:00Z": {
+      "at": "2026-09-24T13:50:00Z",
+      "text": "T24 merged as an advisory feature, with no hard-require code path left behind a flag.",
+      "by": "claude"
+    },
+    "journal/2026-09-25T09:30:00Z": {
+      "at": "2026-09-25T09:30:00Z",
+      "text": "Every live task in P1 is merged and checks pass. Marked P1 ready for review. CI is back under 9 minutes after reusing the Postgres image, as Nguyễn suggested.",
+      "by": "claude"
+    },
+    "journal/2026-09-25T11:00:00Z": {
+      "at": "2026-09-25T11:00:00Z",
+      "text": "Started T25 and T19.",
+      "by": "claude"
+    },
+    "journal/2026-09-28T09:06:00Z": {
+      "at": "2026-09-28T09:06:00Z",
+      "text": "Asked Q18: picking and counting share the lot, ledger, and capacity code that is in P2. Stack P3 on P2, or branch it from main?",
+      "by": "claude"
+    },
+    "journal/2026-09-28T09:40:00Z": {
+      "at": "2026-09-28T09:40:00Z",
+      "text": "Stack it. Reviewers read slotting first anyway.",
+      "by": "u_nguyen",
+      "questions": [
+        "Q18"
+      ]
+    },
+    "journal/2026-09-28T10:30:00Z": {
+      "at": "2026-09-28T10:30:00Z",
+      "text": "T19 merged. Added pick_task.cart_id after Oluwaseun explained pickers build multi-store carts.",
+      "by": "claude"
+    },
+    "journal/2026-09-28T11:00:00Z": {
+      "at": "2026-09-28T11:00:00Z",
+      "text": "Opened P3 as a draft, based on P2's branch.",
+      "by": "claude"
+    },
+    "journal/2026-09-29T09:25:00Z": {
+      "at": "2026-09-29T09:25:00Z",
+      "text": "Asked Q7: what T26 should do when a store's minimum shelf life rules out the oldest lot.",
+      "by": "claude"
+    },
+    "journal/2026-09-29T13:30:00Z": {
+      "at": "2026-09-29T13:30:00Z",
+      "text": "Apply the store's floor first, then FEFO. If nothing qualifies, short the line with a clear reason. My stores would rather get a short than a bad delivery.",
+      "by": "u_zoe",
+      "questions": [
+        "Q7"
+      ]
+    },
+    "journal/2026-09-29T15:00:00Z": {
+      "at": "2026-09-29T15:00:00Z",
+      "text": "Started T26.",
+      "by": "claude"
+    },
+    "journal/2026-09-30T10:20:00Z": {
+      "at": "2026-09-30T10:20:00Z",
+      "text": "T25 merged. In the 500-putaway replay it matched or beat the human's bin 74% of the time; I cut the adjacency bonus to a weight of 0.2 after it clustered a vendor's lines into one aisle.",
+      "by": "claude"
+    },
+    "journal/2026-10-01T09:30:00Z": {
+      "at": "2026-10-01T09:30:00Z",
+      "text": "Asked Q9 on the variance thresholds for counts. Not urgent; the counting tasks are not started.",
+      "by": "claude"
+    },
+    "journal/2026-10-01T14:10:00Z": {
+      "at": "2026-10-01T14:10:00Z",
+      "text": "Nguyễn left two review comments on P1's OpenAPI files. Fixed on the PR branch directly and replied; no task involved.",
+      "by": "claude"
+    },
+    "journal/2026-10-02T09:45:00Z": {
+      "at": "2026-10-02T09:45:00Z",
+      "text": "Either threshold. Finance signs off on $250.",
+      "by": "u_ilse"
+    },
+    "journal/2026-10-02T11:00:00Z": {
+      "at": "2026-10-02T11:00:00Z",
+      "text": "P1 is merged into main.",
+      "by": "u_nguyen"
+    },
+    "journal/2026-10-02T11:30:00Z": {
+      "at": "2026-10-02T11:30:00Z",
+      "text": "Rebased the P2 and P3 branches onto main now that P1 has merged. No conflicts.",
+      "by": "claude"
+    },
+    "journal/2026-10-05T09:30:00Z": {
+      "at": "2026-10-05T09:30:00Z",
+      "text": "Asked Q10: should T35 substitute automatically?",
+      "by": "claude"
+    },
+    "journal/2026-10-05T14:10:00Z": {
+      "at": "2026-10-05T14:10:00Z",
+      "text": "No substitution for now. We'll want it later, but the rules need input from ops that I don't have yet.",
+      "by": "u_zoe",
+      "questions": [
+        "Q10"
+      ]
+    },
+    "journal/2026-10-05T16:00:00Z": {
+      "at": "2026-10-05T16:00:00Z",
+      "text": "T14 is blocked: procurement hasn't countersigned the scanner vendor's SDK licence, so the binaries aren't published. Camera-based stub is the fallback if it drags on.",
+      "by": "claude"
+    },
+    "journal/2026-10-06T10:00:00Z": {
+      "at": "2026-10-06T10:00:00Z",
+      "text": "Started T33.",
+      "by": "claude"
+    },
+    "journal/2026-10-07T13:25:00Z": {
+      "at": "2026-10-07T13:25:00Z",
+      "text": "T33 merged. A bin outside the pallet's temperature zone is refused; supervisors can override with a reason. We hadn't written that rule down before.",
+      "by": "claude"
+    },
+    "journal/2026-10-08T09:40:00Z": {
+      "at": "2026-10-08T09:40:00Z",
+      "text": "Proposing to drop T42. The replay harness the recommender's tests use already lets ops try a weight set against history, and a UI on top is a lot of work for a few tuning sessions a year.",
+      "by": "claude"
+    },
+    "journal/2026-10-08T10:15:00Z": {
+      "at": "2026-10-08T10:15:00Z",
+      "text": "Yes, drop the simulator.",
+      "by": "owner"
+    },
+    "journal/2026-10-08T11:00:00Z": {
+      "at": "2026-10-08T11:00:00Z",
+      "text": "All of P2's live tasks are merged. Marked it ready for review.",
+      "by": "claude"
+    },
+    "journal/2026-10-09T10:50:00Z": {
+      "at": "2026-10-09T10:50:00Z",
+      "text": "First implementation of T26 is in review. The reviewer found two waves over the same SKU could interleave under read committed; changed to one serialisable transaction per item.",
+      "by": "claude"
+    },
+    "journal/2026-10-10T11:00:00Z": {
+      "at": "2026-10-10T11:00:00Z",
+      "text": "Dunmore is trialling blind receipts on Wednesday. Nothing for you to do; just so you know the receipt screen will get real use.",
+      "by": "owner"
+    },
+    "journal/2026-10-12T09:00:00Z": {
+      "at": "2026-10-12T09:00:00Z",
+      "text": "Asked Q17 on who owns stock while it's on a truck to a store. It shapes T22.",
+      "by": "claude"
+    },
+    "journal/2026-10-12T11:30:00Z": {
+      "at": "2026-10-12T11:30:00Z",
+      "text": "Sender owns it until receipt. Finance reconciles on that basis anyway.",
+      "by": "u_ilse",
+      "questions": [
+        "Q17"
+      ]
+    },
+    "journal/2026-10-12T12:15:00Z": {
+      "at": "2026-10-12T12:15:00Z",
+      "text": "Started T21.",
+      "by": "claude"
+    },
+    "journal/2026-10-13T16:20:00Z": {
+      "at": "2026-10-13T16:20:00Z",
+      "text": "Surprise: the legacy pick history has nine days missing in July. The export job failed for a week and nobody noticed. It makes the velocity classes for July-peak items slightly low. Told Tavita.",
+      "by": "claude"
+    },
+    "journal/2026-10-14T10:10:00Z": {
+      "at": "2026-10-14T10:10:00Z",
+      "text": "Rerunning the export; should be done by Friday. I'll tell you when the file is in place.",
+      "by": "u_tavita"
+    },
+    "journal/2026-10-14T15:30:00Z": {
+      "at": "2026-10-14T15:30:00Z",
+      "text": "T47 is blocked: the data team hasn't decided where their weekly forecast file will be delivered. The importer is small; the wait is on them.",
+      "by": "claude"
+    },
+    "journal/2026-10-15T09:20:00Z": {
+      "at": "2026-10-15T09:20:00Z",
+      "text": "Asked Q12 on how to split inter-store transfer cost. It only holds T57.",
+      "by": "claude"
+    },
+    "journal/2026-10-15T16:40:00Z": {
+      "at": "2026-10-15T16:40:00Z",
+      "text": "T26 back in review with the serialisable fix and a 200-run concurrency test.",
+      "by": "claude"
+    },
+    "journal/2026-10-16T09:45:00Z": {
+      "at": "2026-10-16T09:45:00Z",
+      "text": "Started T22.",
+      "by": "claude"
+    },
+    "journal/2026-10-16T11:00:00Z": {
+      "at": "2026-10-16T11:00:00Z",
+      "text": "Export reran; the July gap is filled. Velocity classes will pick it up tonight.",
+      "by": "u_tavita"
+    },
+    "journal/2026-10-19T08:30:00Z": {
+      "at": "2026-10-19T08:30:00Z",
+      "text": "Asked Q13 on how long the handheld's offline queue must survive. It holds T51 and, through it, T54.",
+      "by": "claude"
+    },
+    "journal/2026-10-19T09:15:00Z": {
+      "at": "2026-10-19T09:15:00Z",
+      "text": "Started T29 and T28.",
+      "by": "claude"
+    },
+    "journal/2026-10-19T14:20:00Z": {
+      "at": "2026-10-19T14:20:00Z",
+      "text": "xfer_edi: the stores' contractor still hasn't sent the sandbox credentials. I've chased them again.",
+      "by": "u_nguyen"
+    },
+    "journal/2026-10-19T14:40:00Z": {
+      "at": "2026-10-19T14:40:00Z",
+      "text": "T53 is blocked on that, which makes three tasks waiting on outside work. Nothing else depends on them yet, so the run carries on.",
+      "by": "claude"
+    },
+    "journal/2026-10-20T14:00:00Z": {
+      "at": "2026-10-20T14:00:00Z",
+      "text": "Asked Q14: evaluate replenishment on every movement, on a sweep, or from the outbox?",
+      "by": "claude"
+    },
+    "journal/2026-10-20T16:30:00Z": {
+      "at": "2026-10-20T16:30:00Z",
+      "text": "Reviewer on T26 found the shelf-life filter was off by one at the day boundary: a lot with exactly the minimum days left was excluded. Fixed and added a boundary test; back in review.",
+      "by": "claude"
+    },
+    "journal/2026-10-21T10:05:00Z": {
+      "at": "2026-10-21T10:05:00Z",
+      "text": "Asked Q15: the sync API's read path needs a database role that only the DBA team can create in staging. Not blocking yet.",
+      "by": "claude"
+    },
+    "journal/2026-10-21T11:20:00Z": {
+      "at": "2026-10-21T11:20:00Z",
+      "text": "Started T20 and T27.",
+      "by": "claude"
+    },
+    "journal/2026-10-21T15:40:00Z": {
+      "at": "2026-10-21T15:40:00Z",
+      "text": "Asked Q16 on recalled units already on a cart. I haven't made a recommendation: it depends on how pickers actually work, which is Oluwaseun's call.",
+      "by": "claude"
+    },
+    "journal/2026-10-21T16:50:00Z": {
+      "at": "2026-10-21T16:50:00Z",
+      "text": "T21 is in review.",
+      "by": "claude"
+    },
+    "journal/2026-10-22T09:10:00Z": {
+      "at": "2026-10-22T09:10:00Z",
+      "text": "Reviewer on T28 found that a lease expiring between scan and confirm lets a second picker claim the task, and both can post. Lease validation now happens inside the posting transaction; the task is in fixing.",
+      "by": "claude"
+    },
+    "journal/2026-10-22T10:30:00Z": {
+      "at": "2026-10-22T10:30:00Z",
+      "text": "Reviewer on T29 found the daily cap applies per warehouse, so Dunmore's evening crew gets no counts at all. Changing it to per shift; the task is in fixing.",
+      "by": "claude"
+    },
+    "journal/2026-10-22T11:15:00Z": {
+      "at": "2026-10-22T11:15:00Z",
+      "text": "Started T30.",
+      "by": "claude"
+    },
+    "journal/2026-10-22T13:00:00Z": {
+      "at": "2026-10-22T13:00:00Z",
+      "text": "T22 is in review.",
+      "by": "claude"
+    },
+    "journal/2026-10-22T15:30:00Z": {
+      "at": "2026-10-22T15:30:00Z",
+      "text": "Updated the risks: three tasks wait on outside work, and the handheld app depends on a vendor SDK licence we don't control.",
+      "by": "claude"
+    },
+    "prs/P1": {
+      "title": "Foundation, receiving, and the inventory ledger",
+      "summary": "Schema, service skeleton, outbox, auth, the lot and ledger model, ASN ingest, blind receipts, and dock appointments. Everything else builds on this.",
+      "order": 1,
+      "branch": "wms-rewrite/foundation-receiving-and-inventory-ledger",
+      "base": "main",
+      "status": "merged",
+      "url": "https://code.fennimore.example/warehouse/inventory-service/pull/118"
+    },
+    "prs/P2": {
+      "title": "Slotting recommender and directed putaway",
+      "order": 2,
+      "branch": "wms-rewrite/slotting-recommender-and-directed-putaway",
+      "base": "main",
+      "status": "open",
+      "url": "https://code.fennimore.example/warehouse/inventory-service/pull/131"
+    },
+    "prs/P3": {
+      "title": "Picking, allocation, and cycle counts",
+      "summary": "Pick lists and waves, FEFO allocation with store shelf-life floors, lot holds, and the whole cycle-count flow.\n\nStacked on P2: it uses the capacity and recommender code from there.",
+      "order": 3,
+      "branch": "wms-rewrite/picking-allocation-and-cycle-counts-with-quarantine-holds",
+      "base": "P2",
+      "status": "draft",
+      "url": "https://code.fennimore.example/warehouse/inventory-service/pull/142"
+    },
+    "prs/P4": {
+      "title": "Replenishment and store transfers",
+      "order": 4,
+      "branch": "wms-rewrite/replenishment-and-store-transfers",
+      "base": "main",
+      "status": "planned"
+    },
+    "prs/P5": {
+      "title": "Handheld scanner app",
+      "summary": "The Android app for the rugged fleet and the sync API it talks to. Lands last, so it can use every flow's final API.",
+      "order": 5,
+      "branch": "wms-rewrite/handheld-scanner-app-sync-api-and-screens-for-the-rugged-fleet",
+      "base": "main",
+      "status": "planned"
+    },
+    "questions/Q1": {
+      "title": "What granularity should ledger balances have?",
+      "context": "The old system tracks quantity per item per location. FEFO allocation and recalls need to know which lot is where. Tracking per lot costs more rows (about 3.1M balance rows instead of 900k at current volumes) but is the only way to answer 'where is lot 4471' without a scan of movements.",
+      "status": "answered",
+      "asked_at": "2026-09-01T10:40:00Z",
+      "options": [
+        {
+          "label": "Item + lot + location",
+          "cost": "About 3x the balance rows; every movement must name a lot"
+        },
+        {
+          "label": "Item + location, lots tracked separately",
+          "cost": "Smaller table, but recalls need a join through movements"
+        }
+      ],
+      "recommendation": "Item + lot + location",
+      "task": "T11",
+      "answer": "Item + lot + location. Row count is not a concern at this size.",
+      "answered_at": "2026-09-01T14:05:00Z",
+      "answered_by": "u_oluwaseun"
+    },
+    "questions/Q10": {
+      "title": "Substitute automatically on a short pick?",
+      "context": "When a picker can't find a requested item, the order line could be filled with a configured substitute. Stores have different tolerance; some want the substitute and some don't.",
+      "status": "answered",
+      "asked_at": "2026-10-05T09:30:00Z",
+      "options": [
+        {
+          "label": "No substitution in this release; flag the short to the store",
+          "cost": "Stores may get lines they could have had a substitute for"
+        },
+        {
+          "label": "Automatic substitution per item rules",
+          "cost": "A rules table nobody has written yet; wrong substitutions are costly to unwind"
+        }
+      ],
+      "recommendation": "No substitution in this release; flag the short to the store",
+      "task": "T35",
+      "answer": "No substitution for now. We'll want it later but the rules need ops input we don't have yet.",
+      "answered_at": "2026-10-05T14:10:00Z",
+      "answered_by": "u_zoe"
+    },
+    "questions/Q11": {
+      "title": "Should the service render pallet labels itself?",
+      "context": "The print server already has ZPL templates the warehouse likes, but they live outside this repository. Rendering in the service would let us change a label with a deploy; the print server route keeps what works today.",
+      "status": "withdrawn",
+      "asked_at": "2026-09-18T09:00:00Z",
+      "options": [
+        {
+          "label": "Render in the service",
+          "cost": "A PDF/ZPL renderer to build and maintain"
+        },
+        {
+          "label": "Keep using the print server's templates",
+          "cost": "Label changes remain a separate change request"
+        }
+      ],
+      "recommendation": "Keep using the print server's templates",
+      "task": "T56",
+      "answer": "Withdrawn: the print server's templates are staying, so there is nothing to decide. The handheld prints through the existing server.",
+      "answered_at": "2026-09-22T10:30:00Z",
+      "answered_by": "claude"
+    },
+    "questions/Q12": {
+      "title": "How should inter-store transfer cost be split?",
+      "context": "Carrier invoices arrive monthly per route. Stores have different views of fairness: the stores nearest the warehouse subsidise the far ones if cost is flat, while per-weight charges penalise heavy produce.",
+      "status": "open",
+      "asked_at": "2026-10-15T09:20:00Z",
+      "options": [
+        {
+          "label": "By weight",
+          "cost": "Penalises produce and tinned goods; simple to compute"
+        },
+        {
+          "label": "By cube",
+          "cost": "Needs dimensions for every item; 13% of items lack them"
+        },
+        {
+          "label": "Flat per transfer",
+          "cost": "Small transfers are overcharged; trivial to compute"
+        }
+      ],
+      "recommendation": "By weight",
+      "blocks": "The cost allocation task; shipping and receiving are not held",
+      "task": "T57"
+    },
+    "questions/Q13": {
+      "title": "How long must the handheld's offline queue survive?",
+      "context": "Today's dead zones in the freezer and the far reserve aisles last minutes. A shift is 8 hours. The queue is a durable local database either way, but a longer guarantee means conflict handling for work done against stale task lists, and tests that simulate a shift.",
+      "status": "open",
+      "asked_at": "2026-10-19T08:30:00Z",
+      "options": [
+        {
+          "label": "One shift (12 hours)",
+          "cost": "Stale task conflicts are possible but bounded"
+        },
+        {
+          "label": "48 hours",
+          "cost": "Needs conflict UI for tasks reassigned by others; far more testing"
+        },
+        {
+          "label": "30 minutes",
+          "cost": "Simple, but a device that is docked and offline overnight loses its queue"
+        }
+      ],
+      "recommendation": "One shift (12 hours)",
+      "blocks": "The offline queue task and the counting screens that wait on it",
+      "task": "T51"
+    },
+    "questions/Q14": {
+      "title": "Evaluate replenishment on every movement or on a sweep?",
+      "context": "Evaluating on every ledger movement reacts instantly but puts a read on the hot path of each pick. A sweep every 5 minutes is cheap and gives pickers a trailing view; during a rush a bin could empty before the sweep notices.",
+      "status": "open",
+      "asked_at": "2026-10-20T14:00:00Z",
+      "options": [
+        {
+          "label": "On every movement",
+          "cost": "An extra balance read per pick; more complex transaction"
+        },
+        {
+          "label": "Sweep every 5 minutes",
+          "cost": "Up to 5 minutes of lag"
+        },
+        {
+          "label": "Event-driven from the outbox",
+          "cost": "Asynchronous, so the lag is seconds; depends on the relay being healthy"
+        }
+      ],
+      "recommendation": "Event-driven from the outbox",
+      "blocks": "The trigger task and the two replenishment tasks after it",
+      "task": "T39"
+    },
+    "questions/Q15": {
+      "title": "Create the wms_scanner database role in staging",
+      "context": "The sync API reads through a role with only SELECT on task and outbox tables. Staging roles are created by the DBA team, not by migrations. Run this on the staging cluster as the admin user: CREATE ROLE wms_scanner LOGIN; GRANT SELECT ON pick_task, pick_list, event_outbox TO wms_scanner;, then set the password in the secrets store under wms/staging/scanner-db.",
+      "status": "open",
+      "asked_at": "2026-10-21T10:05:00Z",
+      "options": [
+        {
+          "label": "Done"
+        },
+        {
+          "label": "Skip",
+          "cost": "The sync read path is tested only against a local database"
+        }
+      ],
+      "recommendation": "Done",
+      "blocks": "Testing the sync API's read path in staging",
+      "task": "T32"
+    },
+    "questions/Q16": {
+      "title": "What happens to units already on a cart when their lot goes on hold?",
+      "context": "A recall can land while pickers are mid-wave. Units already picked into totes are on carts or at the packing station. Pulling them back is slow but certain; letting the picker finish and checking at packing is fast but risks a held unit leaving the building.",
+      "status": "open",
+      "asked_at": "2026-10-21T15:40:00Z",
+      "options": [
+        {
+          "label": "Stop the picker, pull the units back",
+          "cost": "Interrupts work in progress; a notification path to handhelds that does not exist yet"
+        },
+        {
+          "label": "Check at packing and pull then",
+          "cost": "Units travel further before being caught"
+        }
+      ],
+      "blocks": "Hold propagation to open picks",
+      "task": "T34"
+    },
+    "questions/Q17": {
+      "title": "Who owns stock in transit to a store?",
+      "context": "A transfer leaves the dock on Monday and is received on Tuesday. During that day the stock is neither at the warehouse nor on a store shelf, and the ledger has to put it somewhere.",
+      "status": "answered",
+      "asked_at": "2026-10-12T09:00:00Z",
+      "options": [
+        {
+          "label": "Sender owns it until receipt",
+          "cost": "Warehouse balances include stock on trucks, flagged in-transit"
+        },
+        {
+          "label": "Receiver owns it at departure",
+          "cost": "A lost pallet is the store's problem the moment it ships"
+        }
+      ],
+      "recommendation": "Sender owns it until receipt",
+      "task": "T22",
+      "answer": "Sender owns until receipt. Finance reconciles on that basis anyway.",
+      "answered_at": "2026-10-12T11:30:00Z",
+      "answered_by": "u_ilse"
+    },
+    "questions/Q18": {
+      "title": "Stack the picking PR on the slotting PR?",
+      "context": "Picking and counting share the lot, ledger, and capacity work already in the slotting PR, and the recommender is used by replenishment later. If picking is branched from main it duplicates diffs until slotting merges; if it stacks, a late change to slotting means a rebase.",
+      "status": "answered",
+      "asked_at": "2026-09-28T09:05:00Z",
+      "options": [
+        {
+          "label": "Stack picking on slotting",
+          "cost": "A rebase if the slotting PR changes in review"
+        },
+        {
+          "label": "Branch picking from main",
+          "cost": "Reviewers see slotting's diff twice until it merges"
+        }
+      ],
+      "recommendation": "Stack picking on slotting",
+      "answer": "Stack it. Reviewers will read slotting first anyway.",
+      "answered_at": "2026-10-06T09:40:00Z",
+      "answered_by": "u_nguyen"
+    },
+    "questions/Q2": {
+      "title": "Which items need a best-before date at receipt?",
+      "context": "FEFO needs dates. Receivers entering a date for every case of canned goods will slow the dock and produce junk dates to get past the screen. The co-op sells chilled, produce, bakery, and ambient lines.",
+      "status": "answered",
+      "asked_at": "2026-09-01T10:45:00Z",
+      "options": [
+        {
+          "label": "Chilled and produce only",
+          "cost": "Ambient ordered by receipt date; a recall of a dated ambient item relies on lot code"
+        },
+        {
+          "label": "Every item",
+          "cost": "Slower receiving; more entry errors"
+        },
+        {
+          "label": "Chilled, produce, and bakery",
+          "cost": "Bakery is small; a third rule to maintain"
+        }
+      ],
+      "recommendation": "Chilled and produce only",
+      "task": "T9",
+      "answer": "Chilled, produce, and bakery. Bakery has the shortest life of anything we sell, so it needs dates too. Everything else by receipt date.",
+      "answered_at": "2026-09-02T08:20:00Z",
+      "answered_by": "u_oluwaseun"
+    },
+    "questions/Q3": {
+      "title": "How do we cut over balances from the legacy system?",
+      "context": "Balances must move from the old database to the new ledger exactly once. Dual-write keeps both live for weeks but doubles the failure modes. A snapshot import needs a quiet window: the warehouse is closed from Saturday 22:00 to Sunday 14:00.",
+      "status": "answered",
+      "asked_at": "2026-09-01T10:50:00Z",
+      "options": [
+        {
+          "label": "Snapshot import in the weekend window, legacy goes read-only",
+          "cost": "One-time risk; needs a rehearsal and a rollback plan"
+        },
+        {
+          "label": "Dual-write for two weeks",
+          "cost": "Reconciliation noise; the old system's writes must be intercepted"
+        }
+      ],
+      "recommendation": "Snapshot import in the weekend window, legacy goes read-only",
+      "blocks": "The cutover task (not yet in this plan) and the importer's scope",
+      "task": "T10",
+      "answer": "Snapshot in the weekend window. We'll do two rehearsals on the staging copy first.",
+      "answered_at": "2026-09-02T09:10:00Z",
+      "answered_by": "u_nguyen"
+    },
+    "questions/Q4": {
+      "title": "Are dock appointments mandatory in the first release?",
+      "context": "Carriers currently turn up when they like. A hard requirement would turn trucks away; an advisory one would let the dock keep working while the report shows who skips booking.",
+      "status": "answered",
+      "asked_at": "2026-09-08T11:30:00Z",
+      "options": [
+        {
+          "label": "Advisory",
+          "cost": "Dock congestion continues until carriers adopt it"
+        },
+        {
+          "label": "Mandatory from day one",
+          "cost": "Trucks turned away; carrier complaints in the first weeks"
+        }
+      ],
+      "recommendation": "Advisory",
+      "task": "T24",
+      "answer": "Advisory. Revisit in the new year once the report shows adoption.",
+      "answered_at": "2026-09-08T15:55:00Z",
+      "answered_by": "u_oluwaseun"
+    },
+    "questions/Q5": {
+      "title": "Velocity window for slotting",
+      "context": "The 13-week window follows the buying cycle but over-weights the summer barbecue range for autumn slotting. 26 weeks smooths that but reacts slowly to a new product that takes off.",
+      "status": "answered",
+      "asked_at": "2026-09-10T09:15:00Z",
+      "options": [
+        {
+          "label": "13 weeks with a seasonal override table",
+          "cost": "Someone has to maintain the overrides"
+        },
+        {
+          "label": "26 weeks"
+        }
+      ],
+      "recommendation": "13 weeks with a seasonal override table",
+      "task": "T17",
+      "answer": "13 weeks with overrides. Tavita's team will own the override list.",
+      "answered_at": "2026-09-10T16:40:00Z",
+      "answered_by": "u_tavita"
+    },
+    "questions/Q6": {
+      "title": "Land this as one PR or several?",
+      "context": "The plan is 57 tasks across receiving, slotting, picking, counts, replenishment, transfers, and the handheld app. One PR cannot be reviewed. Splitting by area lets receiving and slotting ship while picking is still being built, at the cost of stacking one PR on another where they share code.",
+      "status": "answered",
+      "asked_at": "2026-09-03T09:00:00Z",
+      "options": [
+        {
+          "label": "Five PRs by area",
+          "cost": "Some stacking; five reviews instead of one"
+        },
+        {
+          "label": "Three PRs: inbound, outbound, handheld",
+          "cost": "Outbound would hold picking, counts, replenishment, and transfers together, which is still too big"
+        }
+      ],
+      "recommendation": "Five PRs by area",
+      "blocks": "Delivery setup for the whole run",
+      "answer": "Five PRs by area, as proposed.",
+      "answered_at": "2026-09-03T10:12:00Z",
+      "answered_by": "owner"
+    },
+    "questions/Q7": {
+      "title": "Allocation when a store's minimum shelf life rules out the oldest lot",
+      "context": "Several stores contract for at least 5 to 10 days of remaining life. FEFO would send them the oldest lot, which may fail that floor, while a younger lot passes. Honouring the floor means older stock can sit longer and expire in the warehouse.",
+      "status": "answered",
+      "asked_at": "2026-09-29T09:25:00Z",
+      "options": [
+        {
+          "label": "Apply the store's floor, then FEFO among the qualifying lots",
+          "cost": "Oldest stock is allocated last to strict stores; the buyers see more write-offs"
+        },
+        {
+          "label": "Strict FEFO, let the store reject",
+          "cost": "Rejected deliveries; transport wasted"
+        }
+      ],
+      "recommendation": "Apply the store's floor, then FEFO among the qualifying lots",
+      "task": "T26",
+      "answer": "Apply the floor, then FEFO. If nothing qualifies, short the line with a clear reason; Zoë's stores would rather get a short than a bad delivery.",
+      "answered_at": "2026-09-29T13:30:00Z",
+      "answered_by": "u_zoe"
+    },
+    "questions/Q8": {
+      "title": "Do counters see the expected quantity?",
+      "context": "Blind counts are more accurate but slower to reconcile; open counts are quick but counters tend to confirm what they see on screen.",
+      "status": "answered",
+      "asked_at": "2026-09-24T10:00:00Z",
+      "options": [
+        {
+          "label": "Blind",
+          "cost": "A recount is needed more often when someone miscounts"
+        },
+        {
+          "label": "Show expected quantity"
+        }
+      ],
+      "recommendation": "Blind",
+      "task": "T21",
+      "answer": "Blind. That's how the audit team wants it.",
+      "answered_at": "2026-09-24T11:20:00Z",
+      "answered_by": "u_oluwaseun"
+    },
+    "questions/Q9": {
+      "title": "What variance triggers a recount or a supervisor?",
+      "context": "Too low and counters spend all day recounting; too high and losses hide. Finance suggested a value limit; operations prefer a percentage.",
+      "status": "answered",
+      "asked_at": "2026-10-01T10:00:00Z",
+      "options": [
+        {
+          "label": "Above $250 or 5% of quantity",
+          "cost": "Two thresholds to explain"
+        },
+        {
+          "label": "Value only, $250",
+          "cost": "Cheap items with large quantity errors are ignored"
+        },
+        {
+          "label": "Percentage only, 5%",
+          "cost": "A 5% error on pallets of saffron matters more than on bags of onions"
+        }
+      ],
+      "recommendation": "Above $250 or 5% of quantity",
+      "task": "T31",
+      "answer": "Either threshold. Finance signs off on $250.",
+      "answered_at": "2026-10-02T09:45:00Z",
+      "answered_by": "u_ilse"
+    },
+    "run/main": {
+      "title": "Rewrite the Fennimore warehouse inventory service: receiving, slotting, picking, counts, replenishment, transfers, and the handheld app",
+      "objective": "Replace the co-op's 14-year-old warehouse inventory system with a service built around an append-only ledger by item, lot, and location. It must support FEFO allocation to stores, cycle counting, replenishment, store transfers, and a new handheld app, and cut over from the legacy database in one weekend window.",
+      "source": "docs/specs/wms-rewrite-v2.md in warehouse/inventory-service, tracker epics WMS-401, WMS-402, WMS-403",
+      "status": "running",
+      "approach": "Everything goes through one ledger. Receiving, putaway, picking, counts, replenishment, and transfers each post signed movements with a reason, and nothing else is allowed to change a balance. That lets the nightly verify job prove the books and gives recalls a single place to look.\n\nWork lands in five PRs by area, in the order the warehouse will adopt it: foundation and receiving, slotting and putaway, picking and counts, replenishment and transfers, then the handheld app. Picking is stacked on slotting because it reuses the capacity and recommender code.\n\nThe handheld app is last on purpose, so it is written against final APIs, but its sync contract and scan abstraction are planned early because they depend on outside parties (the DBA team and the scanner vendor).",
+      "delivery": "Five PRs by area, each reviewed and merged by people in order. P3 is stacked on P2; the rest are based on main. A PR is opened as a draft when its first task merges and marked ready when all its tasks are merged and checks pass. The cutover and decommissioning of the legacy system are a separate plan.",
+      "done_check": [
+        {
+          "text": "A vendor ASN and blind receipt post balanced ledger movements end to end, and ledger verify reports zero drift.",
+          "state": "met",
+          "note": "P1 merged; the 40 sample ASNs replay cleanly and the nightly verify has been clean since 25 September."
+        },
+        {
+          "text": "The slotting recommender matches or beats a human's bin in at least 70% of historical putaways.",
+          "state": "met",
+          "note": "74% on the 500-putaway replay."
+        },
+        {
+          "text": "Concurrent waves never over-reserve a lot, and no store receives stock below its minimum shelf life.",
+          "state": "unchecked"
+        },
+        {
+          "text": "A parallel run against legacy balances differs by fewer than 1 in 100,000 rows.",
+          "state": "unmet",
+          "note": "The 12 October rehearsal showed 14 differing rows in 3.1M (about 1 in 220,000), better than needed, but the comparison still excludes the Dunmore building."
+        },
+        {
+          "text": "A store transfer is requested, shipped, and received with a balanced ledger at every step.",
+          "state": "unchecked"
+        },
+        {
+          "text": "The handheld app completes a full pilot shift at the Dunmore building without falling back to paper.",
+          "state": "unchecked"
+        },
+        {
+          "text": "Cutover rehearsal on staging passes twice, with a tested rollback.",
+          "state": "unchecked",
+          "note": "One rehearsal done on 12 October."
+        }
+      ],
+      "out_of_scope": [
+        "Automatic substitution on short picks (Q10)",
+        "Mandatory dock appointments",
+        "Rendering pallet labels inside the service",
+        "Decommissioning the legacy system and the cutover weekend itself",
+        "Slotting what-if simulation UI",
+        "Labour management beyond the nightly productivity export"
+      ],
+      "risks": [
+        "The scanner vendor's SDK licence is unsigned, so the handheld scan abstraction cannot be tested on devices.",
+        "The stores' contractor has not provided a sandbox for the transfer manifest, so that integration is unvalidated.",
+        "The sync API's staging database role needs a DBA to create it.",
+        "Velocity classes depend on legacy pick history, which had a nine-day gap in July (since repaired).",
+        "Review on P3 is expected to be heavy: allocation concurrency is the hardest correctness problem in the plan."
+      ],
+      "jira_browse_url": "https://tracker.fennimore.example/browse/",
+      "epics": {
+        "WMS-401": "Inbound: foundation, receiving, and slotting",
+        "WMS-402": "Outbound and accuracy: picking, allocation, counts",
+        "WMS-403": "Replenishment, store transfers, and the handheld app"
+      },
+      "driver": {
+        "session": "drive-wms-rewrite-3",
+        "since": "2026-10-19T08:55:00Z"
+      },
+      "started_at": "2026-08-31T09:12:00Z",
+      "updated_at": "2026-10-22T15:30:00Z"
+    },
+    "tasks/T1": {
+      "title": "Schema baseline",
+      "order": 1,
+      "status": "merged",
+      "goal": "Create the Postgres schema the rest of the service builds on: warehouse, location, item, unit of measure, lot.",
+      "approach": "One migration, 0001_baseline.sql, applied by the migration runner on service start. Surrogate bigint keys, plus the co-op's natural keys (sku, location_code) as unique indexes so the importer can upsert on them.\n\nNo inventory quantities here. Those arrive only through the ledger (see the ledger task), so nothing in this schema has an on_hand column.",
+      "touches": [
+        "db/migrations/0001_baseline.sql",
+        "db/schema/README.md"
+      ],
+      "verify": "Migration applies to an empty database and to a copy of the staging snapshot; make db-diff shows no drift against the checked-in schema dump.",
+      "branch": "wms-401/schema-baseline-warehouse-location-item-lot-tables",
+      "outcome": "Landed as planned, with two additions. location_code is unique per warehouse rather than globally, because the Dunmore cross-dock reuses codes with the main building. And item.sku is text with a check constraint, not varchar(12): legacy SKUs run to 14 characters for private-label lines.",
+      "depends_on": [],
+      "epics": [
+        "WMS-401"
+      ],
+      "pr": "P1"
+    },
+    "tasks/T10": {
+      "title": "Legacy item and location importer",
+      "order": 10,
+      "status": "merged",
+      "goal": "Load legacy items and the location tree into the new schema, repeatably.",
+      "approach": "Idempotent upsert on natural keys, run as inventoryd import legacy --dry-run first. Writes a report of rows skipped and why. Per Q3, balances are NOT imported here: that is the cutover task's job.",
+      "touches": [
+        "cmd/inventoryd/import.go",
+        "internal/legacy/importer.go",
+        "internal/legacy/testdata/locations_small.csv"
+      ],
+      "verify": "Run twice against the staging replica; the second run reports zero changes.",
+      "branch": "wms-401/legacy-item-and-location-importer",
+      "outcome": "Found 311 legacy locations with no parent aisle (old overflow cages). They import under a synthetic LEGACY-UNMAPPED zone and the report lists them; Oluwaseun will clean them up by hand.",
+      "depends_on": [
+        "T5",
+        "T1"
+      ],
+      "epics": [
+        "WMS-401"
+      ],
+      "pr": "P1"
+    },
+    "tasks/T11": {
+      "title": "Inventory ledger: append-only movements",
+      "order": 11,
+      "status": "merged",
+      "goal": "The single source of truth for quantities: every change is a signed movement between locations, with a reason.",
+      "approach": "inventory_movement(id, item_id, lot_id, from_location_id, to_location_id, qty_each, reason, ref_type, ref_id, actor, at). Balances are a materialised table maintained by a trigger-free writer in the same transaction, so a movement and its balance update can never diverge. Per Q1, granularity is item + lot + location.\n\nEvery movement writes an outbox event. Reasons are an enum owned by this package; other packages may not invent new ones.",
+      "touches": [
+        "internal/ledger/post.go",
+        "internal/ledger/balance.go",
+        "internal/ledger/reasons.go",
+        "db/migrations/0005_ledger.sql"
+      ],
+      "verify": "Property test: after 10,000 random movements, balances equal the sum of movements for every (item, lot, location), and no balance goes negative unless the reason is adjust_found.",
+      "branch": "wms-401/inventory-ledger-append-only-movements",
+      "outcome": "Balances table is written by Go, not a trigger, as planned, but we added a nightly ledger verify job that recomputes balances and alerts on any mismatch. Negative balances are allowed only for adjust_found and staging bins.",
+      "depends_on": [
+        "T1",
+        "T3"
+      ],
+      "epics": [
+        "WMS-401",
+        "WMS-402"
+      ],
+      "pr": "P1"
+    },
+    "tasks/T12": {
+      "title": "Per-endpoint authorization middleware",
+      "order": 12,
+      "status": "merged",
+      "goal": "Each route declares the roles allowed; the middleware enforces it and logs denials.",
+      "approach": "A Require(roles ...Role) wrapper and a route table test that fails if any registered route lacks a policy.",
+      "touches": [
+        "internal/httpx/authz.go",
+        "internal/httpx/routes_test.go"
+      ],
+      "verify": "The route-table test fails on a route added without a policy.",
+      "branch": "wms-401/per-endpoint-authorization-middleware",
+      "outcome": "Supervisors inherit counter and picker permissions; the spec listed these separately, which would have meant every supervisor holding three role claims.",
+      "depends_on": [
+        "T2",
+        "T4"
+      ],
+      "epics": [
+        "WMS-401",
+        "WMS-403"
+      ],
+      "pr": "P1"
+    },
+    "tasks/T13": {
+      "title": "Dead-letter queue for the outbox relay",
+      "order": 13,
+      "status": "dropped",
+      "goal": "Park events that fail to publish repeatedly instead of retrying forever.",
+      "approach": "Dropped: the bus's own retry and dead-letter handling already covers poison messages, and the relay only fails on connectivity. See the journal.",
+      "touches": [
+        "internal/outbox/relay.go"
+      ],
+      "verify": "n/a",
+      "depends_on": [
+        "T3",
+        "T6"
+      ],
+      "epics": [
+        "WMS-401"
+      ],
+      "pr": "P1"
+    },
+    "tasks/T14": {
+      "title": "Scan engine abstraction for the rugged scanner SDK",
+      "order": 14,
+      "status": "blocked",
+      "goal": "One interface for barcode input on the handheld, so screens never talk to the vendor SDK directly.",
+      "approach": "Blocked on outside work: the scanner vendor's Android SDK licence for the 2026 device fleet has not been countersigned by the co-op's procurement office, and the SDK binaries are not available until it is. Work resumes once the AAR is in the artifact repository. Meanwhile screens can use a camera-based stub behind the same interface.",
+      "touches": [
+        "handheld/scan/ScanEngine.kt",
+        "handheld/scan/VendorScanEngine.kt"
+      ],
+      "verify": "Scan a Code 128, GS1-128, and EAN-13 label on a real device and receive the same decoded events through the interface.",
+      "depends_on": [
+        "T4"
+      ],
+      "epics": [
+        "WMS-403"
+      ],
+      "pr": "P5"
+    },
+    "tasks/T15": {
+      "title": "Advance ship notice ingest",
+      "order": 15,
+      "status": "merged",
+      "goal": "Accept vendors' ASNs as expected receipts, so receivers confirm rather than key in.",
+      "approach": "POST /v1/asn accepting the co-op's EDI-to-JSON bridge format. Idempotent on (vendor_id, asn_number). An ASN creates expected_receipt rows and does NOT touch the ledger. Unknown SKUs reject the whole ASN with a line-level error list.",
+      "touches": [
+        "internal/receiving/asn.go",
+        "internal/receiving/asn_validate.go",
+        "api/openapi/receiving.yaml"
+      ],
+      "verify": "Replay the 40 sample ASNs from the bridge's test fixtures; the 3 with unknown SKUs fail with usable messages.",
+      "branch": "wms-401/advance-ship-notice-ingest",
+      "outcome": "Whole-ASN rejection was too strict in the sample data: 6 of the 40 had one stale SKU. We now accept the ASN with the bad lines held in asn_line_error and flagged for the buyer. This is a change from the plan.",
+      "depends_on": [
+        "T7",
+        "T9",
+        "T11"
+      ],
+      "epics": [
+        "WMS-401"
+      ],
+      "pr": "P1"
+    },
+    "tasks/T16": {
+      "title": "Blind receipt against purchase orders",
+      "order": 16,
+      "status": "merged",
+      "goal": "A receiver counts what is on the pallet without seeing the expected quantity; the service compares afterwards.",
+      "approach": "POST /v1/receipts with lines (po_line, lot_code, best_before, qty_each). Tolerance per vendor class: +/-2% for dry goods, exact for temperature-controlled. Over/short beyond tolerance creates a discrepancy rather than blocking the receipt, so the truck can leave.",
+      "touches": [
+        "internal/receiving/receipt.go",
+        "internal/receiving/tolerance.go",
+        "internal/receiving/receipt_test.go"
+      ],
+      "verify": "Receipts within, at, and beyond tolerance produce the expected movements and discrepancy rows; a duplicate POST with the same idempotency key is a no-op.",
+      "branch": "wms-401/blind-receipt-against-purchase-orders",
+      "outcome": "Receiving posts to the RECEIVING-STAGE bin, not the final location; putaway moves it. Tolerance is stored on the vendor class table rather than hard-coded.",
+      "depends_on": [
+        "T7",
+        "T9",
+        "T11"
+      ],
+      "epics": [
+        "WMS-401"
+      ],
+      "pr": "P1"
+    },
+    "tasks/T17": {
+      "title": "Velocity classes from 13-week pick history",
+      "order": 17,
+      "status": "merged",
+      "goal": "Classify each item A/B/C by units picked, so slotting knows what belongs near the dock.",
+      "approach": "Nightly job reading the legacy pick history (until the new service has its own) over a rolling 13 weeks, per Q5, with an optional seasonal override table. Class cut-offs at 80% and 95% cumulative picks.",
+      "touches": [
+        "internal/slotting/velocity.go",
+        "internal/slotting/seasonal_override.go",
+        "db/migrations/0006_velocity.sql"
+      ],
+      "verify": "Run against last quarter's history; the top 300 SKUs match the ops team's hand-made list to within 15 items.",
+      "branch": "wms-401/velocity-classes-from-13-week-pick-history",
+      "outcome": "Used pick lines rather than units for the first cut, since one 40-case pallet pick skewed units badly. Switched to a blend: 70% lines, 30% units. Ops agreed the output looks right.",
+      "depends_on": [
+        "T10",
+        "T7"
+      ],
+      "epics": [
+        "WMS-401"
+      ],
+      "pr": "P2"
+    },
+    "tasks/T18": {
+      "title": "Bin capacity model: cube and weight limits",
+      "order": 18,
+      "status": "merged",
+      "goal": "Know whether a given quantity of an item fits in a given bin.",
+      "approach": "Per-bin max_cube_cm3 and max_weight_g, defaulting from the bin type. fits(item, qty, bin) accounts for what is already there, from the ledger balances.",
+      "touches": [
+        "internal/slotting/capacity.go",
+        "internal/slotting/capacity_test.go"
+      ],
+      "verify": "Fits tests for a mixed bin, a full bin, and an item with no recorded dimensions (treated as not fitting, with a reason).",
+      "branch": "wms-401/bin-capacity-model-cube-and-weight-limits",
+      "outcome": "Items with no recorded dimensions are 1,870 of 14,200. The function returns a typed ErrNoDimensions and the recommender treats those items as manual-slot.",
+      "depends_on": [
+        "T8",
+        "T7"
+      ],
+      "epics": [
+        "WMS-401"
+      ],
+      "pr": "P2"
+    },
+    "tasks/T19": {
+      "title": "Pick list model: wave, task, line",
+      "order": 19,
+      "status": "merged",
+      "goal": "The data model and state machine for pick work: a wave contains pick lists, which contain tasks, which contain lines.",
+      "approach": "Tables pick_wave, pick_list, pick_task, pick_line. A task is the unit a picker claims: one location visit for a set of lines. States: open, claimed, picked, short, cancelled. Transitions live in one function so the handler, the sync API, and the reports agree.",
+      "touches": [
+        "internal/picking/model.go",
+        "internal/picking/state.go",
+        "db/migrations/0007_picking.sql"
+      ],
+      "verify": "State-machine test enumerates every transition; illegal ones return a typed error.",
+      "branch": "wms-402/pick-list-model-wave-task-line",
+      "outcome": "Added pick_task.cart_id after talking to Oluwaseun: pickers build multi-store carts, and the cart is how the packing station knows what belongs together.",
+      "depends_on": [
+        "T7",
+        "T8",
+        "T11",
+        "T12"
+      ],
+      "epics": [
+        "WMS-402"
+      ],
+      "pr": "P3"
+    },
+    "tasks/T2": {
+      "title": "Service skeleton, config, health endpoints",
+      "order": 2,
+      "status": "merged",
+      "goal": "A deployable Go service with config loading, structured logging, and liveness/readiness endpoints.",
+      "approach": "Standard layout under cmd/ and internal/. Config from environment with a typed struct, validated at start; unknown WMS_ variables are an error so typos fail fast. /healthz is process-only, /readyz checks the database and the outbox relay's lag.",
+      "touches": [
+        "cmd/inventoryd/main.go",
+        "internal/config/config.go",
+        "internal/httpx/health.go"
+      ],
+      "verify": "go test ./... passes; the container starts with only the required variables and reports ready within 3 seconds against a local Postgres.",
+      "branch": "wms-401/service-skeleton-config-and-health-endpoints",
+      "outcome": "As planned. Readiness also reports the migration version, which the deploy pipeline now asserts on.",
+      "depends_on": [],
+      "epics": [
+        "WMS-401"
+      ],
+      "pr": "P1"
+    },
+    "tasks/T20": {
+      "title": "Lot quarantine holds",
+      "order": 20,
+      "status": "in_progress",
+      "goal": "Place a lot, or part of one, on hold so it can't be allocated or picked.",
+      "approach": "A hold is a row in lot_hold with a reason and an optional expiry. Allocation and putaway filter on active holds. Releasing a hold is supervisor-only and journals who released it. Stock physically moves to a quarantine bin only when the warehouse chooses to; the hold itself is logical.",
+      "touches": [
+        "internal/lots/hold.go",
+        "internal/lots/hold_test.go",
+        "db/migrations/0009_lot_hold.sql"
+      ],
+      "verify": "A held lot is invisible to allocation; releasing it makes it visible on the next wave without a restart.",
+      "branch": "wms-402/lot-quarantine-holds-logical-and-physical",
+      "depends_on": [
+        "T9",
+        "T11"
+      ],
+      "epics": [
+        "WMS-402"
+      ],
+      "pr": "P3"
+    },
+    "tasks/T21": {
+      "title": "Count tasks and blind count entry",
+      "order": 21,
+      "status": "in_progress",
+      "goal": "A counter is told where to count, not what to expect; the service compares afterwards.",
+      "approach": "count_task(location_id, status, counted_by) and count_line(item_id, lot_id, counted_qty_each). Blind per Q8: the API never returns system quantity to a counter role. Supervisors can see both. Recounts are new tasks linked to the original.",
+      "touches": [
+        "internal/counting/task.go",
+        "internal/counting/entry.go",
+        "api/openapi/counting.yaml",
+        "db/migrations/0010_counting.sql"
+      ],
+      "verify": "A counter-role token requesting a task never receives system_qty in any response, including error bodies.",
+      "branch": "wms-402/count-tasks-and-blind-count-entry",
+      "depends_on": [
+        "T11",
+        "T8",
+        "T12"
+      ],
+      "epics": [
+        "WMS-402"
+      ],
+      "pr": "P3"
+    },
+    "tasks/T22": {
+      "title": "Store transfer order model",
+      "order": 22,
+      "status": "in_progress",
+      "goal": "A transfer order moves stock from the warehouse to a store, or between stores, with statuses the stores can follow.",
+      "approach": "States: requested, approved, picking, in_transit, received, closed, cancelled. Per Q17, the sender owns stock until receipt: shipping posts a ledger movement into a per-store IN-TRANSIT location, receipt moves it out.",
+      "touches": [
+        "internal/transfers/model.go",
+        "internal/transfers/state.go",
+        "db/migrations/0011_transfers.sql"
+      ],
+      "verify": "Every legal transition covered; cancelling an order in in_transit is refused with a pointer to the receipt flow.",
+      "branch": "wms-403/store-transfer-order-model-and-in-transit-ownership",
+      "depends_on": [
+        "T7",
+        "T8",
+        "T11",
+        "T12"
+      ],
+      "epics": [
+        "WMS-403"
+      ],
+      "pr": "P4"
+    },
+    "tasks/T23": {
+      "title": "Handheld app shell, enrolment, and login",
+      "order": 23,
+      "status": "pending",
+      "goal": "A new device enrols once, then staff sign in with a badge scan and PIN.",
+      "approach": "Kotlin app on the rugged Android fleet. Enrolment by one-time code from the admin page; the device token is kept in the keystore. Badge sign-in swaps for a user token with the wms_roles claim.",
+      "touches": [
+        "handheld/app/MainActivity.kt",
+        "handheld/auth/Enrolment.kt",
+        "handheld/auth/BadgeLogin.kt"
+      ],
+      "verify": "Enrol a device, sign in as three roles, and confirm role-based home screens differ.",
+      "depends_on": [
+        "T12"
+      ],
+      "epics": [
+        "WMS-403"
+      ],
+      "pr": "P5"
+    },
+    "tasks/T24": {
+      "title": "Dock appointments and door assignment",
+      "order": 24,
+      "status": "merged",
+      "goal": "Carriers book a dock door and window; receivers see the day's schedule.",
+      "approach": "Per Q4, appointments are advisory in this release: a truck without one is receivable, and the report flags it. Door assignment is first-fit by temperature zone, with the manual override kept.",
+      "touches": [
+        "internal/receiving/appointments.go",
+        "internal/receiving/doors.go"
+      ],
+      "verify": "Two carriers requesting the same door and window: the second gets the next compatible door, or a clear refusal.",
+      "branch": "wms-401/dock-appointments-and-door-assignment",
+      "outcome": "Built as advisory per the answer on Q4. The hard-require code path was left out entirely rather than behind a flag.",
+      "depends_on": [
+        "T8",
+        "T15"
+      ],
+      "epics": [
+        "WMS-401"
+      ],
+      "pr": "P1"
+    },
+    "tasks/T25": {
+      "title": "Slotting recommender",
+      "order": 25,
+      "status": "merged",
+      "goal": "Given an item and a quantity, rank candidate bins for putaway.",
+      "approach": "Score = proximity-to-dock weight x velocity class + same-item adjacency bonus - fragmentation penalty, filtered by temperature zone and fits. Weights live in slotting_weights rows so ops can tune without a deploy. Returns the top 5 with the reason each scored as it did.\n\nThe recommender never moves stock. It only answers.",
+      "touches": [
+        "internal/slotting/recommend.go",
+        "internal/slotting/score.go",
+        "internal/slotting/weights.go",
+        "internal/slotting/recommend_test.go"
+      ],
+      "verify": "Replay 500 historical putaways; the recommender's first choice matches or beats the human's bin on travel distance in at least 70%.",
+      "branch": "wms-401/slotting-recommender-score-candidate-bins",
+      "outcome": "Replay showed 74% matched or beat the human. Adjacency bonus was dropped to 0.2 weight after it clustered all of a vendor's items in one aisle, which jammed the picker flow in the simulation.",
+      "depends_on": [
+        "T17",
+        "T18"
+      ],
+      "epics": [
+        "WMS-401"
+      ],
+      "pr": "P2"
+    },
+    "tasks/T26": {
+      "title": "FEFO allocation against store orders",
+      "order": 26,
+      "status": "in_progress",
+      "goal": "Reserve stock for each store order line, oldest-expiring first, honouring each store's minimum remaining shelf life.",
+      "approach": "Allocation runs per wave inside one serialisable transaction per item, so two waves can't reserve the same units. Reservations are rows in allocation, not balance changes; the ledger moves only at pick. Per Q7, a store's min_shelf_life_days filters lots before FEFO ordering; if nothing qualifies, the line is short with reason shelf_life.\n\nPartial allocations are allowed and recorded.",
+      "touches": [
+        "internal/picking/allocate.go",
+        "internal/picking/allocate_test.go",
+        "internal/picking/shelf_life.go",
+        "db/migrations/0008_allocation.sql"
+      ],
+      "verify": "Two concurrent waves over the same SKU never over-reserve (run 200 times); a store with 7-day minimum is never allocated a lot with 5 days left.",
+      "branch": "wms-402/fefo-allocation-against-store-order-lines-with-shelf-life-floor",
+      "depends_on": [
+        "T9",
+        "T11",
+        "T19"
+      ],
+      "epics": [
+        "WMS-402"
+      ],
+      "pr": "P3"
+    },
+    "tasks/T27": {
+      "title": "Wave planning by store route cutoff",
+      "order": 27,
+      "status": "in_progress",
+      "goal": "Group store orders into waves that finish before each route's truck cutoff.",
+      "approach": "Waves are cut backwards from the route's departure time using a per-zone picking rate. A wave is a proposal until a supervisor releases it.",
+      "touches": [
+        "internal/picking/wave.go",
+        "internal/picking/route_cutoff.go"
+      ],
+      "verify": "Given three routes with staggered cutoffs and a known pick rate, the planner produces waves that all complete 20 minutes before cutoff.",
+      "branch": "wms-402/wave-planning-by-store-route-cutoff",
+      "depends_on": [
+        "T19",
+        "T8"
+      ],
+      "epics": [
+        "WMS-402"
+      ],
+      "pr": "P3"
+    },
+    "tasks/T28": {
+      "title": "Pick task claim and confirm endpoints",
+      "order": 28,
+      "status": "in_progress",
+      "goal": "Pickers claim a task, confirm each line by scan, and report shorts.",
+      "approach": "POST /v1/pick-tasks/{id}/claim is a compare-and-set on claimed_by, with a 15-minute lease renewed by each confirm. Confirm posts the ledger movement to the cart's tote location. Review found that a lease expiring mid-confirm could let a second picker claim and both post; the fix moves lease validation inside the posting transaction.",
+      "touches": [
+        "internal/picking/claim.go",
+        "internal/picking/confirm.go",
+        "internal/picking/lease.go",
+        "api/openapi/picking.yaml"
+      ],
+      "verify": "Two pickers racing for one task: exactly one wins. A picker whose lease expired between scan and confirm gets a 409 and no movement is posted.",
+      "branch": "wms-402/pick-task-claim-and-confirm-endpoints-with-lease-renewal",
+      "depends_on": [
+        "T19",
+        "T12"
+      ],
+      "epics": [
+        "WMS-402",
+        "WMS-403"
+      ],
+      "pr": "P3"
+    },
+    "tasks/T29": {
+      "title": "Cycle count scheduling by ABC class",
+      "order": 29,
+      "status": "in_progress",
+      "goal": "Generate the day's counts so A items are counted monthly, B quarterly, C twice a year.",
+      "approach": "Daily job picking locations due by class, spread evenly across weekdays and capped at the counters' capacity setting. Locations with pending picks are deferred. Review: the cap was applied per warehouse, not per shift, so Dunmore's evening crew got zero counts. Fixing to apply per shift.",
+      "touches": [
+        "internal/counting/schedule.go",
+        "internal/counting/schedule_test.go"
+      ],
+      "verify": "Over a simulated quarter, each A location is scheduled 3 times (+/-0) and no day exceeds the cap on any shift.",
+      "branch": "wms-402/cycle-count-scheduling-by-abc-class-per-shift-cap",
+      "depends_on": [
+        "T17",
+        "T8"
+      ],
+      "epics": [
+        "WMS-402"
+      ],
+      "pr": "P3"
+    },
+    "tasks/T3": {
+      "title": "Event outbox table and relay worker",
+      "order": 3,
+      "status": "merged",
+      "goal": "Every state change that other systems care about is written to an outbox in the same transaction, and a worker relays it to the message bus.",
+      "approach": "Table event_outbox(id, aggregate, aggregate_id, type, payload jsonb, created_at, relayed_at). The relay polls with FOR UPDATE SKIP LOCKED, batches of 200, publishes, then stamps relayed_at. Ordering is guaranteed per aggregate only; consumers are told so in the event schema doc.",
+      "touches": [
+        "internal/outbox/relay.go",
+        "internal/outbox/store.go",
+        "db/migrations/0002_event_outbox.sql",
+        "docs/events/ordering.md"
+      ],
+      "verify": "Kill the relay mid-batch in the integration test and confirm no event is lost and none is published twice with a different payload.",
+      "branch": "wms-401/event-outbox-table-and-relay-worker",
+      "outcome": "Delivery is at-least-once, not exactly-once as the spec's wording suggested; duplicates carry the same id so consumers can dedupe. Documented in docs/events/ordering.md.",
+      "depends_on": [],
+      "epics": [
+        "WMS-401",
+        "WMS-403"
+      ],
+      "pr": "P1"
+    },
+    "tasks/T30": {
+      "title": "Min/max and reorder parameters per forward bin",
+      "order": 30,
+      "status": "in_progress",
+      "goal": "Each forward pick bin has a minimum and a maximum so replenishment knows when and how much.",
+      "approach": "Defaults derived from velocity class and bin capacity (max = floor(capacity x 0.9), min = ceil(daily picks x 1.5)), overridable per bin. Parameters are versioned so the replenishment task can say which version triggered it.",
+      "touches": [
+        "internal/replenishment/params.go",
+        "internal/replenishment/defaults.go",
+        "db/migrations/0012_replen_params.sql"
+      ],
+      "verify": "Derived defaults for 100 sampled forward bins match ops's spreadsheet to within one case.",
+      "branch": "wms-403/min-max-and-reorder-parameters-per-forward-pick-bin",
+      "depends_on": [
+        "T7",
+        "T8",
+        "T17"
+      ],
+      "epics": [
+        "WMS-403"
+      ],
+      "pr": "P4"
+    },
+    "tasks/T31": {
+      "title": "Variance review and recount thresholds",
+      "order": 31,
+      "status": "pending",
+      "goal": "When a count differs from the system, decide whether it needs a recount or a supervisor.",
+      "approach": "Per Q9: a variance above $250 value or 5% of quantity forces a recount by a different counter; a second mismatch goes to a supervisor. Smaller variances post automatically.",
+      "touches": [
+        "internal/counting/variance.go",
+        "internal/counting/policy.go"
+      ],
+      "verify": "Boundary tests at exactly $250 and exactly 5%; recount never assigned to the original counter.",
+      "depends_on": [
+        "T21"
+      ],
+      "epics": [
+        "WMS-402"
+      ],
+      "pr": "P3"
+    },
+    "tasks/T32": {
+      "title": "Handheld sync API",
+      "order": 32,
+      "status": "pending",
+      "goal": "Delta sync of the signed-in user's tasks, so devices work with patchy wifi.",
+      "approach": "GET /v1/sync?since=<cursor> returns changed tasks for the caller's role and zone, with an opaque cursor built from outbox ids. Writes come back as idempotent commands, each carrying a client-generated id.\n\nDepends on Q15: the staging database needs a wms_scanner role created by the DBA before the sync read path can be tested.",
+      "touches": [
+        "internal/sync/handler.go",
+        "internal/sync/cursor.go",
+        "api/openapi/sync.yaml"
+      ],
+      "verify": "A device offline for an hour, reconnecting, receives exactly the changes since its cursor, no duplicates.",
+      "depends_on": [
+        "T12",
+        "T3",
+        "T19",
+        "Q15"
+      ],
+      "epics": [
+        "WMS-403"
+      ],
+      "pr": "P5"
+    },
+    "tasks/T33": {
+      "title": "Directed putaway tasks",
+      "order": 33,
+      "status": "merged",
+      "goal": "After receipt, generate a task moving each pallet from the receiving stage to the recommended bin.",
+      "approach": "One putaway_task per pallet. Confirming scans the pallet and the bin; a different bin than recommended is allowed with a reason code, and is recorded for tuning the weights. Movement posts on confirm.",
+      "touches": [
+        "internal/putaway/task.go",
+        "internal/putaway/confirm.go",
+        "api/openapi/putaway.yaml"
+      ],
+      "verify": "Confirm to the recommended bin, to another bin with a reason, and to a bin that does not fit (rejected with the capacity reason).",
+      "branch": "wms-401/directed-putaway-tasks",
+      "outcome": "A scan of a bin outside the pallet's temperature zone is refused outright, a rule we hadn't written down. Supervisors can override with a reason code.",
+      "depends_on": [
+        "T25",
+        "T11"
+      ],
+      "epics": [
+        "WMS-401"
+      ],
+      "pr": "P2"
+    },
+    "tasks/T34": {
+      "title": "Recall hold propagation to open picks",
+      "order": 34,
+      "status": "pending",
+      "goal": "When a lot goes on hold, work already assigned from it is corrected.",
+      "approach": "Held by Q16: what happens to units already on a picker's cart. Until it is answered, only the allocation side is specified: reservations from the held lot are released and re-run through FEFO, short with reason hold if nothing else qualifies.",
+      "touches": [
+        "internal/picking/recall.go",
+        "internal/lots/hold.go"
+      ],
+      "verify": "A hold placed during an active wave re-allocates the open lines and flags every picked-but-not-shipped unit.",
+      "depends_on": [
+        "T20",
+        "T26",
+        "Q16"
+      ],
+      "epics": [
+        "WMS-402"
+      ],
+      "pr": "P3"
+    },
+    "tasks/T35": {
+      "title": "Short-pick handling",
+      "order": 35,
+      "status": "pending",
+      "goal": "A picker who finds less than expected records the shortage; the service decides what happens to the order line.",
+      "approach": "Per Q10, no automatic substitution in this release. A short line is flagged to the store with the shortfall, and the location is queued for a cycle count.",
+      "touches": [
+        "internal/picking/short.go"
+      ],
+      "verify": "A short at a location creates a count task and a store-visible note, in that order, in one transaction.",
+      "depends_on": [
+        "T26",
+        "T28"
+      ],
+      "epics": [
+        "WMS-402"
+      ],
+      "pr": "P3"
+    },
+    "tasks/T36": {
+      "title": "Pick path sequencing within a zone",
+      "order": 36,
+      "status": "pending",
+      "goal": "Order a task's lines so the picker walks the zone once.",
+      "approach": "Serpentine ordering by aisle, then bay, alternating direction per aisle; levels bottom to top within a bay for weight (heavy items first). Zones with unusual layouts, like the cold room's U shape, get an explicit path in config.",
+      "touches": [
+        "internal/picking/path.go",
+        "config/zones/cold_room_path.yaml"
+      ],
+      "verify": "Distance walked on 30 recorded real tasks is no worse than the existing system's order.",
+      "depends_on": [
+        "T8",
+        "T27"
+      ],
+      "epics": [
+        "WMS-402"
+      ],
+      "pr": "P3"
+    },
+    "tasks/T37": {
+      "title": "Adjustment postings with reason codes",
+      "order": 37,
+      "status": "pending",
+      "goal": "Post the counted difference to the ledger with a reason that finance accepts.",
+      "approach": "Reason codes: count_shrink, count_found, damaged, expired, theft_suspected. Counter picks one; supervisors can reclassify. Writes the movement and an audit row linking the count task.",
+      "touches": [
+        "internal/counting/adjust.go",
+        "internal/ledger/reasons.go"
+      ],
+      "verify": "Each reason produces the movement finance expects; reclassifying leaves both rows visible.",
+      "depends_on": [
+        "T11",
+        "T31"
+      ],
+      "epics": [
+        "WMS-402"
+      ],
+      "pr": "P3"
+    },
+    "tasks/T38": {
+      "title": "Freeze a location while it is being counted",
+      "order": 38,
+      "status": "pending",
+      "goal": "No picks or putaways against a location mid-count.",
+      "approach": "A count_lock row checked by allocation and putaway. Locks expire after 30 minutes and release when the task completes. Picks already claimed against the location finish first; the lock waits for them.",
+      "touches": [
+        "internal/counting/lock.go",
+        "internal/picking/allocate.go"
+      ],
+      "verify": "Lock requested with a pick in flight waits and then holds; lock past expiry is released and logged.",
+      "depends_on": [
+        "T21",
+        "T27"
+      ],
+      "epics": [
+        "WMS-402"
+      ],
+      "pr": "P3"
+    },
+    "tasks/T39": {
+      "title": "Replenishment task trigger",
+      "order": 39,
+      "status": "pending",
+      "goal": "Create a replenishment task when a forward bin drops below its minimum.",
+      "approach": "Held by Q14: whether to evaluate on every ledger movement or on a 5-minute sweep. Either way the task is idempotent per (bin, params version): a bin already awaiting replenishment does not get a second task.",
+      "touches": [
+        "internal/replenishment/trigger.go",
+        "internal/replenishment/trigger_test.go"
+      ],
+      "verify": "Drop a bin below minimum, confirm one task; pick from it again, still one task; replenish, task closes.",
+      "depends_on": [
+        "T30",
+        "T11",
+        "Q14"
+      ],
+      "epics": [
+        "WMS-403"
+      ],
+      "pr": "P4"
+    },
+    "tasks/T4": {
+      "title": "Auth: device tokens and role claims",
+      "order": 4,
+      "status": "merged",
+      "goal": "Scanner devices and staff authenticate with short-lived tokens carrying a role (receiver, picker, counter, supervisor, admin).",
+      "approach": "Verify tokens issued by the co-op's identity service (OIDC discovery, JWKS cached for 10 minutes). Device tokens are a separate audience, wms-device, with the device id in sub. Roles come from the wms_roles claim.",
+      "touches": [
+        "internal/auth/verifier.go",
+        "internal/auth/claims.go"
+      ],
+      "verify": "Table-driven tests for expired, wrong-audience, and unknown-key tokens; a token signed by a rotated key verifies after the JWKS refresh.",
+      "branch": "wms-401/auth-device-tokens-and-role-claims",
+      "outcome": "As planned. The identity team renamed the claim from roles to wms_roles mid-task, so the verifier accepts both until their cutover.",
+      "depends_on": [],
+      "epics": [
+        "WMS-401",
+        "WMS-403"
+      ],
+      "pr": "P1"
+    },
+    "tasks/T40": {
+      "title": "Store-facing transfer request API",
+      "order": 40,
+      "status": "pending",
+      "goal": "Store managers request stock from the warehouse or a sister store.",
+      "approach": "POST /v1/transfers from a store-role token; approval by the warehouse supervisor unless the request is under the store's standing allowance. Reservations use the same allocation as pick waves, so FEFO and holds apply.",
+      "touches": [
+        "internal/transfers/request.go",
+        "internal/transfers/approval.go",
+        "api/openapi/transfers.yaml"
+      ],
+      "verify": "A request within allowance auto-approves; one above it waits for a supervisor.",
+      "depends_on": [
+        "T22",
+        "T26"
+      ],
+      "epics": [
+        "WMS-403"
+      ],
+      "pr": "P4"
+    },
+    "tasks/T41": {
+      "title": "Receiving screens",
+      "order": 41,
+      "status": "pending",
+      "goal": "Scan a pallet label, enter counts, finish the receipt.",
+      "touches": [
+        "handheld/receiving/ReceiveScreen.kt",
+        "handheld/receiving/ReceiveViewModel.kt"
+      ],
+      "verify": "Receive a 6-line PO on a device against staging.",
+      "depends_on": [
+        "T23",
+        "T32",
+        "T16"
+      ],
+      "epics": [
+        "WMS-403"
+      ],
+      "pr": "P5"
+    },
+    "tasks/T42": {
+      "title": "Slotting what-if simulator",
+      "order": 42,
+      "status": "dropped",
+      "goal": "Let ops try a new weight set against history before applying it.",
+      "approach": "Dropped when the replay harness used for the recommender's tests proved enough for ops; a UI on top is not worth it for a handful of tuning sessions a year.",
+      "touches": [
+        "internal/slotting/simulate.go"
+      ],
+      "verify": "n/a",
+      "depends_on": [
+        "T25",
+        "T33"
+      ],
+      "epics": [
+        "WMS-401"
+      ],
+      "pr": "P2"
+    },
+    "tasks/T43": {
+      "title": "Shrink report by category",
+      "order": 43,
+      "status": "pending",
+      "goal": "Weekly shrink by department and reason, for the finance review.",
+      "touches": [
+        "internal/reports/shrink.go",
+        "reports/shrink_weekly.sql"
+      ],
+      "verify": "Report totals equal the sum of count_* movements for the same week.",
+      "depends_on": [
+        "T37",
+        "T31"
+      ],
+      "epics": [
+        "WMS-402"
+      ],
+      "pr": "P3"
+    },
+    "tasks/T44": {
+      "title": "Picker productivity export",
+      "order": 44,
+      "status": "pending",
+      "goal": "Lines per hour and short rate per picker, exported nightly.",
+      "approach": "CSV to the shared drive plus an event for the HR system. Aggregated per picker per shift, no per-task detail, as Zoë asked.",
+      "touches": [
+        "internal/reports/productivity.go"
+      ],
+      "verify": "Sample day matches hand-computed numbers for three pickers.",
+      "depends_on": [
+        "T28",
+        "T35"
+      ],
+      "epics": [
+        "WMS-402"
+      ],
+      "pr": "P3"
+    },
+    "tasks/T45": {
+      "title": "Priority and batching of replenishment tasks",
+      "order": 45,
+      "status": "pending",
+      "goal": "Order tasks so bins that will empty first are served first, and batch moves from the same reserve aisle.",
+      "approach": "Priority = projected minutes to empty, from the bin's recent pick rate. Batch up to 6 tasks per trip from adjacent reserve locations. A forklift-required move is never batched with a hand-truck move.",
+      "touches": [
+        "internal/replenishment/priority.go",
+        "internal/replenishment/batch.go"
+      ],
+      "verify": "Simulated morning rush: no bin with a pending wave line empties before its task is served.",
+      "depends_on": [
+        "T39",
+        "T33"
+      ],
+      "epics": [
+        "WMS-403"
+      ],
+      "pr": "P4"
+    },
+    "tasks/T46": {
+      "title": "Overflow-to-forward move suggestions",
+      "order": 46,
+      "status": "pending",
+      "goal": "When the reserve has stock of an item with a forward bin, suggest topping up during quiet hours rather than waiting for a trigger.",
+      "touches": [
+        "internal/replenishment/overflow.go"
+      ],
+      "verify": "Suggestions appear only for bins under 60% of max, and never during a released wave for that zone.",
+      "depends_on": [
+        "T25",
+        "T30",
+        "T39"
+      ],
+      "epics": [
+        "WMS-403"
+      ],
+      "pr": "P4"
+    },
+    "tasks/T47": {
+      "title": "Seasonal forecast feed for min/max",
+      "order": 47,
+      "status": "blocked",
+      "goal": "Raise or lower the min/max ahead of known seasonal swings, such as the autumn squash peak.",
+      "approach": "Blocked on outside work: the co-op's data team has promised a weekly forecast export (CSV, SKU x week) but has not yet agreed where it will be delivered. We build only after the file format is frozen. The importer is a small job; the wait is on Tavita's team.",
+      "touches": [
+        "internal/replenishment/forecast_import.go"
+      ],
+      "verify": "A forecast file raising squash demand 40% raises the affected bins' max by at least 40% when it fits, and warns when it doesn't.",
+      "depends_on": [
+        "T30",
+        "T39"
+      ],
+      "epics": [
+        "WMS-403"
+      ],
+      "pr": "P4"
+    },
+    "tasks/T48": {
+      "title": "Ship confirmation and in-transit postings",
+      "order": 48,
+      "status": "pending",
+      "goal": "When the truck leaves, move stock into the in-transit location and tell the store.",
+      "approach": "Ship confirmation is by route, not by order, because one truck carries many. Movement per transfer line, one outbox event per transfer.",
+      "touches": [
+        "internal/transfers/ship.go",
+        "internal/transfers/events.go"
+      ],
+      "verify": "Confirm a route with 4 transfers; each has its movements and one event; re-confirming is a no-op.",
+      "depends_on": [
+        "T22",
+        "T26",
+        "T40"
+      ],
+      "epics": [
+        "WMS-403"
+      ],
+      "pr": "P4"
+    },
+    "tasks/T49": {
+      "title": "Putaway screens",
+      "order": 49,
+      "status": "pending",
+      "goal": "Show the recommended bin; scan pallet then bin; override with a reason.",
+      "approach": "Large type for the bin code, because pickers read it from the forklift seat. A wrong-bin scan vibrates and shows the reason.",
+      "touches": [
+        "handheld/putaway/PutawayScreen.kt"
+      ],
+      "verify": "Putaway to the recommended bin and to another bin with a reason, end to end.",
+      "depends_on": [
+        "T23",
+        "T32",
+        "T33"
+      ],
+      "epics": [
+        "WMS-403"
+      ],
+      "pr": "P5"
+    },
+    "tasks/T5": {
+      "title": "Read-only access to the legacy inventory database",
+      "order": 5,
+      "status": "merged",
+      "goal": "A reader package that can pull items, locations, and on-hand balances from the old Oracle-era database without touching it.",
+      "approach": "Use the replica the DBA team set up and a read-only role. Stream by primary-key ranges with a configurable page size; no joins against legacy tables beyond the three we need. Everything goes through one legacy.Reader interface so tests use a fake.",
+      "touches": [
+        "internal/legacy/reader.go",
+        "internal/legacy/reader_fake.go"
+      ],
+      "verify": "Reader streams 1.2M balance rows from the staging replica in under 4 minutes without holding a transaction open longer than 30 seconds.",
+      "branch": "wms-401/legacy-inventory-read-only-reader",
+      "outcome": "The replica is Postgres-compatible after all, so no separate driver was needed. Page size defaults to 5000 because larger pages tripped the replica's statement timeout.",
+      "depends_on": [],
+      "epics": [
+        "WMS-401"
+      ],
+      "pr": "P1"
+    },
+    "tasks/T50": {
+      "title": "Picking screens",
+      "order": 50,
+      "status": "pending",
+      "goal": "Claim a task, follow the path, confirm each line, report shorts.",
+      "approach": "Reuses the scan-and-confirm components from receiving. Short reporting is a two-tap flow: tap Short, enter the quantity found. Cart assignment by scanning the cart label.",
+      "touches": [
+        "handheld/picking/PickScreen.kt",
+        "handheld/picking/PickViewModel.kt",
+        "handheld/components/ScanConfirm.kt"
+      ],
+      "verify": "Pick a 12-line task with one short and one wrong-scan retry.",
+      "depends_on": [
+        "T23",
+        "T32",
+        "T35",
+        "T41"
+      ],
+      "epics": [
+        "WMS-403"
+      ],
+      "pr": "P5"
+    },
+    "tasks/T51": {
+      "title": "Offline command queue and conflict handling",
+      "order": 51,
+      "status": "pending",
+      "goal": "Commands made offline queue durably and replay in order on reconnect, with clear conflicts.",
+      "approach": "Held by Q13: how long the queue must survive. Room database queue; replay stops at the first conflict and asks the user, rather than skipping.",
+      "touches": [
+        "handheld/sync/CommandQueue.kt",
+        "handheld/sync/ConflictResolver.kt"
+      ],
+      "verify": "Airplane-mode a device for the agreed duration, make 30 commands, reconnect; all apply or conflict visibly.",
+      "depends_on": [
+        "T32",
+        "T23",
+        "T41",
+        "Q13"
+      ],
+      "epics": [
+        "WMS-403"
+      ],
+      "pr": "P5"
+    },
+    "tasks/T52": {
+      "title": "Store-side receipt and discrepancies",
+      "order": 52,
+      "status": "pending",
+      "goal": "Stores confirm what arrived; differences are recorded against the carrier or the pick.",
+      "approach": "Reuse the blind-receipt tolerance code for the store side. Shorts move the missing quantity to a LOST-IN-TRANSIT location pending investigation.",
+      "touches": [
+        "internal/transfers/receive.go"
+      ],
+      "verify": "Over, exact, and short receipts each leave the ledger balanced.",
+      "depends_on": [
+        "T48"
+      ],
+      "epics": [
+        "WMS-403"
+      ],
+      "pr": "P4"
+    },
+    "tasks/T53": {
+      "title": "Transfer manifest export to the stores' ordering system",
+      "order": 53,
+      "status": "blocked",
+      "goal": "Stores' own ordering software receives a manifest for each transfer en route.",
+      "approach": "Blocked on outside work: the stores' IT contractor has not published the manifest endpoint spec or issued test credentials. We have a draft payload and cannot validate it without their sandbox. Nothing here is started.",
+      "touches": [
+        "internal/transfers/manifest_export.go",
+        "docs/integrations/store-manifest.md"
+      ],
+      "verify": "A manifest accepted by the stores' sandbox for a 3-line transfer, and rejected clearly for a malformed one.",
+      "depends_on": [
+        "T48"
+      ],
+      "epics": [
+        "WMS-403"
+      ],
+      "pr": "P4"
+    },
+    "tasks/T54": {
+      "title": "Cycle count screens",
+      "order": 54,
+      "status": "pending",
+      "goal": "Blind counting on the device, with no system quantity shown.",
+      "approach": "Counting continues if the network drops; the result queues and posts when back.",
+      "touches": [
+        "handheld/counting/CountScreen.kt"
+      ],
+      "verify": "Count a location with the wifi switched off mid-task; the result lands on reconnect.",
+      "depends_on": [
+        "T23",
+        "T32",
+        "T38",
+        "T51"
+      ],
+      "epics": [
+        "WMS-403",
+        "WMS-402"
+      ],
+      "pr": "P5"
+    },
+    "tasks/T55": {
+      "title": "Replenishment screens",
+      "order": 55,
+      "status": "pending",
+      "goal": "Take a replenishment task from reserve to forward bin.",
+      "touches": [
+        "handheld/replenishment/ReplenScreen.kt"
+      ],
+      "verify": "Complete a batched 4-move replenishment trip.",
+      "depends_on": [
+        "T50",
+        "T39"
+      ],
+      "epics": [
+        "WMS-403"
+      ],
+      "pr": "P5"
+    },
+    "tasks/T56": {
+      "title": "Bluetooth label printing",
+      "order": 56,
+      "status": "pending",
+      "goal": "Print a pallet or location label from the device to the belt-clip printer.",
+      "approach": "ZPL goes to the printer over Bluetooth serial. The service never renders labels; the print server's templates stay as they are (see the withdrawn question).",
+      "touches": [
+        "handheld/printing/ZplPrinter.kt",
+        "handheld/printing/LabelTemplates.kt"
+      ],
+      "verify": "Print a pallet label that scans correctly at the dock.",
+      "depends_on": [
+        "T14",
+        "T49"
+      ],
+      "epics": [
+        "WMS-403"
+      ],
+      "pr": "P5"
+    },
+    "tasks/T57": {
+      "title": "Inter-store transfer cost allocation",
+      "order": 57,
+      "status": "pending",
+      "goal": "Charge the sending and receiving stores for transport.",
+      "approach": "Held by Q12: the allocation basis. The mechanics (a monthly rollup keyed by route and store) don't depend on the answer.",
+      "touches": [
+        "internal/transfers/cost.go",
+        "reports/transfer_cost_monthly.sql"
+      ],
+      "verify": "Monthly total across stores equals the carrier invoice for a sample month.",
+      "depends_on": [
+        "T48",
+        "T52",
+        "Q12"
+      ],
+      "epics": [
+        "WMS-403"
+      ],
+      "pr": "P4"
+    },
+    "tasks/T6": {
+      "title": "CI: lint, migrations, integration job",
+      "order": 6,
+      "status": "merged",
+      "goal": "A pipeline that fails fast on lint and unit tests, then runs migrations and integration tests against an ephemeral Postgres.",
+      "touches": [
+        "ci/pipeline.yml",
+        "ci/scripts/ephemeral-postgres.sh",
+        "Makefile"
+      ],
+      "verify": "A deliberately broken migration on a scratch branch fails the pipeline; a clean branch passes in under 9 minutes.",
+      "branch": "wms-401/ci-lint-migrations-integration",
+      "outcome": "Integration job is 7 minutes on the shared runners. Added a nightly job that replays the migrations from 0001 to catch ordering mistakes.",
+      "depends_on": [],
+      "epics": [
+        "WMS-401"
+      ],
+      "pr": "P1"
+    },
+    "tasks/T7": {
+      "title": "Item and unit-of-measure catalog API",
+      "order": 7,
+      "status": "merged",
+      "goal": "CRUD and lookup for items with their case/inner/each conversions.",
+      "approach": "GET /v1/items?sku=, GET /v1/items/{id}, PUT /v1/items/{id} (admin only). Conversions live in item_uom rows; the API always returns quantities in eaches plus the original unit so the handheld app can show both. Weights are stored in grams, volume in cubic centimetres.",
+      "touches": [
+        "internal/catalog/handler.go",
+        "internal/catalog/uom.go",
+        "api/openapi/catalog.yaml"
+      ],
+      "verify": "OpenAPI contract test passes; a case of 12 with an inner pack of 6 converts correctly in both directions.",
+      "branch": "wms-401/item-and-unit-of-measure-catalog-api",
+      "outcome": "Added shelf_life_days and temp_zone to the item payload. The lot and slotting tasks needed them and it was cheaper to put them here than to add a second endpoint.",
+      "depends_on": [
+        "T1",
+        "T2"
+      ],
+      "epics": [
+        "WMS-401"
+      ],
+      "pr": "P1"
+    },
+    "tasks/T8": {
+      "title": "Location hierarchy API",
+      "order": 8,
+      "status": "merged",
+      "goal": "Warehouse -> zone -> aisle -> bay -> level -> bin, with type and temperature zone on each node.",
+      "approach": "Closure table (location_path) rather than ltree, so the importer can bulk load without an extension. Bins carry kind (reserve, forward_pick, staging, dock, quarantine). Moves of a subtree are one transaction and bump a layout_version that the slotting job reads.",
+      "touches": [
+        "internal/locations/tree.go",
+        "internal/locations/handler.go",
+        "db/migrations/0003_location_path.sql"
+      ],
+      "verify": "Move an aisle with 600 bins and confirm every descendant's path updates in a single transaction under 400 ms.",
+      "branch": "wms-401/location-hierarchy-api-aisle-bay-level-bin",
+      "outcome": "Done as planned. A subtree move takes about 180 ms for 600 bins in the test database.",
+      "depends_on": [
+        "T1",
+        "T2"
+      ],
+      "epics": [
+        "WMS-401"
+      ],
+      "pr": "P1"
+    },
+    "tasks/T9": {
+      "title": "Lot and best-before model with FEFO ordering",
+      "order": 9,
+      "status": "merged",
+      "goal": "Track lots with best-before dates so downstream allocation can pick first-expired-first-out.",
+      "approach": "lot(item_id, lot_code, best_before, received_on). FEFO ordering is a view, lot_fefo, not a column, so nobody sorts by hand. Per Q2, only chilled, produce, and bakery items require a best-before date; ambient items order by received_on.",
+      "touches": [
+        "db/migrations/0004_lot.sql",
+        "internal/lots/fefo.go"
+      ],
+      "verify": "Unit tests for tie-breaking: same best-before, different received_on; and a lot without a date on an ambient item.",
+      "branch": "wms-401/lot-and-best-before-model-with-fefo-ordering",
+      "outcome": "As planned. The view includes days_remaining computed in the warehouse's time zone, since the Dunmore building is one hour ahead and a lot expiring 'today' was flipping early.",
+      "depends_on": [
+        "T1"
+      ],
+      "epics": [
+        "WMS-401",
+        "WMS-402"
+      ],
+      "pr": "P1"
+    }
+  }
+}

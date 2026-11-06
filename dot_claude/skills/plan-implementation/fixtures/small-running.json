@@ -1,0 +1,317 @@
+{
+  "about": "Small mid-run plan with a fan of three parallel tasks, one of every task status, an open, an answered and a withdrawn question, and a draft PR.",
+  "now": "2026-10-16T15:10:00Z",
+  "viewer": "u_brannoch",
+  "people": {
+    "u_brannoch": "Isolde Brannoch",
+    "u_tavares": "Tomás Tavares",
+    "u_nguyen": "Nguyễn Thị Lan"
+  },
+  "docs": {
+    "run/main": {
+      "title": "CSV export of print-on-demand orders",
+      "objective": "Add a CSV export of print-on-demand orders to the order-tracking app so the warehouse stops retyping them into the label printer software. Warehouse staff pick a date range and download one file.",
+      "source": "specs/pod-order-csv-export.md",
+      "status": "running",
+      "approach": "Serialize in a small module, orders/export/csv_writer.py, that streams rows from a single query, so a month of orders never sits in memory. The endpoint and the button both sit on top of it. The whole feature is behind the order_csv_export flag until the warehouse has tried it.",
+      "delivery": "One PR, feature/pod-order-csv-export, into main. The owner merges.",
+      "done_check": [
+        {
+          "text": "A warehouse user can download a CSV of orders for a date range from the orders page",
+          "state": "unchecked"
+        },
+        {
+          "text": "The file opens in Excel with accented names intact",
+          "state": "unchecked",
+          "note": "Needs a real Excel check on the warehouse laptop."
+        },
+        {
+          "text": "Every export is recorded with who ran it and the range",
+          "state": "unchecked"
+        }
+      ],
+      "out_of_scope": [
+        "XLSX output",
+        "Exporting wholesale (non-POD) orders",
+        "Pushing orders to the printer software directly"
+      ],
+      "risks": [
+        "Address lines with embedded newlines can break the printer software's import",
+        "A year-wide export on the production database could be slow; the range is capped at 92 days"
+      ],
+      "driver": {
+        "session": "drive-quillmere-csv",
+        "since": "2026-10-13T08:40:00Z"
+      },
+      "started_at": "2026-10-12T09:15:00Z",
+      "updated_at": "2026-10-16T13:50:00Z"
+    },
+    "tasks/T1": {
+      "title": "Column spec and CSV writer",
+      "goal": "Streaming CSV writer with the warehouse's column order.",
+      "verify": "Unit tests with a fixture of 20 rows, including \" and , in a title.",
+      "status": "merged",
+      "order": 1,
+      "depends_on": [],
+      "approach": "Write CsvWriter over a row iterator, csv.writer with \\r\\n line ends, header row first. Columns come from a list in orders/export/columns.py, so changing the order is a one-line edit.",
+      "touches": [
+        "orders/export/csv_writer.py",
+        "orders/export/columns.py"
+      ],
+      "branch": "feature/pod-order-csv-export-t1-csv-writer",
+      "outcome": "Added CsvWriter and columns.py. Prefixes any cell starting with =, +, - or @ with a quote, which the plan didn't mention.",
+      "pr": "P1"
+    },
+    "tasks/T2": {
+      "title": "Feature flag",
+      "goal": "Add the order_csv_export flag, off by default.",
+      "verify": "Flag read in tests and in the template helper.",
+      "status": "merged",
+      "order": 2,
+      "depends_on": [],
+      "branch": "feature/pod-order-csv-export-t2-flag",
+      "outcome": "Flag lives in settings/flags.py, default off. Staging override set in deploy/staging.env.",
+      "pr": "P1"
+    },
+    "tasks/T3": {
+      "title": "GET /orders/export.csv endpoint",
+      "goal": "Stream the file for a date range.",
+      "verify": "Request tests for a good range, a 93-day range, and a user outside the group.",
+      "status": "in_progress",
+      "order": 3,
+      "depends_on": [
+        "T1",
+        "T2"
+      ],
+      "approach": "Query pod_orders joined to addresses with .iterator(chunk_size=500), wrap in StreamingHttpResponse. Reject ranges over 92 days with a 400. Filename quillmere-orders-<from>-<to>.csv.\n\nPermission is the existing warehouse group.",
+      "touches": [
+        "orders/views/export.py",
+        "orders/urls.py",
+        "tests/orders/test_export_view.py"
+      ],
+      "branch": "feature/pod-order-csv-export-t3-export-endpoint",
+      "pr": "P1"
+    },
+    "tasks/T4": {
+      "title": "Split shipping address into printer columns",
+      "goal": "Name, line 1, line 2, city, postcode, country as the label software wants them.",
+      "verify": "Tests with a three-line address and a name containing ø and Nguyễn.",
+      "status": "in_progress",
+      "order": 4,
+      "depends_on": [
+        "T1"
+      ],
+      "approach": "The printer software chokes on newlines inside a cell, so collapse them to a space and put overflow into line2.",
+      "touches": [
+        "orders/export/address.py",
+        "orders/export/columns.py"
+      ],
+      "branch": "feature/pod-order-csv-export-t4-address-columns",
+      "pr": "P1"
+    },
+    "tasks/T5": {
+      "title": "Export audit log",
+      "goal": "Record who exported what, and when.",
+      "verify": "Migration applies and reverses cleanly; a row exists after an export.",
+      "status": "in_progress",
+      "order": 5,
+      "depends_on": [
+        "T2"
+      ],
+      "approach": "New table order_export_runs (user_id, range_from, range_to, row_count, created_at), written once the response has finished streaming, not when it starts. Migration 0042_order_export_runs.",
+      "touches": [
+        "orders/models/export_run.py",
+        "orders/migrations/0042_order_export_runs.py"
+      ],
+      "branch": "feature/pod-order-csv-export-t5-audit-log",
+      "pr": "P1"
+    },
+    "tasks/T6": {
+      "title": "Nightly drop to the warehouse share",
+      "goal": "Write yesterday's file to the warehouse's SFTP folder each night.",
+      "verify": "A scheduled job writes a file that the warehouse can see.",
+      "status": "blocked",
+      "order": 6,
+      "depends_on": [
+        "T1"
+      ],
+      "approach": "Waits on warehouse IT creating the SFTP account for the app and sending the host key (asked by Tomás, no date yet). Once we have it the job is a few lines in jobs/nightly_export.py.",
+      "branch": "feature/pod-order-csv-export-t6-nightly-drop",
+      "pr": "P1"
+    },
+    "tasks/T7": {
+      "title": "Export button and date picker on the orders page",
+      "goal": "Add \"Export CSV\" with from/to fields.",
+      "verify": "Button is hidden when the flag is off; click downloads a file for the chosen range.",
+      "status": "pending",
+      "order": 7,
+      "depends_on": [
+        "T3",
+        "T4",
+        "Q2"
+      ],
+      "touches": [
+        "templates/orders/list.html",
+        "static/orders/export.js"
+      ],
+      "pr": "P1"
+    },
+    "tasks/T8": {
+      "title": "XLSX variant",
+      "goal": "Same export as an Excel workbook.",
+      "verify": "Workbook opens with the same columns.",
+      "status": "dropped",
+      "order": 8,
+      "depends_on": [
+        "T1"
+      ],
+      "approach": "Would use openpyxl and a second writer sharing columns.py.",
+      "touches": [
+        "orders/export/xlsx_writer.py"
+      ],
+      "outcome": "Dropped after Q1: the warehouse is happy with CSV."
+    },
+    "prs/P1": {
+      "title": "CSV export of print-on-demand orders",
+      "order": 1,
+      "branch": "feature/pod-order-csv-export",
+      "base": "main",
+      "status": "draft",
+      "url": "https://code.quillmere.example/press/orders/pull/212"
+    },
+    "questions/Q1": {
+      "title": "CSV, XLSX, or both?",
+      "context": "The warehouse retypes orders into the label software today. The software imports CSV, but Nguyễn mentioned some staff open files in Excel first to check them.",
+      "options": [
+        {
+          "label": "CSV only",
+          "cost": "Excel may garble accents unless we write a UTF-8 byte order mark."
+        },
+        {
+          "label": "CSV and XLSX",
+          "cost": "A second writer and its tests, about two days."
+        }
+      ],
+      "recommendation": "CSV only",
+      "blocks": "Whether T8 (XLSX) is built",
+      "task": "T8",
+      "status": "answered",
+      "asked_at": "2026-10-12T11:05:00Z",
+      "answered_at": "2026-10-13T07:50:00Z",
+      "answered_by": "u_nguyen",
+      "answer": "CSV only"
+    },
+    "questions/Q2": {
+      "title": "Which order statuses does the export include by default?",
+      "context": "The orders page lists paid, printing, shipped and refunded orders. The warehouse only prints from paid ones, but Tomás thinks shipped ones are useful when a parcel is lost.",
+      "options": [
+        {
+          "label": "Paid only",
+          "cost": "Lost-parcel reprints need a second export with a filter we haven't built."
+        },
+        {
+          "label": "Paid and shipped"
+        },
+        {
+          "label": "A status checklist on the page",
+          "cost": "More UI in T7."
+        }
+      ],
+      "recommendation": "Paid only",
+      "blocks": "T7 (the export button)",
+      "task": "T7",
+      "status": "open",
+      "asked_at": "2026-10-15T14:10:00Z"
+    },
+    "questions/Q3": {
+      "title": "Does the export need the tracking number?",
+      "context": "Unclear whether the label software wants the carrier tracking number as an input column.",
+      "options": [
+        {
+          "label": "Yes"
+        },
+        {
+          "label": "No"
+        }
+      ],
+      "blocks": "Column list in T1",
+      "task": "T1",
+      "status": "withdrawn",
+      "asked_at": "2026-10-12T11:06:00Z",
+      "answered_at": "2026-10-12T15:30:00Z",
+      "answered_by": "claude",
+      "answer": "Withdrawn: the sample import has no tracking column."
+    },
+    "journal/2026-10-12T09:15:00Z": {
+      "at": "2026-10-12T09:15:00Z",
+      "text": "Plan written from the spec: eight tasks, one PR.",
+      "by": "claude"
+    },
+    "journal/2026-10-12T15:30:00Z": {
+      "at": "2026-10-12T15:30:00Z",
+      "text": "Withdrew the tracking-number question. The label software's sample import in the spec has no such column, so T1 uses the spec's list.",
+      "by": "claude",
+      "questions": [
+        "Q3"
+      ]
+    },
+    "journal/2026-10-12T16:45:00Z": {
+      "at": "2026-10-12T16:45:00Z",
+      "text": "Plan approved. Starting.",
+      "by": "owner"
+    },
+    "journal/2026-10-13T07:50:00Z": {
+      "at": "2026-10-13T07:50:00Z",
+      "text": "CSV is enough, XLSX not needed.",
+      "by": "u_nguyen",
+      "questions": [
+        "Q1"
+      ]
+    },
+    "journal/2026-10-13T08:40:00Z": {
+      "at": "2026-10-13T08:40:00Z",
+      "text": "Took the plan. T8 dropped per Q1. Will write a UTF-8 BOM so Excel shows accents; T1 already has the hook.",
+      "by": "claude"
+    },
+    "journal/2026-10-13T10:20:00Z": {
+      "at": "2026-10-13T10:20:00Z",
+      "text": "T1 and T2 started in parallel; they touch different files.",
+      "by": "claude"
+    },
+    "journal/2026-10-13T14:05:00Z": {
+      "at": "2026-10-13T14:05:00Z",
+      "text": "T1 merged into the feature branch. Reviewer flagged formula injection (cells starting with =); added a quote prefix, which the plan hadn't covered.",
+      "by": "claude"
+    },
+    "journal/2026-10-13T15:30:00Z": {
+      "at": "2026-10-13T15:30:00Z",
+      "text": "T2 merged. Opened the draft PR now that something has landed.",
+      "by": "claude"
+    },
+    "journal/2026-10-14T09:10:00Z": {
+      "at": "2026-10-14T09:10:00Z",
+      "text": "T3, T4 and T5 can run together, all depend only on T1 or T2. Started all three.",
+      "by": "claude"
+    },
+    "journal/2026-10-14T16:00:00Z": {
+      "at": "2026-10-14T16:00:00Z",
+      "text": "Asked the warehouse IT contact for an SFTP account; T6 is blocked until it exists.",
+      "by": "u_tavares"
+    },
+    "journal/2026-10-15T11:25:00Z": {
+      "at": "2026-10-15T11:25:00Z",
+      "text": "T5 review found the audit row is written before the stream ends, so a failed download still counts. Sent back to fix.",
+      "by": "claude"
+    },
+    "journal/2026-10-15T14:10:00Z": {
+      "at": "2026-10-15T14:10:00Z",
+      "text": "Asked Q2. T7 waits on it; nothing else does.",
+      "by": "claude"
+    },
+    "journal/2026-10-16T13:50:00Z": {
+      "at": "2026-10-16T13:50:00Z",
+      "text": "T4 in review. T3 half done.",
+      "by": "claude"
+    }
+  }
+}

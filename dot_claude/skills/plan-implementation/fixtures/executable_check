@@ -1,0 +1,462 @@
+#!/usr/bin/env python3
+"""Check fixtures against assets/guide.md, against themselves, and against what their shape and stage promise.
+
+    check [fixture ...]
+
+Checks every fixture when none is named, prints each one's figures and problems, and exits 1 on any problem.
+"""
+from __future__ import annotations
+
+import json
+import re
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+
+RUN_STATUSES = {"pending", "running", "done", "stopped"}
+TASK_STATUSES = {"pending", "in_progress", "blocked", "merged", "dropped"}
+ACTIVE = {"in_progress"}
+PR_STATUSES = {"planned", "draft", "open", "merged", "closed"}
+QUESTION_STATUSES = {"open", "answered", "withdrawn"}
+CHECK_STATES = {"unchecked", "met", "unmet"}
+
+TOP_KEYS = {"about", "now", "viewer", "people", "docs"}
+RUN_KEYS = {
+    "title", "objective", "source", "status", "approach", "delivery", "done_check", "out_of_scope",
+    "risks", "jira_browse_url", "epics", "driver", "handover", "started_at", "updated_at",
+}
+TASK_KEYS = {
+    "title", "goal", "approach", "touches", "verify", "status", "depends_on", "epics", "pr", "branch", "outcome", "order",
+}
+PR_KEYS = {"title", "summary", "order", "branch", "base", "status", "url"}
+QUESTION_KEYS = {
+    "title", "context", "options", "recommendation", "blocks", "task", "status", "asked_at", "answered_at",
+    "answered_by", "answer",
+}
+JOURNAL_KEYS = {"at", "text", "by", "questions"}
+HANDOVER_KEYS = {"summary", "branch", "pr_url", "look_first", "risks"}
+
+TIMESTAMP = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$")
+URL = re.compile(r"https?://([^/\s\"')]+)")
+REAL_NAMES = re.compile(
+    r"\b(GitHub|GitLab|Bitbucket|Jira|Atlassian|AWS|Amazon|Google|GCP|Azure|Microsoft|Stripe|Twilio|"
+    r"Slack|Salesforce|Shopify|Datadog|PagerDuty|Sentry|Okta|Auth0|Cloudflare|Vercel|Heroku|SendGrid|PayPal)\b"
+)
+
+
+def timestamps_in_order(*stamps: str) -> bool:
+    return list(stamps) == sorted(stamps)
+
+
+class Fixture:
+    def __init__(self, name: str, data: dict):
+        self.name = name
+        self.data = data
+        self.problems: list[str] = []
+        match = re.fullmatch(r"(small|big|simple|complex)-(planning|running|done)", name)
+        # A name outside <shape>-<stage> is a capture: only the guide's rules and its own consistency apply.
+        self.shape, self.stage = match.groups() if match else ("", "")
+        docs = data.get("docs", {})
+        self.run = docs.get("run/main", {})
+        self.tasks = self.collection("tasks", "T")
+        self.prs = self.collection("prs", "P")
+        self.questions = self.collection("questions", "Q")
+        self.journal = {path.split("/", 1)[1]: doc for path, doc in docs.items() if path.startswith("journal/")}
+        known = {"run/main", "meta/guide"} | {f"{c}/{i}" for c, group in (
+            ("tasks", self.tasks), ("prs", self.prs), ("questions", self.questions), ("journal", self.journal)
+        ) for i in group}
+        for path in docs:
+            if path not in known:
+                self.problem(f"unknown document {path}")
+
+    def collection(self, name: str, prefix: str) -> dict:
+        found = {}
+        for path, doc in self.data.get("docs", {}).items():
+            if path.startswith(name + "/"):
+                doc_id = path.split("/", 1)[1]
+                if not re.fullmatch(prefix + r"[1-9]\d*", doc_id):
+                    self.problem(f"bad id {path}")
+                found[doc_id] = doc
+        return dict(sorted(found.items(), key=lambda item: int(item[0][1:] or 0) if item[0][1:].isdigit() else 0))
+
+    def problem(self, text: str) -> None:
+        self.problems.append(text)
+
+    def keys(self, where: str, doc: dict, allowed: set, required: set) -> None:
+        for key in sorted(set(doc) - allowed):
+            self.problem(f"{where}: unknown field {key}")
+        for key in sorted(required - set(doc)):
+            self.problem(f"{where}: missing {key}")
+
+    def stamp(self, where: str, value: object) -> bool:
+        if isinstance(value, str) and TIMESTAMP.match(value):
+            return True
+        self.problem(f"{where}: {value!r} is not an ISO 8601 UTC timestamp")
+        return False
+
+    def person(self, where: str, value: object) -> None:
+        if value not in ("claude", "owner") and value not in self.data.get("people", {}):
+            self.problem(f"{where}: {value!r} is not claude, owner, or in people")
+
+    def levels(self) -> dict:
+        depth: dict = {}
+
+        def level(task_id: str, path: tuple) -> int:
+            if task_id in path:
+                self.problem(f"dependency cycle through {task_id}")
+                return 0
+            if task_id not in depth:
+                deps = [d for d in self.tasks[task_id].get("depends_on", []) if d in self.tasks]
+                depth[task_id] = 1 + max((level(d, path + (task_id,)) for d in deps), default=-1)
+            return depth[task_id]
+
+        for task_id in self.tasks:
+            level(task_id, ())
+        return depth
+
+    def check_top(self) -> None:
+        self.keys("fixture", self.data, TOP_KEYS, TOP_KEYS)
+        self.stamp("now", self.data.get("now"))
+        people = self.data.get("people", {})
+        if self.data.get("viewer") not in people:
+            self.problem("viewer is not in people")
+
+    def check_run(self) -> None:
+        run = self.run
+        self.keys("run/main", run, RUN_KEYS, {"title", "objective", "source", "status", "started_at", "updated_at"})
+        if run.get("status") not in RUN_STATUSES:
+            self.problem(f"run/main: bad status {run.get('status')!r}")
+        for check in run.get("done_check", []):
+            self.keys("done_check", check, {"text", "state", "note"}, {"text", "state"})
+            if check.get("state") not in CHECK_STATES:
+                self.problem(f"done_check: bad state {check.get('state')!r}")
+        for key in ("out_of_scope", "risks"):
+            if not isinstance(run.get(key, []), list):
+                self.problem(f"run/main: {key} is not a list")
+        if bool(run.get("jira_browse_url")) != bool(run.get("epics")):
+            self.problem("run/main: jira_browse_url and epics go together")
+        if run.get("driver"):
+            self.keys("run/main.driver", run["driver"], {"session", "since"}, {"session", "since"})
+            self.stamp("driver.since", run["driver"].get("since"))
+        if run.get("handover"):
+            self.keys("handover", run["handover"], HANDOVER_KEYS, {"summary"})
+        started, updated = run.get("started_at", ""), run.get("updated_at", "")
+        if self.stamp("started_at", started) and self.stamp("updated_at", updated):
+            if not timestamps_in_order(started, updated, self.data.get("now", "")):
+                self.problem("started_at, updated_at, now are out of order")
+
+    def check_tasks(self) -> None:
+        for number, (task_id, task) in enumerate(self.tasks.items(), 1):
+            where = f"tasks/{task_id}"
+            if task_id != f"T{number}":
+                self.problem(f"{where}: numbering has a gap, expected T{number}")
+            self.keys(where, task, TASK_KEYS, {"title", "status", "order"})
+            if task.get("order") != number:
+                self.problem(f"{where}: order is not {number}")
+            status = task.get("status")
+            if status not in TASK_STATUSES:
+                self.problem(f"{where}: bad status {status!r}")
+            if self.stage in ("running", "done"):
+                for key in ("goal", "verify"):
+                    if not task.get(key):
+                        self.problem(f"{where}: missing {key}")
+            if status == "blocked" and not task.get("approach"):
+                self.problem(f"{where}: a blocked task's approach names what it waits on")
+            if status == "merged":
+                for key in ("branch", "outcome", "pr"):
+                    if not task.get(key):
+                        self.problem(f"{where}: merged without {key}")
+            if status in ACTIVE and not task.get("branch"):
+                self.problem(f"{where}: {status} without a branch")
+            if status == "pending" and (task.get("branch") or task.get("outcome")):
+                self.problem(f"{where}: pending with a branch or an outcome")
+            for dep in task.get("depends_on", []):
+                self.check_dependency(where, task_id, status, dep)
+            if task.get("pr") and task["pr"] not in self.prs:
+                self.problem(f"{where}: pr {task['pr']} does not exist")
+            if not isinstance(task.get("touches", []), list):
+                self.problem(f"{where}: touches is not a list")
+            for key in task.get("epics", []):
+                if key not in self.run.get("epics", {}):
+                    self.problem(f"{where}: epic {key} is not in run/main.epics")
+
+    def check_dependency(self, where: str, task_id: str, status: str, dep: str) -> None:
+        if dep in self.tasks:
+            if int(dep[1:]) >= int(task_id[1:]):
+                self.problem(f"{where}: depends on {dep}, which comes later in build order")
+            dep_status = self.tasks[dep].get("status")
+            if dep_status == "dropped" and status != "dropped":
+                self.problem(f"{where}: depends on dropped {dep}")
+            if status in ACTIVE | {"merged"} and dep_status != "merged":
+                self.problem(f"{where}: is {status} but {dep} is {dep_status}")
+        elif dep in self.questions:
+            if status in ACTIVE | {"merged"} and self.questions[dep].get("status") == "open":
+                self.problem(f"{where}: is {status} but question {dep} is open")
+        else:
+            self.problem(f"{where}: depends on unknown {dep}")
+
+    def check_prs(self) -> None:
+        orders = [pr.get("order") for pr in self.prs.values()]
+        if len(orders) != len(set(orders)):
+            self.problem("two PRs share an order")
+        for pr_id, pr in self.prs.items():
+            where = f"prs/{pr_id}"
+            self.keys(where, pr, PR_KEYS, {"title", "order", "branch", "base", "status"})
+            status = pr.get("status")
+            if status not in PR_STATUSES:
+                self.problem(f"{where}: bad status {status!r}")
+            if (status == "planned") == bool(pr.get("url")):
+                self.problem(f"{where}: a url goes with every status but planned")
+            live = [t for t in self.tasks.values() if t.get("pr") == pr_id and t.get("status") != "dropped"]
+            merged = [t for t in live if t.get("status") == "merged"]
+            if status == "planned" and merged:
+                self.problem(f"{where}: planned, yet tasks have merged into it")
+            if status == "draft" and not merged:
+                self.problem(f"{where}: draft, yet no task has merged into it")
+            if status in ("open", "merged") and len(merged) != len(live):
+                self.problem(f"{where}: {status} with tasks unmerged")
+            if status == "closed" and live:
+                self.problem(f"{where}: closed with live tasks still on it")
+            base = pr.get("base", "")
+            if re.fullmatch(r"P\d+", base):
+                if base not in self.prs:
+                    self.problem(f"{where}: base {base} does not exist")
+                elif self.prs[base].get("order", 0) >= pr.get("order", 0):
+                    self.problem(f"{where}: stacks on {base}, which comes later")
+                elif status == "merged" and self.prs[base].get("status") != "merged":
+                    self.problem(f"{where}: merged before its base {base}")
+
+    def check_questions(self) -> None:
+        for question_id, question in self.questions.items():
+            where = f"questions/{question_id}"
+            self.keys(where, question, QUESTION_KEYS, {"title", "context", "status", "asked_at"})
+            status = question.get("status")
+            if status not in QUESTION_STATUSES:
+                self.problem(f"{where}: bad status {status!r}")
+            labels = []
+            for option in question.get("options", []):
+                self.keys(f"{where} option", option, {"label", "cost"}, {"label"})
+                labels.append(option.get("label"))
+            recommendation = question.get("recommendation")
+            if labels and recommendation and recommendation not in labels:
+                self.problem(f"{where}: recommendation is not one of its options")
+            if question.get("task") and question["task"] not in self.tasks:
+                self.problem(f"{where}: task {question['task']} does not exist")
+            asked = question.get("asked_at", "")
+            self.stamp(f"{where} asked_at", asked)
+            if status == "open":
+                if not question.get("blocks"):
+                    self.problem(f"{where}: open without blocks")
+                for key in ("answer", "answered_at", "answered_by"):
+                    if key in question:
+                        self.problem(f"{where}: open with {key}")
+            else:
+                for key in ("answer", "answered_at", "answered_by"):
+                    if not question.get(key):
+                        self.problem(f"{where}: {status} without {key}")
+                if self.stamp(f"{where} answered_at", question.get("answered_at")):
+                    if not timestamps_in_order(asked, question["answered_at"], self.data.get("now", "")):
+                        self.problem(f"{where}: asked_at, answered_at, now are out of order")
+                self.person(f"{where} answered_by", question.get("answered_by"))
+
+    def check_journal(self) -> None:
+        started, updated = self.run.get("started_at", ""), self.run.get("updated_at", "")
+        for key, entry in self.journal.items():
+            where = f"journal/{key}"
+            self.keys(where, entry, JOURNAL_KEYS, {"at", "text", "by"})
+            if entry.get("at") != key:
+                self.problem(f"{where}: at does not match its id")
+            if self.stamp(where, entry.get("at")) and not timestamps_in_order(started, entry["at"], updated):
+                self.problem(f"{where}: outside started_at to updated_at")
+            self.person(where, entry.get("by"))
+            for question_id in entry.get("questions", []):
+                question = self.questions.get(question_id)
+                if question is None:
+                    self.problem(f"{where}: names unknown {question_id}")
+                elif question.get("status") == "open":
+                    self.problem(f"{where}: names {question_id}, which is still open")
+
+    def page_shows_blocked(self) -> bool:
+        """The page's rule: unfinished tasks, and none in progress or ready to start."""
+        opens = {i for i, q in self.questions.items() if q.get("status") == "open"}
+        finished = {"merged", "dropped"}
+
+        def cleared(dep: str) -> bool:
+            return dep not in opens and (dep not in self.tasks or self.tasks[dep].get("status") in finished)
+
+        left = [t for t in self.tasks.values() if t.get("status") not in finished]
+        ready = [t for t in left if t.get("status") == "pending" and all(cleared(d) for d in t.get("depends_on", []))]
+        return bool(left) and not ready and not any(t.get("status") == "in_progress" for t in left)
+
+    def check_plain_fields(self) -> None:
+        # The page turns backticks into code in body text. These fields stay plain strings: titles also feed the
+        # graph and link text, and option labels are compared with the recommendation and saved as answers.
+        fields = [("run/main.title", self.run.get("title"))]
+        for name, group in (("tasks", self.tasks), ("prs", self.prs), ("questions", self.questions)):
+            fields += [(f"{name}/{doc_id}.title", doc.get("title")) for doc_id, doc in group.items()]
+        for question_id, question in self.questions.items():
+            where = f"questions/{question_id}"
+            fields.append((f"{where}.recommendation", question.get("recommendation")))
+            fields += [(f"{where} option", option.get("label")) for option in question.get("options", [])]
+        for where, value in fields:
+            if isinstance(value, str) and "`" in value:
+                self.problem(f"{where}: has a backtick, but this field stays plain")
+
+    def check_invented(self) -> None:
+        def walk(value: object, where: str) -> None:
+            if isinstance(value, dict):
+                for key, item in value.items():
+                    walk(item, f"{where}.{key}")
+            elif isinstance(value, list):
+                for index, item in enumerate(value):
+                    walk(item, f"{where}[{index}]")
+            elif isinstance(value, str):
+                for host in URL.findall(value):
+                    if not host.endswith(".example"):
+                        self.problem(f"{where}: URL host {host} is not under .example")
+                real = REAL_NAMES.search(value)
+                if real:
+                    self.problem(f"{where}: names {real.group(0)}, a real company or product")
+
+        walk(self.data, "fixture")
+
+    def check_stage(self) -> None:
+        run, tasks, questions = self.run, self.tasks.values(), self.questions.values()
+        statuses = {t.get("status") for t in tasks}
+        open_questions = [q for q in questions if q.get("status") == "open"]
+        answered = [q for q in questions if q.get("status") == "answered"]
+        checks = run.get("done_check", [])
+        pr_statuses = {p.get("status") for p in self.prs.values()}
+        if self.stage == "planning":
+            if run.get("status") != "pending":
+                self.problem("planning stage: run status is not pending")
+            if statuses - {"pending", "dropped"}:
+                self.problem(f"planning stage: tasks have started: {sorted(statuses)}")
+            if not open_questions:
+                self.problem("planning stage: no open question")
+            if any(c.get("state") != "unchecked" for c in checks):
+                self.problem("planning stage: a done-check has been judged")
+            if pr_statuses - {"planned"}:
+                self.problem("planning stage: a PR is past planned")
+            if run.get("handover"):
+                self.problem("planning stage: has a handover")
+            if any(t.get("pr") for t in tasks) and not self.prs:
+                self.problem("planning stage: tasks name PRs that don't exist")
+            parts = ("approach", "delivery", "done_check", "out_of_scope", "risks")
+            sparse = any(not t.get(k) for t in tasks for k in ("approach", "touches", "verify"))
+            if all(run.get(k) for k in parts) and not sparse:
+                self.problem("planning stage: nothing is missing yet")
+        elif self.stage == "running":
+            if run.get("status") != "running":
+                self.problem("running stage: run status is not running")
+            expected = TASK_STATUSES - (set() if statuses & ACTIVE else ACTIVE)
+            if statuses != expected:
+                self.problem(f"running stage: statuses differ from {sorted(expected)}: missing {sorted(expected - statuses)}, extra {sorted(statuses - expected)}")
+            if not answered:
+                self.problem("running stage: no answered question")
+            if not pr_statuses & {"draft", "open"}:
+                self.problem("running stage: no PR is draft or open")
+            if not run.get("driver"):
+                self.problem("running stage: no driver")
+            if any(not t.get("pr") for t in tasks if t.get("status") != "dropped"):
+                self.problem("running stage: a live task has no pr")
+        elif self.stage == "done":
+            if run.get("status") != "done":
+                self.problem("done stage: run status is not done")
+            if statuses - {"merged", "dropped"}:
+                self.problem(f"done stage: tasks unfinished: {sorted(statuses)}")
+            if open_questions:
+                self.problem("done stage: open questions remain")
+            if not checks or any(c.get("state") != "met" or not c.get("note") for c in checks):
+                self.problem("done stage: every done-check needs state met and a note")
+            handover = run.get("handover") or {}
+            if not handover.get("look_first") or not handover.get("branch"):
+                self.problem("done stage: handover needs branch and look_first")
+            if run.get("driver"):
+                self.problem("done stage: driver not cleared")
+            if pr_statuses - {"open", "merged", "closed"}:
+                self.problem("done stage: a PR is still planned or draft")
+            if any(not t.get("pr") for t in tasks if t.get("status") != "dropped"):
+                self.problem("done stage: a live task has no pr")
+
+    def check_shape(self) -> None:
+        depth = self.levels()
+        count, levels = len(self.tasks), max(depth.values(), default=-1) + 1
+        widest = max(list(depth.values()).count(level) for level in range(levels)) if levels else 0
+        journal, questions, prs = len(self.journal), len(self.questions), len(self.prs)
+        stacked = sum(1 for p in self.prs.values() if re.fullmatch(r"P\d+", p.get("base", "")))
+        epics = len(self.run.get("epics", {}))
+        multi_epic = sum(1 for t in self.tasks.values() if len(t.get("epics", [])) > 1)
+        joins = sum(1 for t in self.tasks.values() if sum(d in self.tasks for d in t.get("depends_on", [])) > 1)
+        self.figures = f"{count}T {questions}Q {prs}P {journal}J levels={levels} widest={widest} epics={epics}"
+        if self.shape == "small":
+            if count > 8 or questions > 3 or journal > 14 or prs > 2:
+                self.problem(f"small: too large: {self.figures}")
+        elif self.shape == "big":
+            least = {"planning": 30, "running": 60, "done": 90}.get(self.stage, 0)
+            if count < 36 or questions < 8 or journal < least or widest < 4:
+                self.problem(f"big: too small, wants 36T 8Q {least}J widest>=4: {self.figures}")
+            if self.stage != "planning" and prs < 3:
+                self.problem("big: wants at least 3 PRs")
+        elif self.shape == "simple":
+            if count and levels < 0.6 * count:
+                self.problem(f"simple: not close to a straight line: {self.figures}")
+            if widest > 4 or epics:
+                self.problem(f"simple: too wide, or has epics: {self.figures}")
+            if self.stage != "planning" and prs != 1:
+                self.problem("simple: wants exactly one PR")
+        elif self.shape == "complex":
+            if count < 16 or levels < 6 or widest < 5 or joins < 3:
+                self.problem(f"complex: wants 16T levels>=6 widest>=5 joins>=3: {self.figures} joins={joins}")
+            if prs < 3 or stacked < 2:
+                self.problem(f"complex: wants 3 PRs with 2 stacked: {prs} with {stacked}")
+            if epics < 2 or not multi_epic:
+                self.problem(f"complex: wants 2 epics and a task in two of them: {epics}, {multi_epic}")
+            if self.stage == "running":
+                opens = {i for i, q in self.questions.items() if q.get("status") == "open"}
+                held = [t for t in self.tasks.values() if set(t.get("depends_on", [])) & opens]
+                if not held or not any(t.get("status") == "blocked" for t in self.tasks.values()):
+                    self.problem("complex: wants a task held by an open question and a blocked task")
+                if not self.page_shows_blocked():
+                    self.problem("complex: wants the running stage to show Blocked")
+
+    def check(self) -> None:
+        self.figures = ""
+        self.check_top()
+        self.check_run()
+        self.check_tasks()
+        self.check_prs()
+        self.check_questions()
+        self.check_journal()
+        # hostile-text exists to put backticks in these fields, to show that the page leaves them alone.
+        if self.name != "hostile-text":
+            self.check_plain_fields()
+        if self.shape:
+            self.check_invented()
+        self.check_stage()
+        self.check_shape()
+
+
+def main(argv: list[str]) -> int:
+    names = argv or sorted(path.stem for path in HERE.glob("*.json"))
+    failed = 0
+    for name in names:
+        name = Path(name).stem
+        try:
+            data = json.loads((HERE / f"{name}.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError) as error:
+            print(f"{name}: unreadable: {error}")
+            failed += 1
+            continue
+        fixture = Fixture(name, data)
+        fixture.check()
+        print(f"{name}: {fixture.figures} {'ok' if not fixture.problems else str(len(fixture.problems)) + ' problems'}")
+        for problem in fixture.problems:
+            print(f"  {problem}")
+        failed += bool(fixture.problems)
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

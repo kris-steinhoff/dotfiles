@@ -1,0 +1,436 @@
+{
+  "about": "A simple, nearly linear running plan onto one draft PR that holds every task status, with one open question and two answered.",
+  "now": "2026-11-04T08:30:00Z",
+  "viewer": "u_ottoline",
+  "people": {
+    "u_ottoline": "Ottoline Brackenridge",
+    "u_bram": "Bram Vandekerckhove",
+    "u_thuy": "Nguyễn Thị Thủy"
+  },
+  "docs": {
+    "tasks/T1": {
+      "title": "Pause table migration",
+      "goal": "Store pauses as date ranges on their own table, not as a flag on the standing order.",
+      "approach": "Add standing_order_pauses (id, standing_order_id FK, starts_on, ends_on, created_by, created_at, cancelled_at) with an exclusion constraint so one order can't have two overlapping live pauses. Keep it separate from standing_orders because we want the history of past holidays for the admin view later.",
+      "touches": [
+        "db/migrations/0042_standing_order_pauses.sql",
+        "db/schema.sql"
+      ],
+      "verify": "Migration applies and rolls back on a copy of last night's dump; inserting two overlapping ranges for one order fails.",
+      "status": "merged",
+      "depends_on": [],
+      "branch": "feature/standing-order-pause-for-holiday-closures-t1-migration",
+      "outcome": "Migration 0042 landed with a btree_gist exclusion constraint on (standing_order_id, daterange(starts_on, ends_on, '[]')) where cancelled_at is null. Needed CREATE EXTENSION IF NOT EXISTS btree_gist, which the staging role already allowed.",
+      "order": 1,
+      "pr": "P1"
+    },
+    "tasks/T2": {
+      "title": "Pause model and validation rules",
+      "goal": "One place that decides whether a pause is allowed.",
+      "approach": "StandingOrderPause model plus validate_pause(order, starts_on, ends_on, today) in services/ordering/standing_orders/pauses.py.\n\nRules: starts_on must be after the production cutoff for the next delivery (22:00 the evening before, store-local); ends_on >= starts_on; total length capped per Q1; no overlap with a live pause. Errors are typed so the API and UI can show a specific message.",
+      "touches": [
+        "services/ordering/standing_orders/pauses.py",
+        "services/ordering/standing_orders/models.py",
+        "tests/ordering/standing_orders/test_pause_validation.py"
+      ],
+      "verify": "Unit tests cover each rule at its boundary, including the 22:00 cutoff in both daylight-saving states.",
+      "status": "merged",
+      "depends_on": [
+        "T1",
+        "Q1"
+      ],
+      "branch": "feature/standing-order-pause-for-holiday-closures-t2-model-validation",
+      "outcome": "Cap is 8 weeks per Q1. Added PauseError.TOO_LATE_FOR_NEXT_DELIVERY as a separate error code; the plan had one generic 'invalid range' error.",
+      "order": 2,
+      "pr": "P1"
+    },
+    "tasks/T3": {
+      "title": "Delivery generator skips paused dates",
+      "goal": "A paused order produces no delivery rows.",
+      "approach": "In jobs/generate_deliveries.py, left-join live pauses when expanding standing orders into the next 14 days of deliveries and drop any date inside a pause. Deliveries already generated for a date that a new pause now covers are cancelled by the pause API (T4), not here.",
+      "touches": [
+        "jobs/generate_deliveries.py",
+        "services/ordering/standing_orders/expand.py",
+        "tests/jobs/test_generate_deliveries_paused.py"
+      ],
+      "verify": "Fixture with one order paused over a Tuesday-Thursday span generates rows for every other day and none inside it; the nightly job stays under its 90s budget on the staging dataset.",
+      "status": "merged",
+      "depends_on": [
+        "T2"
+      ],
+      "branch": "feature/standing-order-pause-for-holiday-closures-t3-generator-skips-pauses",
+      "outcome": "As planned. The staging run went from 41s to 44s.",
+      "order": 3,
+      "pr": "P1"
+    },
+    "tasks/T4": {
+      "title": "Pause and resume endpoints",
+      "goal": "Cafés and staff can create and cancel a pause over the API.",
+      "approach": "POST /api/standing-orders/{id}/pauses and DELETE /api/standing-orders/{id}/pauses/{pause_id} in services/ordering/api/standing_order_pauses.py. Create runs validate_pause, inserts, and cancels any already-generated delivery rows inside the range in the same transaction. Delete sets cancelled_at and lets the next nightly run regenerate rows; if the resume date is within the 14-day window it regenerates them immediately.\n\nOnly the café's own users and co-op staff may call either.",
+      "touches": [
+        "services/ordering/api/standing_order_pauses.py",
+        "services/ordering/api/routes.py",
+        "services/ordering/api/schemas/standing_order_pause.py",
+        "tests/ordering/api/test_standing_order_pauses.py"
+      ],
+      "verify": "API tests for create, overlap rejection, too-late rejection, cancel, and another café's order returning 404. Cancelled-delivery rows are asserted inside the create test.",
+      "status": "merged",
+      "depends_on": [
+        "T3"
+      ],
+      "branch": "feature/standing-order-pause-for-holiday-closures-t4-pause-endpoints",
+      "outcome": "Returns 404 rather than 403 for another café's order, to match the other order endpoints. Early resume regenerates rows inline; measured at 120 ms for a 14-day window.",
+      "order": 4,
+      "pr": "P1"
+    },
+    "tasks/T5": {
+      "title": "Feature flag and café-user permission",
+      "goal": "Ship dark, then enable café by café.",
+      "approach": "Flag standing_order_pause in config/flags.yml, default off, checked in the API layer and by the template helper. Add the can_pause_standing_orders permission to the café 'orderer' role only, not 'viewer'.",
+      "touches": [
+        "config/flags.yml",
+        "services/ordering/auth/roles.py",
+        "tests/ordering/auth/test_roles.py"
+      ],
+      "verify": "With the flag off the endpoints return 404; with it on, a viewer gets 403 and an orderer succeeds.",
+      "status": "merged",
+      "depends_on": [
+        "T4"
+      ],
+      "branch": "feature/standing-order-pause-for-holiday-closures-t5-flag-and-permission",
+      "outcome": "Flag is per-café (a list of café ids) instead of global, because Ottoline wants to pilot with three cafés first.",
+      "order": 5,
+      "pr": "P1"
+    },
+    "tasks/T6": {
+      "title": "Pause dialog on the standing order page",
+      "goal": "Café staff can pick a start and end date and see what will be skipped.",
+      "approach": "New PauseDialog component in web/src/standing_orders/PauseDialog.tsx, opened from a 'Pause deliveries' button on the order card. Date pickers disable days before the cutoff. A preview lists the delivery dates that will be skipped, fetched from a new read-only GET .../pauses/preview that wraps validate_pause (small addition to T4's module, kept in this task). Paused orders show a banner with 'Resume now'.\n\nCopy is plain: 'No deliveries from Mon 22 Dec to Fri 2 Jan. Your order restarts on Mon 5 Jan.'",
+      "touches": [
+        "web/src/standing_orders/PauseDialog.tsx",
+        "web/src/standing_orders/OrderCard.tsx",
+        "web/src/standing_orders/pauseApi.ts",
+        "services/ordering/api/standing_order_pauses.py"
+      ],
+      "verify": "Component tests for disabled dates and the preview list; manual pass in the staging site with a pilot café account at 375px width.",
+      "status": "in_progress",
+      "depends_on": [
+        "T5"
+      ],
+      "branch": "feature/standing-order-pause-for-holiday-closures-t6-pause-dialog-ui",
+      "order": 6,
+      "pr": "P1"
+    },
+    "tasks/T7": {
+      "title": "Confirmation email to the café, and a resume reminder",
+      "goal": "The café gets written proof that the pause happened, and a nudge before it ends.",
+      "approach": "Two templates in services/ordering/email/templates/: pause_confirmed (sent from the create endpoint via the existing outbox) and pause_ending_soon (sent by a new step in jobs/send_reminders.py two days before ends_on). Both list the exact skipped dates so there's no ambiguity about the first delivery after the pause.",
+      "touches": [
+        "services/ordering/email/templates/pause_confirmed.txt.j2",
+        "services/ordering/email/templates/pause_ending_soon.txt.j2",
+        "jobs/send_reminders.py",
+        "tests/jobs/test_send_reminders_pause.py"
+      ],
+      "verify": "Rendered-template snapshot tests; reminder job test with a pause ending in 2 days, 3 days, and already cancelled (sends only the first).",
+      "status": "in_progress",
+      "depends_on": [
+        "T5"
+      ],
+      "branch": "feature/standing-order-pause-for-holiday-closures-t7-confirmation-and-reminder-emails",
+      "order": 7,
+      "pr": "P1"
+    },
+    "tasks/T8": {
+      "title": "Bakers' production sheet leaves out paused orders",
+      "goal": "The 2am bake list matches reality.",
+      "approach": "The production sheet in services/production/sheet/build.py reads delivery rows, so paused orders already drop out after T3; what's missing is the 'paused tomorrow' footnote the bakers asked for, so a missing delivery isn't mistaken for a bug. Add it, listing café name and the pause end date.",
+      "touches": [
+        "services/production/sheet/build.py",
+        "services/production/sheet/templates/sheet.html",
+        "tests/production/test_sheet_paused_footnote.py"
+      ],
+      "verify": "Sheet for a date with two paused cafés shows both in the footnote, and the dough totals exclude them.",
+      "status": "in_progress",
+      "depends_on": [
+        "T5"
+      ],
+      "branch": "feature/standing-order-pause-for-holiday-closures-t8-production-sheet-footnote",
+      "order": 8,
+      "pr": "P1"
+    },
+    "tasks/T9": {
+      "title": "Staff admin: pause on a café's behalf, and pause history",
+      "goal": "Co-op staff can see and manage pauses from the existing admin order screen.",
+      "approach": "Add a 'Pauses' tab to admin/standing_orders/detail.html listing live and past pauses (from the T1 history), with create/cancel buttons that call the same endpoints as the café UI and record the acting staff user in created_by.\n\nWhether staff may create a pause that is past the production cutoff is open (Q3); the tab ships with the normal rules until that is answered.",
+      "touches": [
+        "admin/standing_orders/detail.html",
+        "admin/standing_orders/views.py",
+        "tests/admin/test_standing_order_pauses_tab.py"
+      ],
+      "verify": "Staff can pause and cancel for any café; the history lists a cancelled pause with who cancelled it.",
+      "status": "pending",
+      "depends_on": [
+        "T6",
+        "T7",
+        "T8",
+        "Q3"
+      ],
+      "order": 9,
+      "pr": "P1"
+    },
+    "tasks/T10": {
+      "title": "End-to-end test and wholesale handbook update",
+      "goal": "One test that walks the whole feature, and the café-facing instructions.",
+      "approach": "A Playwright scenario in e2e/standing_order_pause.spec.ts: log in as a pilot café, pause over a holiday, check the confirmation email in the outbox, check the production sheet footnote, resume early. Then update docs/wholesale-handbook/standing-orders.md and the pilot cafés' one-page guide.",
+      "touches": [
+        "e2e/standing_order_pause.spec.ts",
+        "docs/wholesale-handbook/standing-orders.md"
+      ],
+      "verify": "E2E passes in CI on ci/pipeline.yml's staging stage; Ottoline reads the handbook page and can follow it without help.",
+      "status": "pending",
+      "depends_on": [
+        "T9"
+      ],
+      "order": 10,
+      "pr": "P1"
+    },
+    "tasks/T11": {
+      "title": "Hand pauses to the driver route app",
+      "goal": "Drivers' printed routes don't list paused cafés.",
+      "approach": "The routes tool is a separate repository kept by the volunteer driver coordinator, and it imports deliveries from a nightly CSV. It currently ignores a status column. Waiting on Dagny Ekström to ship the import change that honours status=paused; until then the export in jobs/export_routes_csv.py can't be changed without breaking tonight's routes. Nothing to merge here until that lands.",
+      "touches": [
+        "jobs/export_routes_csv.py"
+      ],
+      "verify": "Route sheet generated from the staging CSV omits a paused café and still includes the café's other days.",
+      "status": "blocked",
+      "depends_on": [
+        "T4"
+      ],
+      "order": 11,
+      "pr": "P1"
+    },
+    "tasks/T12": {
+      "title": "Partial pause: skip individual items",
+      "goal": "Let a café skip only some lines of a standing order.",
+      "approach": "Per-item pause ranges on standing_order_lines.",
+      "touches": [
+        "services/ordering/standing_orders/pauses.py"
+      ],
+      "verify": "n/a",
+      "status": "dropped",
+      "depends_on": [
+        "T3"
+      ],
+      "order": 12
+    },
+    "prs/P1": {
+      "title": "Pause standing orders for holiday closures",
+      "order": 1,
+      "branch": "feature/standing-order-pause-for-holiday-closures",
+      "base": "main",
+      "status": "draft",
+      "url": "https://code.marlowestreet.example/wholesale/ordering-site/pull/87",
+      "summary": "Lets cafés pause a standing order for a date range without cancelling it. Behind a per-café flag."
+    },
+    "questions/Q1": {
+      "title": "How long may a single pause last?",
+      "context": "Cafés close for two weeks at Christmas, but a few shut for a whole summer. An uncapped pause is easy to forget and leaves bakers planning around orders that may never return. The cap goes into validate_pause.",
+      "options": [
+        {
+          "label": "2 weeks",
+          "cost": "Covers Christmas, but summer closures need staff help."
+        },
+        {
+          "label": "8 weeks",
+          "cost": "Covers every closure we know of; a forgotten pause can sit for two months."
+        },
+        {
+          "label": "No cap"
+        }
+      ],
+      "recommendation": "8 weeks",
+      "blocks": "Validation rules in T2",
+      "task": "T2",
+      "status": "answered",
+      "asked_at": "2026-10-12T15:10:00Z",
+      "answered_at": "2026-10-13T08:42:00Z",
+      "answered_by": "u_ottoline",
+      "answer": "8 weeks"
+    },
+    "questions/Q2": {
+      "title": "Pause a whole order only, or individual items?",
+      "context": "Some cafés want to skip just the croissants over a weekend special and keep the bread. Per-item pauses roughly double the work in the generator, the UI, and the production sheet.",
+      "options": [
+        {
+          "label": "Whole order only",
+          "cost": "Cafés wanting a partial skip have to edit the order by hand."
+        },
+        {
+          "label": "Per item",
+          "cost": "Adds a task and touches the generator, UI, and sheet."
+        }
+      ],
+      "recommendation": "Whole order only",
+      "blocks": "Whether T12 (per-item pause) is built",
+      "task": "T12",
+      "status": "answered",
+      "asked_at": "2026-10-13T09:05:00Z",
+      "answered_at": "2026-10-14T10:20:00Z",
+      "answered_by": "u_bram",
+      "answer": "Whole order only. We can revisit after the pilot."
+    },
+    "questions/Q3": {
+      "title": "May staff create a pause after the production cutoff?",
+      "context": "The cutoff is 22:00 the evening before a delivery; after it the bakers have already scaled the dough. A café phoning at 6am to say they're closed today is the usual case. If staff may override, the admin tab needs an 'override' checkbox and the bakers need a flag on the sheet, and the cost of the wasted bake is the co-op's.",
+      "options": [
+        {
+          "label": "No, same rules for everyone"
+        },
+        {
+          "label": "Yes, with an override reason recorded",
+          "cost": "Needs a reason field and a note on the production sheet."
+        },
+        {
+          "label": "Yes, silently",
+          "cost": "No trace of why a bake was wasted."
+        }
+      ],
+      "recommendation": "Yes, with an override reason recorded",
+      "blocks": "The admin Pauses tab (T9) can't be finished",
+      "task": "T9",
+      "status": "open",
+      "asked_at": "2026-11-02T14:30:00Z"
+    },
+    "journal/2026-10-12T14:05:00Z": {
+      "at": "2026-10-12T14:05:00Z",
+      "text": "Read the spec and the current standing-order code. Plan is a straight line: table, rules, generator, API, flag, then three side-by-side pieces (UI, emails, bakers' sheet), then admin and the end-to-end test. Wrote 12 tasks.",
+      "by": "claude"
+    },
+    "journal/2026-10-12T15:10:00Z": {
+      "at": "2026-10-12T15:10:00Z",
+      "text": "Asked Q1 on the pause length cap. Carrying on with T1, which doesn't depend on it.",
+      "by": "claude"
+    },
+    "journal/2026-10-13T08:42:00Z": {
+      "at": "2026-10-13T08:42:00Z",
+      "text": "8 weeks.",
+      "by": "u_ottoline",
+      "questions": [
+        "Q1"
+      ]
+    },
+    "journal/2026-10-13T09:05:00Z": {
+      "at": "2026-10-13T09:05:00Z",
+      "text": "Asked Q2. Whether cafés can skip single items changes the generator design, so held T12 behind it.",
+      "by": "claude"
+    },
+    "journal/2026-10-14T10:20:00Z": {
+      "at": "2026-10-14T10:20:00Z",
+      "text": "Whole order only; revisit after the pilot.",
+      "by": "u_bram"
+    },
+    "journal/2026-10-14T10:31:00Z": {
+      "at": "2026-10-14T10:31:00Z",
+      "text": "Dropped T12 (per-item pause) per Q2. Nothing depended on it, so no renumbering.",
+      "by": "claude"
+    },
+    "journal/2026-10-15T16:48:00Z": {
+      "at": "2026-10-15T16:48:00Z",
+      "text": "T1 merged. The exclusion constraint needs btree_gist; staging already had it and production allows it, so no change request needed.",
+      "by": "claude"
+    },
+    "journal/2026-10-16T13:12:00Z": {
+      "at": "2026-10-16T13:12:00Z",
+      "text": "T2 merged. Added a distinct too-late error code, so the UI can say 'after tonight's cutoff' instead of 'invalid dates'.",
+      "by": "claude"
+    },
+    "journal/2026-10-20T11:03:00Z": {
+      "at": "2026-10-20T11:03:00Z",
+      "text": "T3 merged. Nightly generation went from 41s to 44s on staging, well inside budget.",
+      "by": "claude"
+    },
+    "journal/2026-10-22T17:25:00Z": {
+      "at": "2026-10-22T17:25:00Z",
+      "text": "Reviewed T4 with a stale-data eye. Asked for the cancelled-deliveries step to share the transaction with the insert, and it does now.",
+      "by": "u_thuy"
+    },
+    "journal/2026-10-23T09:50:00Z": {
+      "at": "2026-10-23T09:50:00Z",
+      "text": "T4 merged and the draft PR is open. Returning 404 instead of 403 for another café's order, matching the other endpoints.",
+      "by": "claude"
+    },
+    "journal/2026-10-27T10:15:00Z": {
+      "at": "2026-10-27T10:15:00Z",
+      "text": "Pilot cafés will be Hollin Court Deli, Pasha's, and the Kestrel Road canteen. Make the flag per-café, not global.",
+      "by": "owner"
+    },
+    "journal/2026-10-28T15:40:00Z": {
+      "at": "2026-10-28T15:40:00Z",
+      "text": "T5 merged with a per-café flag list, as asked. Started T6, T7 and T8 in parallel; they touch different directories.",
+      "by": "claude"
+    },
+    "journal/2026-10-30T12:20:00Z": {
+      "at": "2026-10-30T12:20:00Z",
+      "text": "Blocked T11. The routes tool lives in another repo and ignores a status column; Dagny Ekström owns the import change. Asked her to confirm a date; nothing to build here meanwhile.",
+      "by": "claude"
+    },
+    "journal/2026-11-02T14:30:00Z": {
+      "at": "2026-11-02T14:30:00Z",
+      "text": "Asked Q3. T9 can be built with the normal cutoff rules, but an override changes the shape of the admin tab, so I'm holding it for an answer.",
+      "by": "claude"
+    },
+    "journal/2026-11-03T09:18:00Z": {
+      "at": "2026-11-03T09:18:00Z",
+      "text": "T7 in review: the reminder job sends nothing for a cancelled pause, covered by a test.",
+      "by": "claude"
+    },
+    "journal/2026-11-03T16:02:00Z": {
+      "at": "2026-11-03T16:02:00Z",
+      "text": "T8 review found the footnote lists a café whose pause ended yesterday. Fixing the date comparison to be inclusive of ends_on only.",
+      "by": "claude"
+    },
+    "run/main": {
+      "title": "Standing order pause for wholesale cafés",
+      "objective": "Let a wholesale café pause a standing order for a date range, such as a holiday closure, without cancelling it. Paused orders produce no deliveries, no invoice lines, and no bake, and restart on their own.",
+      "source": "docs/specs/standing-order-pause.md",
+      "status": "running",
+      "approach": "Store pauses in their own table and make the nightly delivery generator the one place that honours them, so the production sheet, invoicing and routes all inherit it from delivery rows.\n\nThe café UI, the emails, and the bakers' footnote are independent of each other once the API and flag exist, so they run side by side. Staff tooling and the end-to-end test come last.",
+      "delivery": "One PR into main, opened as a draft after the first merge and marked ready when every task is merged. Rolled out per café behind standing_order_pause.",
+      "done_check": [
+        {
+          "text": "A pilot café can pause and resume an order from the site, and no delivery is generated inside the pause.",
+          "state": "unchecked"
+        },
+        {
+          "text": "The bakers' sheet omits paused orders and says why.",
+          "state": "unchecked",
+          "note": "Footnote still in review (T8)."
+        },
+        {
+          "text": "Staff can pause on a café's behalf and see pause history.",
+          "state": "unchecked"
+        },
+        {
+          "text": "Drivers' routes omit paused cafés.",
+          "state": "unchecked"
+        }
+      ],
+      "out_of_scope": [
+        "Per-item pauses (Q2)",
+        "Self-service skipping a single delivery date",
+        "Changing prices or minimums during a pause"
+      ],
+      "risks": [
+        "The routes CSV import is outside this repo (T11) and may land after the PR.",
+        "A pause created after the 22:00 cutoff wastes a bake; Q3 decides how staff handle it.",
+        "Daylight-saving changes near the cutoff time."
+      ],
+      "driver": {
+        "session": "drive-pause-3f2a",
+        "since": "2026-10-12T14:00:00Z"
+      },
+      "started_at": "2026-10-12T14:00:00Z",
+      "updated_at": "2026-11-03T16:02:00Z"
+    }
+  }
+}

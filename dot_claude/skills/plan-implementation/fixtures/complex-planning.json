@@ -1,0 +1,702 @@
+{
+  "about": "Complex planning-stage plan page: a deep, wide dependency graph with stacked planned PRs, three epics, four open questions including a person-only step, and a mix of detailed and bare tasks.",
+  "now": "2026-10-09T15:00:00Z",
+  "viewer": "u_nguyen",
+  "people": {
+    "u_nguyen": "Nguyễn Thu Hà",
+    "u_odile": "Odile Fontaine",
+    "u_tomasz": "Tomasz Wierzbicki",
+    "u_ikenna": "Ikenna Adeyemi"
+  },
+  "docs": {
+    "tasks/T1": {
+      "title": "Interval reading schema and storage",
+      "goal": "Store 15-minute interval reads for power and daily reads for water in one partitioned table.",
+      "approach": "New meter_interval_reading table in Postgres, range-partitioned by month on read_end_utc, keyed on (meter_id, channel, read_end_utc). Columns: kwh_delivered, kwh_received, m3, quality_code, source_batch_id, ingested_at.\n\nStore everything in UTC and keep the premise's local offset on the premise row, not the reading. The legacy system stored local time and lost an hour twice a year; we are not repeating that.\n\nA native 5-minute channel (some commercial meters) is rolled up to 15 minutes on write and the raw rows kept in meter_interval_reading_raw for 90 days.",
+      "touches": [
+        "db/migrations/0042_meter_interval_reading.sql",
+        "services/meter-data/internal/store/interval_reading_store.go",
+        "docs/data-model/interval-readings.md"
+      ],
+      "verify": "Migration applies and rolls back on a copy of staging. 10 million synthetic rows insert in under 4 minutes and a one-month range query by meter returns in under 50 ms.",
+      "epics": [
+        "MTR-512"
+      ],
+      "pr": "P1",
+      "status": "pending",
+      "order": 1
+    },
+    "tasks/T2": {
+      "title": "Head-end export reader",
+      "goal": "Parse the nightly export files from the meter head-end into typed readings.",
+      "approach": "The head-end drops gzip'd XML into the inbound/ bucket every night around 02:00 local. Write a streaming parser (no full-document load; the larger files are 1.8 GB) that yields List<Reading> batches of 5,000.\n\nRecord the spec's three known quirks as fixtures: duplicate <IntervalBlock> elements on retransmit, -0.000 values, and blocks whose endTime is local rather than UTC.",
+      "touches": [
+        "services/meter-data/internal/headend/export_reader.go",
+        "services/meter-data/internal/headend/testdata/retransmit_duplicate_block.xml"
+      ],
+      "verify": "Fixtures for all three quirks parse to the expected readings; a 2 GB generated file parses with flat memory under 200 MB.",
+      "epics": [
+        "MTR-512"
+      ],
+      "pr": "P1",
+      "status": "pending",
+      "order": 2
+    },
+    "tasks/T3": {
+      "title": "Tariff data model",
+      "goal": "Model rate schedules, riders, and tiers as data.",
+      "approach": "Tables tariff, tariff_component, tariff_tier, rider. A component is one billable line (energy charge, demand charge, service fee, sewer-by-water-use). Tiers carry lower_bound and upper_bound with lower_bound < upper_bound enforced by a check constraint.",
+      "touches": [
+        "db/migrations/0043_tariff_model.sql",
+        "services/rating/internal/tariff/model.go"
+      ],
+      "verify": "Loads the 2026 residential, small commercial, and water schedules from the regulator-filed PDFs transcribed in testdata/.",
+      "epics": [
+        "MTR-518"
+      ],
+      "pr": "P3",
+      "status": "pending",
+      "order": 3
+    },
+    "tasks/T4": {
+      "title": "Extract legacy account and rate-code layouts",
+      "goal": "Get the mainframe copybooks and turn them into a machine-readable layout.",
+      "approach": "Needs the copybooks and a sample extract from the mainframe team first. Then generate Go structs and a fixed-width reader from them, so the parallel run and the premise import read the legacy files the same way.",
+      "touches": [
+        "tools/legacy-layouts/account_master.layout.yaml",
+        "tools/legacy-layouts/rate_code_xref.layout.yaml"
+      ],
+      "verify": "Reader round-trips the 500-row sample extract with no field truncation.",
+      "depends_on": [
+        "Q4"
+      ],
+      "epics": [
+        "MTR-524"
+      ],
+      "pr": "P1",
+      "status": "pending",
+      "order": 4
+    },
+    "tasks/T5": {
+      "title": "Ingestion service",
+      "goal": "Land head-end files into the interval table, once, in order, and safely on retry.",
+      "approach": "A worker that claims one file at a time with an advisory lock on the file name, reads it with the export reader, and writes batches with INSERT ... ON CONFLICT (meter_id, channel, read_end_utc) DO UPDATE only when the incoming source_batch_id is newer. Retransmits therefore replace and never double-count.\n\nEmits ingest.batch.completed on the internal event bus (Kafka topic meter.ingest.v1) with row counts, which validation consumes.",
+      "touches": [
+        "services/meter-data/cmd/ingestd/main.go",
+        "services/meter-data/internal/ingest/file_claimer.go",
+        "services/meter-data/internal/ingest/batch_writer.go",
+        "deploy/k8s/meter-data/ingestd.yaml"
+      ],
+      "verify": "Kill the worker mid-file in an integration test; a second run completes with exactly one copy of each reading.",
+      "depends_on": [
+        "T1",
+        "T2"
+      ],
+      "epics": [
+        "MTR-512"
+      ],
+      "pr": "P1",
+      "status": "pending",
+      "order": 5
+    },
+    "tasks/T6": {
+      "title": "Tariff versioning and effective dating",
+      "goal": "A bill for a past period must use the tariff in force then.",
+      "approach": "Add effective_from, effective_to to tariff rows and a resolver TariffAt(premise, date). Mid-period rate changes are rated in two slices.",
+      "touches": [
+        "services/rating/internal/tariff/resolver.go"
+      ],
+      "depends_on": [
+        "T3"
+      ],
+      "epics": [
+        "MTR-518"
+      ],
+      "pr": "P3",
+      "status": "pending",
+      "order": 6
+    },
+    "tasks/T7": {
+      "title": "Premise-to-meter mapping import",
+      "goal": "Know which meter serves which premise and customer, and when that changed.",
+      "approach": "Import the legacy account master (via the T4 reader) into premise, service_point, meter_assignment. Keep the assignment history; a meter swap mid-cycle is the case that breaks bills.\n\nAccounts with no matching meter are written to import_exception rather than failing the run. Billing ops (Tomasz's team) will work that list.",
+      "touches": [
+        "services/accounts/internal/importer/premise_import.go",
+        "db/migrations/0044_meter_assignment.sql"
+      ],
+      "verify": "Import of the sample extract yields every account, and a seeded mid-cycle swap shows two assignments with correct dates.",
+      "depends_on": [
+        "T1",
+        "T4"
+      ],
+      "epics": [
+        "MTR-512",
+        "MTR-524"
+      ],
+      "pr": "P1",
+      "status": "pending",
+      "order": 7
+    },
+    "tasks/T8": {
+      "title": "Validation rules (VEE: validate, edit, estimate flags)",
+      "goal": "Flag bad reads before anything bills from them.",
+      "approach": "Rule chain run per batch: spike (read > 6x the meter's trailing 30-day p99), negative delivered, stuck (identical non-zero reads for 12+ intervals), clock skew > 5 min, and zero-with-load on a water meter. Each rule sets a quality_code bit rather than overwriting the value.\n\nThresholds live in config/vee_rules.yaml so billing ops can tune them without a deploy.",
+      "touches": [
+        "services/meter-data/internal/vee/rules/spike.go",
+        "services/meter-data/internal/vee/rules/stuck_reading.go",
+        "config/vee_rules.yaml"
+      ],
+      "verify": "Replay of the 3-week sample with known seeded faults flags all of them and no more than 0.1% of clean reads.",
+      "depends_on": [
+        "T5"
+      ],
+      "epics": [
+        "MTR-512"
+      ],
+      "pr": "P2",
+      "status": "pending",
+      "order": 8
+    },
+    "tasks/T9": {
+      "title": "Gap detection",
+      "goal": "Find intervals that should exist and don't.",
+      "approach": "Generate the expected interval grid per meter from meter_assignment, left-join readings, emit gaps as (meter_id, from, to) ranges. Coalesce adjacent gaps.",
+      "touches": [
+        "services/meter-data/internal/vee/gaps.go"
+      ],
+      "verify": "Seeded gaps of 1 interval, 3 hours and 2 days come out as exactly those ranges.",
+      "depends_on": [
+        "T5"
+      ],
+      "epics": [
+        "MTR-512"
+      ],
+      "pr": "P2",
+      "status": "pending",
+      "order": 9
+    },
+    "tasks/T10": {
+      "title": "Estimation engine",
+      "goal": "Fill gaps and rejected reads with defensible estimates, marked as estimates.",
+      "approach": "Pluggable Estimator interface with three implementations: interpolation for gaps up to 4 hours, same-weekday profile for longer ones, and (if Q2 approves) a temperature-adjusted profile. Estimated rows are written with a quality bit and a link to the method, because the regulator wants to see which bills contain estimates.\n\nNever estimate across a meter swap.",
+      "touches": [
+        "services/meter-data/internal/estimate/estimator.go",
+        "services/meter-data/internal/estimate/same_weekday_profile.go",
+        "services/meter-data/internal/estimate/interpolate.go"
+      ],
+      "verify": "Backtest: hide 5% of real reads, estimate them, and report mean absolute error per method; interpolation under 4% and profile under 9%.",
+      "depends_on": [
+        "T8",
+        "T9",
+        "Q2"
+      ],
+      "epics": [
+        "MTR-512",
+        "MTR-518"
+      ],
+      "pr": "P2",
+      "status": "pending",
+      "order": 10
+    },
+    "tasks/T11": {
+      "title": "Rate engine core: tiered and time-of-use",
+      "goal": "Turn usage and a tariff into line items.",
+      "approach": "Pure function Rate(usage []Interval, tariff Tariff) []LineItem with no I/O, so it is trivial to test and to run in the parallel-run harness. Time-of-use bucketing uses the premise's local time, converted from UTC, with the tariff's own definition of season boundaries.\n\nMoney is int64 cents with banker's rounding applied once per line item, not per interval. Billing ops confirmed this rounding rule.",
+      "touches": [
+        "services/rating/internal/engine/rate.go",
+        "services/rating/internal/engine/tou_buckets.go",
+        "services/rating/internal/engine/rate_test.go"
+      ],
+      "verify": "Golden files for 40 hand-calculated bills (residential, small commercial, water + sewer) match to the cent.",
+      "depends_on": [
+        "T6",
+        "T8"
+      ],
+      "epics": [
+        "MTR-518"
+      ],
+      "pr": "P3",
+      "status": "pending",
+      "order": 11
+    },
+    "tasks/T12": {
+      "title": "Net metering and export credits",
+      "goal": "Credit solar customers for kWh sent back to the grid.",
+      "approach": "Add a credit line type. Banked credit carries to the next period per the rule in Q3, so the account needs a credit_balance ledger table.",
+      "touches": [
+        "services/rating/internal/engine/net_metering.go",
+        "db/migrations/0046_credit_ledger.sql"
+      ],
+      "depends_on": [
+        "T11",
+        "Q3"
+      ],
+      "epics": [
+        "MTR-518"
+      ],
+      "pr": "P3",
+      "status": "pending",
+      "order": 12
+    },
+    "tasks/T13": {
+      "title": "Bill calculation run",
+      "goal": "Produce a bill per account per cycle from readings, estimates, and the rate engine.",
+      "approach": "Cycle runner reads each account's service points for the period, collects readings (preferring actual over estimate), calls Rate, adds fixed fees, taxes and prior balance, and writes bill and bill_line rows plus a bill_estimate_flag when any estimate was used.\n\n1. Group accounts into 20 cycles by existing route.\n2. Run a cycle in chunks of 500 accounts with a checkpoint per chunk.\n3. A failed chunk is retried alone; the cycle is marked complete only when every chunk succeeds.",
+      "touches": [
+        "services/billing/internal/cycle/runner.go",
+        "services/billing/internal/cycle/checkpoint_store.go",
+        "db/migrations/0045_bill_tables.sql"
+      ],
+      "verify": "A 20,000 account cycle completes in under 40 minutes; killing the runner mid-chunk and restarting produces no duplicate bills.",
+      "depends_on": [
+        "T10",
+        "T11",
+        "T7"
+      ],
+      "epics": [
+        "MTR-518",
+        "MTR-524"
+      ],
+      "pr": "P3",
+      "status": "pending",
+      "order": 13
+    },
+    "tasks/T14": {
+      "title": "Rebilling and dispute adjustments",
+      "epics": [
+        "MTR-518"
+      ],
+      "depends_on": [
+        "T13"
+      ],
+      "status": "pending",
+      "order": 14
+    },
+    "tasks/T15": {
+      "title": "Portal usage API",
+      "goal": "Serve a customer's own interval usage to the portal.",
+      "approach": "GET /v1/accounts/{id}/usage?from=&to=&grain=hour|day|month. Aggregates in SQL, never ships 15-minute rows beyond 7 days. Authorization is by account ownership from the portal session, not a query parameter.",
+      "touches": [
+        "services/portal-api/internal/usage/handler.go",
+        "services/portal-api/openapi/usage.yaml"
+      ],
+      "verify": "Contract tests pass; a request for another customer's account returns 404, not 403.",
+      "depends_on": [
+        "T8"
+      ],
+      "epics": [
+        "MTR-524"
+      ],
+      "status": "pending",
+      "order": 15
+    },
+    "tasks/T16": {
+      "title": "Usage charts",
+      "status": "pending",
+      "order": 16
+    },
+    "tasks/T17": {
+      "title": "Regulator report generator",
+      "goal": "Produce the quarterly estimated-bill and disconnection report in the commission's format.",
+      "approach": "The commission's template wants counts of estimated bills by customer class and duration. Needs the bill_estimate_flag from the bill run. Output is the fixed-width submission file plus a CSV for our own review.",
+      "touches": [
+        "services/reporting/internal/commission/estimated_bills_report.go"
+      ],
+      "verify": "Q3 2026 data reproduces the figures in the last manually filed report within 0.5%.",
+      "depends_on": [
+        "T13"
+      ],
+      "epics": [
+        "MTR-524"
+      ],
+      "status": "pending",
+      "order": 17
+    },
+    "tasks/T18": {
+      "title": "Parallel-run comparison harness",
+      "goal": "Prove new bills match legacy ones before anyone is billed by the new system.",
+      "approach": "Run the new cycle in shadow mode against the same period the mainframe billed, join on account number, and classify each difference: rounding (< $0.02), estimate-vs-actual, rate-code mapping, unexplained. Output a ranked report.\n\nHow many cycles to run in parallel before cutover is Q5.",
+      "touches": [
+        "tools/parallel-run/compare.go",
+        "tools/parallel-run/difference_classifier.go",
+        "tools/parallel-run/report/summary.html"
+      ],
+      "verify": "Seeded known differences all classify correctly; unexplained rate is reported as a percentage of accounts.",
+      "depends_on": [
+        "T13",
+        "T4",
+        "Q5"
+      ],
+      "epics": [
+        "MTR-524"
+      ],
+      "pr": "P4",
+      "status": "pending",
+      "order": 18
+    },
+    "tasks/T19": {
+      "title": "Legacy print-file export",
+      "epics": [
+        "MTR-524"
+      ],
+      "depends_on": [
+        "T13"
+      ],
+      "pr": "P4",
+      "status": "pending",
+      "order": 19
+    },
+    "tasks/T20": {
+      "title": "History backfill",
+      "goal": "Load 24 months of legacy usage so the portal and estimates have a history on day one.",
+      "approach": "Convert monthly legacy usage into daily synthetic reads flagged backfill, never used for billing, only for profiles and charts.",
+      "touches": [
+        "tools/backfill/legacy_usage_backfill.go"
+      ],
+      "depends_on": [
+        "T8",
+        "T7"
+      ],
+      "epics": [
+        "MTR-512"
+      ],
+      "pr": "P2",
+      "status": "pending",
+      "order": 20
+    },
+    "tasks/T21": {
+      "title": "Raw reading retention purge",
+      "epics": [
+        "MTR-512"
+      ],
+      "depends_on": [
+        "T8"
+      ],
+      "pr": "P2",
+      "status": "pending",
+      "order": 21
+    },
+    "tasks/T22": {
+      "title": "Cutover runbook and switch",
+      "epics": [
+        "MTR-524"
+      ],
+      "depends_on": [
+        "T17",
+        "T18",
+        "T19"
+      ],
+      "status": "pending",
+      "order": 22
+    },
+    "prs/P1": {
+      "title": "Meter data foundation",
+      "summary": "Interval schema, head-end reader, ingestion, legacy layouts, and premise mapping. Nothing here changes a bill.",
+      "order": 1,
+      "branch": "mtr-512-meter-data-foundation-ingest-and-premise-mapping",
+      "base": "main",
+      "status": "planned"
+    },
+    "prs/P2": {
+      "title": "Validation, estimation and backfill",
+      "order": 2,
+      "branch": "mtr-512-validation-estimation-backfill",
+      "base": "P1",
+      "status": "planned"
+    },
+    "prs/P3": {
+      "title": "Tariffs, rate engine and bill run",
+      "summary": "Everything needed to calculate a bill from validated usage. Depends on P2 for validated readings.",
+      "order": 3,
+      "branch": "mtr-518-rate-engine-and-bill-calculation",
+      "base": "P2",
+      "status": "planned"
+    },
+    "prs/P4": {
+      "title": "Parallel run and legacy export",
+      "order": 4,
+      "branch": "mtr-524-parallel-run-and-legacy-print-export",
+      "base": "P3",
+      "status": "planned"
+    },
+    "questions/Q1": {
+      "title": "Store native 5-minute reads, or only 15-minute?",
+      "context": "Most residential meters report every 15 minutes, but about 900 commercial meters can report every 5. Storing 5-minute data triples the commercial rows and the regulator only requires 15-minute billing granularity.",
+      "options": [
+        {
+          "label": "15-minute only",
+          "cost": "Smaller. Loses detail if a demand charge ever moves to 5-minute."
+        },
+        {
+          "label": "Store both",
+          "cost": "Raw 5-minute rows kept 90 days. Extra table and purge job."
+        }
+      ],
+      "recommendation": "Store both",
+      "blocks": "The interval table design in T1.",
+      "task": "T1",
+      "status": "answered",
+      "asked_at": "2026-09-14T15:40:00Z",
+      "answered_at": "2026-09-17T14:05:00Z",
+      "answered_by": "u_nguyen",
+      "answer": "Store both. Keep raw 5-minute rows for 90 days, bill from the 15-minute rollup."
+    },
+    "questions/Q2": {
+      "title": "Which estimation method for gaps longer than 4 hours?",
+      "context": "Short gaps are interpolated. For longer ones we can copy the same weekday's profile from the previous 4 weeks (simple, explainable on a bill), or adjust that profile by the day's temperature (more accurate in heat waves, but needs a weather feed and is harder to explain to a customer who disputes a bill). The commission has not mandated a method but will ask us to document it.",
+      "options": [
+        {
+          "label": "Same-weekday profile",
+          "cost": "Explainable. Overestimates on mild days after hot ones."
+        },
+        {
+          "label": "Temperature-adjusted profile",
+          "cost": "About 3 more weeks of work and a weather data source to maintain."
+        },
+        {
+          "label": "Same-weekday now, temperature later"
+        }
+      ],
+      "recommendation": "Same-weekday now, temperature later",
+      "blocks": "The method list and scope of the estimation engine (T10).",
+      "task": "T10",
+      "status": "open",
+      "asked_at": "2026-09-29T16:15:00Z"
+    },
+    "questions/Q3": {
+      "title": "Do net metering credits expire, and when?",
+      "context": "Solar customers who export more than they use build a credit. Tariff Rider NM-2 says credits \"carry forward\" but is silent on whether they lapse at the end of the annual true-up in April. Regulatory affairs (Odile) says the commission's 2024 order implies they roll indefinitely for residential and lapse for commercial, but wants it confirmed in writing before we encode it.",
+      "options": [
+        {
+          "label": "Roll indefinitely, all classes",
+          "cost": "Simplest. Possible over-credit if commercial lapses."
+        },
+        {
+          "label": "Residential rolls, commercial lapses at April true-up",
+          "cost": "Needs the class on the credit ledger and a yearly job."
+        },
+        {
+          "label": "Wait for written confirmation"
+        }
+      ],
+      "blocks": "The credit ledger design in T12 and the rate rider tests.",
+      "task": "T12",
+      "status": "open",
+      "asked_at": "2026-10-01T14:30:00Z"
+    },
+    "questions/Q4": {
+      "title": "Request the mainframe copybooks and sample extract",
+      "context": "Ask Ikenna Adeyemi in mainframe operations for the copybooks for ACCTMAST and RATEXREF and a 500-row masked extract of each, through the secure transfer share. Only someone with mainframe access can request it; the file goes into tools/legacy-layouts/samples/ untracked, and we should not commit real account numbers.",
+      "options": [
+        {
+          "label": "Done"
+        },
+        {
+          "label": "Skip",
+          "cost": "T4 and the premise import would work from the printed layout in the old spec, which is two years stale."
+        }
+      ],
+      "recommendation": "Done",
+      "blocks": "T4 can't start, and so neither can the premise import (T7).",
+      "task": "T4",
+      "status": "open",
+      "asked_at": "2026-09-21T13:20:00Z"
+    },
+    "questions/Q5": {
+      "title": "How many billing cycles to run in parallel before cutover?",
+      "context": "Running in parallel means the mainframe still bills, and we compute the same bills in shadow. One cycle catches gross errors; the 20 cycles span a month, so a full month needs all 20, and some edge cases (quarterly water customers, annual true-up) only show up over longer periods. Each additional month delays cutover by a month and keeps the mainframe running at about $41k a month.",
+      "options": [
+        {
+          "label": "1 month (20 cycles)",
+          "cost": "Misses quarterly-billed water accounts."
+        },
+        {
+          "label": "3 months",
+          "cost": "Covers one quarterly cycle. About $82k extra mainframe cost."
+        },
+        {
+          "label": "Until unexplained differences < 0.2% of accounts",
+          "cost": "Open-ended; hard to schedule around the summer peak."
+        }
+      ],
+      "recommendation": "3 months",
+      "blocks": "Scope of the harness (T18) and the cutover date in T22.",
+      "task": "T18",
+      "status": "open",
+      "asked_at": "2026-10-05T15:50:00Z"
+    },
+    "questions/Q6": {
+      "title": "Is the portal in the first release?",
+      "context": "The first release replaces billing. A customer-facing portal for interval usage could follow later without blocking cutover.",
+      "options": [
+        {
+          "label": "Portal in the first release"
+        },
+        {
+          "label": "Billing first, portal after"
+        }
+      ],
+      "blocks": "Whether the portal tasks (T15, T16) are scheduled before cutover.",
+      "status": "answered",
+      "asked_at": "2026-09-15T13:45:00Z",
+      "answered_at": "2026-09-16T17:20:00Z",
+      "answered_by": "owner",
+      "answer": "Portal ships with the first release, read-only. Customers will see interval data the day billing flips, so it cannot lag."
+    },
+    "journal/2026-09-14T14:10:00Z": {
+      "at": "2026-09-14T14:10:00Z",
+      "text": "Started planning from the billing modernization spec (MTR-510). Read the spec, the existing legacy-billing extract tooling, and the head-end integration notes. No code changes yet.",
+      "by": "claude"
+    },
+    "journal/2026-09-14T15:42:00Z": {
+      "at": "2026-09-14T15:42:00Z",
+      "text": "Asked whether to store 5-minute reads in addition to 15-minute (Q1). It decides the shape of the interval table, which almost everything else sits on.",
+      "by": "claude"
+    },
+    "journal/2026-09-15T13:46:00Z": {
+      "at": "2026-09-15T13:46:00Z",
+      "text": "Asked whether the customer portal belongs in the first release (Q6). The spec lists it under \"phase 1\" but also under \"later\".",
+      "by": "claude"
+    },
+    "journal/2026-09-16T17:22:00Z": {
+      "at": "2026-09-16T17:22:00Z",
+      "text": "Portal is in. Read-only for now.",
+      "by": "owner"
+    },
+    "journal/2026-09-17T14:06:00Z": {
+      "at": "2026-09-17T14:06:00Z",
+      "text": "Store both for Q1. Commercial customers are already asking about 5-minute demand.",
+      "by": "u_nguyen",
+      "questions": [
+        "Q1"
+      ]
+    },
+    "journal/2026-09-17T14:20:00Z": {
+      "at": "2026-09-17T14:20:00Z",
+      "text": "Took Q1: T1 now includes a raw 5-minute table with 90-day retention, and I added T21 (retention purge) so it doesn't grow forever. Q1 no longer blocks T1.",
+      "by": "claude"
+    },
+    "journal/2026-09-18T16:30:00Z": {
+      "at": "2026-09-18T16:30:00Z",
+      "text": "Sketched the task graph: ingestion and tariff model can proceed in parallel, then validation, then rating and estimation join into the bill run. Wrote the first 9 tasks in detail; the rest are titles for now.",
+      "by": "claude"
+    },
+    "journal/2026-09-21T13:21:00Z": {
+      "at": "2026-09-21T13:21:00Z",
+      "text": "The legacy account and rate-code layouts are only in the mainframe's copybooks, which I can't read. Made that a person-only step (Q4) and put it ahead of T4.",
+      "by": "claude"
+    },
+    "journal/2026-09-22T19:05:00Z": {
+      "at": "2026-09-22T19:05:00Z",
+      "text": "Copybooks are on my list. Can't promise before month-end because of the close freeze.",
+      "by": "u_ikenna"
+    },
+    "journal/2026-09-24T15:12:00Z": {
+      "at": "2026-09-24T15:12:00Z",
+      "text": "Grouping into PRs. Ingestion, schema and the premise import share the same data-model review, so they go together (P1). Reviewers for rating are different people, so tariffs and the rate engine go in P3, stacked on the validation PR so P3 can use validated readings.",
+      "by": "claude"
+    },
+    "journal/2026-09-25T14:00:00Z": {
+      "at": "2026-09-25T14:00:00Z",
+      "text": "Billing ops note: rounding must be per line item, not per interval. We found 1.4 cent drifts per bill the last time someone did it per interval.",
+      "by": "u_tomasz"
+    },
+    "journal/2026-09-25T14:40:00Z": {
+      "at": "2026-09-25T14:40:00Z",
+      "text": "Adopted per-line rounding in T11's approach and added a golden-file check against 40 hand-calculated bills. Also noted it in the risks.",
+      "by": "claude"
+    },
+    "journal/2026-09-29T16:16:00Z": {
+      "at": "2026-09-29T16:16:00Z",
+      "text": "Asked about the estimation method for long gaps (Q2). Spent time on the backtest idea first so the question could offer real numbers; the backtest is now in T10's verify.",
+      "by": "claude"
+    },
+    "journal/2026-09-30T20:44:00Z": {
+      "at": "2026-09-30T20:44:00Z",
+      "text": "Noticed T7 and T20 both need the premise mapping, so T20 (history backfill) now depends on T7. It was floating without a dependency.",
+      "by": "claude"
+    },
+    "journal/2026-10-01T14:31:00Z": {
+      "at": "2026-10-01T14:31:00Z",
+      "text": "Asked how net metering credits expire (Q3). Odile has the regulator correspondence; the tariff rider itself is ambiguous.",
+      "by": "claude"
+    },
+    "journal/2026-10-02T15:35:00Z": {
+      "at": "2026-10-02T15:35:00Z",
+      "text": "On Q3: I'm asking the commission's staff counsel for a written reading. Expect a reply in about two weeks.",
+      "by": "u_odile"
+    },
+    "journal/2026-10-05T15:51:00Z": {
+      "at": "2026-10-05T15:51:00Z",
+      "text": "Asked how many cycles to run in parallel (Q5). Mainframe run cost made the 3-month option expensive, so I included the numbers in the question.",
+      "by": "claude"
+    },
+    "journal/2026-10-06T21:10:00Z": {
+      "at": "2026-10-06T21:10:00Z",
+      "text": "Placed T18 and T19 in P4, the last PR in the stack. T15-T17 and the cutover task (T22) aren't in a PR yet: their placement depends on Q5 and on the portal's design, which has only a title.",
+      "by": "claude"
+    },
+    "journal/2026-10-07T18:25:00Z": {
+      "at": "2026-10-07T18:25:00Z",
+      "text": "Went through T14, T16, T19, T21 and T22; they are only titles and dependencies. Left them bare deliberately until their upstream tasks settle, rather than invent detail now.",
+      "by": "claude"
+    },
+    "journal/2026-10-08T16:02:00Z": {
+      "at": "2026-10-08T16:02:00Z",
+      "text": "Plan is still taking shape: 4 questions open, 5 tasks bare. Not asking for a go-ahead yet.",
+      "by": "claude"
+    },
+    "run/main": {
+      "title": "Smart-meter interval billing",
+      "objective": "Replace monthly estimated billing with billing from smart-meter interval data for power and water customers, through ingestion, validation and estimation, a rate engine, and a bill run, then cut over from the legacy mainframe batch with a parallel run first. The portal shows customers their interval usage and regulator reporting is produced from the new system.",
+      "source": "MTR-510, spec at docs/billing-modernization/interval-billing-spec-v3.md",
+      "status": "pending",
+      "approach": "Three layers, built bottom up. First, a data layer that lands head-end files exactly once into a UTC interval table and maps meters to premises. Second, validation and estimation that mark every read as actual or estimated and never overwrite a value. Third, a pure rating function and a resumable bill run on top, with a parallel-run harness comparing new bills to the mainframe's before cutover.\n\nThe rate engine is a pure function so the same code serves the bill run, the parallel run, and the portal's bill-to-date projection. Quality flags travel with every reading all the way to the bill, since the commission's quarterly report counts estimated bills.",
+      "delivery": "Four stacked PRs, each reviewable on its own: P1 meter data foundation, P2 validation, estimation and backfill, P3 tariffs, rate engine and bill run, P4 parallel run and legacy export. Each is based on the one before so later review sees a coherent history. Portal (T15, T16), the regulator report (T17), rebilling (T14) and the cutover (T22) are not placed yet: portal and cutover depend on answers to Q5 and on the portal's design, and the report waits on what the bill run stores.",
+      "done_check": [
+        {
+          "text": "A 20,000 account cycle produces bills matching the legacy system within $0.02 on 99.8% of accounts",
+          "state": "unchecked"
+        },
+        {
+          "text": "Every bill that contains an estimated read is flagged, and the commission report counts them",
+          "state": "unchecked"
+        },
+        {
+          "text": "Ingestion is idempotent: replaying any head-end file changes nothing",
+          "state": "unchecked"
+        },
+        {
+          "text": "Customers can see their last 13 months of interval usage in the portal",
+          "note": "Portal is read-only in this release.",
+          "state": "unchecked"
+        },
+        {
+          "text": "Cutover runbook rehearsed once in staging",
+          "state": "unchecked"
+        }
+      ],
+      "out_of_scope": [
+        "Prepaid and pay-as-you-go accounts",
+        "Demand-response event pricing",
+        "Replacing the legacy payment posting system",
+        "Gas service"
+      ],
+      "risks": [
+        "Mid-cycle meter swaps are the most common cause of wrong bills and have the least test data.",
+        "Head-end exports are late or retransmitted a few times a month; ingestion must tolerate both.",
+        "Time-of-use bucketing across daylight-saving changes (23 and 25 hour days).",
+        "The commission's reading of net metering credit expiry (Q3) may arrive after the rate engine is built.",
+        "Mainframe copybooks may not match what the batch actually writes."
+      ],
+      "jira_browse_url": "https://tracker.brightwater.example/browse/",
+      "epics": {
+        "MTR-512": "Meter data ingestion and validation",
+        "MTR-518": "Rate engine and bill calculation",
+        "MTR-524": "Portal, regulator reporting and cutover"
+      },
+      "started_at": "2026-09-14T14:10:00Z",
+      "updated_at": "2026-10-08T16:02:00Z"
+    }
+  }
+}

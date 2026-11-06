@@ -1,0 +1,1271 @@
+{
+  "about": "Finished complex plan: 25 tasks over 7 levels with wide, joining levels, two dropped tasks, a four-PR stack with a closed PR, four epics, and a long journal.",
+  "now": "2026-10-24T09:10:00Z",
+  "viewer": "u_inesv",
+  "people": {
+    "u_inesv": "Inês Valadares",
+    "u_tobias": "Tobias Okonkwo-Lindqvist",
+    "u_gwendolyn": "Gwendolyn Aldous",
+    "u_zoe": "Zoë Pemberthy",
+    "u_nguyen": "Nguyễn Thị Hạnh",
+    "u_former": null
+  },
+  "docs": {
+    "run/main": {
+      "title": "Merge the Harrowgate, Pellworth and Dunmarrow records into the Kestrel platform",
+      "objective": "Move the patient, imaging, prescription, billing, and appointment records of the three acquired practices onto one multi-tenant platform, with animals and owners matched across practices without wrongly merging anyone. Each practice must be able to cut over with a rehearsed, reversible runbook.",
+      "source": "specs/platform-merge/records-consolidation.md, tracker epic PET-140",
+      "status": "done",
+      "approach": "Isolation comes first: one Postgres database with row-level security on practice_id, so the matching work can read across practices through an explicit role while everything else cannot.\n\nEach practice is extracted untouched into a staging schema, then loaded domain by domain: identity, imaging, prescriptions, billing, scheduling. Anything ambiguous is flagged for a person instead of guessed, and original text is kept beside every normalised value.\n\nThe work lands as a stack of PRs ordered by what reviewers need to see first: tenancy and extraction, then identity, then prescriptions and billing, then imaging and the cutover tooling, with scheduling alongside on the identity PR.",
+      "delivery": "Stacked PRs. P1 (tenancy and extraction) and P2 (identity matching) are merged. P3 (prescriptions and billing) stacks on P2 and P4 (imaging and cutover) stacks on P3; P6 (scheduling) stacks on P2. P5 was a standalone imaging PR and is closed; its tasks live in P4.",
+      "done_check": [
+        {
+          "text": "No query run as one practice's role returns another practice's rows",
+          "state": "met",
+          "note": "The tenancy test covers all 31 tables in tables.yml, and a CI check fails if a table gains practice_id without a policy. The rehearsal asserts zero cross-tenant reads."
+        },
+        {
+          "text": "Auto-merged patients have no false merges on the labelled sample",
+          "state": "met",
+          "note": "Rule 1 (microchip) merged 1,126 of 4,000 sampled pairs, all confirmed by vets; the other 1,540 candidates wait in the review queue."
+        },
+        {
+          "text": "Every archived imaging object is in the bucket with a checksum",
+          "state": "met",
+          "note": "Rehearsal checksum assertion passes for all three practice copies; 3.1% duplicates are indexed, not deleted."
+        },
+        {
+          "text": "Controlled-drug records are preserved verbatim and tamper-evident",
+          "state": "met",
+          "note": "The database rejects UPDATE and DELETE on controlled_drug_log, and the hash-chain job caught a deliberately altered row in the test."
+        },
+        {
+          "text": "Imported balances reconcile to the legacy ledgers with every difference classified",
+          "state": "met",
+          "note": "The reconciliation report shows zero unclassified differences. Finance signed off on the four adjustment classes."
+        },
+        {
+          "text": "A full rehearsal of one practice's cutover completes and the runbook is walked through by someone who did not write it",
+          "state": "met",
+          "note": "Harrowgate rehearsal: 2h47m, all assertions green on the third run. Zoë Pemberthy walked the runbook on 22 October and found two gaps, now fixed."
+        }
+      ],
+      "out_of_scope": [
+        "Pellworth's legacy dental x-ray database, which goes to cold storage as it is",
+        "Re-scanning or OCR of paper charts",
+        "Fax delivery of prescriptions",
+        "Deleting duplicate imaging objects from the bucket",
+        "Online booking for pet owners"
+      ],
+      "risks": [
+        "Microchip numbers are less reliable at Pellworth, so most of its matches wait for people in the review queue",
+        "A 2h47m rehearsal is longer than the clinics' closed window on a Sunday",
+        "Row-level security depends on every new table getting a policy"
+      ],
+      "jira_browse_url": "https://tracker.kestrelmoor.example/browse/",
+      "epics": {
+        "PET-140": "Patient identity and tenancy",
+        "PET-141": "Imaging archive",
+        "PET-142": "Prescriptions and billing",
+        "PET-143": "Scheduling and cutover"
+      },
+      "handover": {
+        "summary": "All three practices' records can be loaded, matched, and reconciled into the platform, and a Harrowgate rehearsal has run end to end. Two PRs are merged; P3, P4 and P6 are open for review, with P4 at the top of the stack. Two planned tasks (OCR backfill and the fax bridge) were dropped after the practices said they no longer need them.",
+        "branch": "kestrel/platform-merge/04-imaging-and-cutover-tooling-on-top-of-prescriptions-billing",
+        "pr_url": "https://code.kestrelmoor.example/platform/chart-merge/pull/352",
+        "look_first": [
+          "db/migrations/0042_add_practice_id_and_rls.sql and the security_invoker change to appointment_notes",
+          "services/identity/internal/matcher/microchip.go, which decides what merges with no human in the loop",
+          "services/pharmacy/internal/controlled/hash_chain.go and its trigger in 0050_controlled_drug_log.sql",
+          "tools/cutover/rehearse.py, for what the rehearsal does and does not assert"
+        ],
+        "risks": [
+          "Pellworth's rehearsal has not been run; only Harrowgate's copy has gone through end to end",
+          "The dose parser flags 5.8% of dose strings as manual; nobody has costed that review",
+          "Signed imaging URLs expire after 15 minutes and the refresh has only been tried in one browser",
+          "P3, P4 and P6 were rebased over merged P2 on 13 October and nobody has re-read their diffs since"
+        ]
+      },
+      "started_at": "2026-09-14T09:12:00Z",
+      "updated_at": "2026-10-23T16:40:00Z"
+    },
+    "tasks/T1": {
+      "title": "Tenant isolation",
+      "goal": "Every table holding clinical or financial data carries practice_id, and Postgres refuses cross-practice reads.",
+      "approach": "Add practice_id uuid NOT NULL to each table listed in tenancy/tables.yml and enable row-level security with one policy per table: USING (practice_id = current_setting('kestrel.practice_id')::uuid). The chart API sets that setting in a request middleware from the signed-in user's practice, inside the same transaction as the query.\n\nCross-practice reporting gets its own role that reads only through SECURITY DEFINER views we list explicitly, never BYPASSRLS on a login role. Owner matching (T9) runs as that role.\n\nBackfill is trivial because the platform has no data yet. The migration is written so a later practice can be added with one insert into practices.",
+      "touches": [
+        "db/migrations/0042_add_practice_id_and_rls.sql",
+        "services/chart-api/internal/tenancy/middleware.go",
+        "services/chart-api/internal/tenancy/tables.yml",
+        "ops/roles/reporting_role.sql"
+      ],
+      "verify": "A test connected as practice A's role returns zero rows from every table in tables.yml for practice B's ids, and a test that adds a table without a policy fails CI.",
+      "status": "merged",
+      "depends_on": [],
+      "epics": [
+        "PET-140",
+        "PET-143"
+      ],
+      "order": 1,
+      "pr": "P1",
+      "branch": "kestrel/platform-merge/t01-tenant-isolation-rls-practice-id",
+      "outcome": "31 tables got policies, not the 24 the plan estimated; the spec's list missed the audit and attachment tables. Review caught that the appointment_notes view ran with its owner's rights and bypassed RLS, so it now uses security_invoker = true. Added a CI check that fails when a table has practice_id but no policy."
+    },
+    "tasks/T2": {
+      "title": "Legacy inventory and extraction harness",
+      "goal": "A repeatable way to pull a practice's records out of its old system and land them untouched in a staging schema.",
+      "approach": "A small Python package, legacy_extract, with one adapter per source and a shared runner that writes every extracted row to staging.<practice>_<table> as raw text columns plus _source_row and _extracted_at. No cleaning happens here.\n\nThe runner streams, checkpoints every 50k rows, and can resume. It writes a manifest of row counts per table so later tasks can assert nothing was lost.",
+      "touches": [
+        "tools/legacy_extract/runner.py",
+        "tools/legacy_extract/manifest.py",
+        "tools/legacy_extract/README.md",
+        "db/staging/0001_staging_schema.sql"
+      ],
+      "verify": "Running the harness twice against the Dunmarrow fixture dump produces identical manifests and the second run reports zero rows written.",
+      "status": "merged",
+      "depends_on": [],
+      "epics": [
+        "PET-140"
+      ],
+      "order": 2,
+      "pr": "P1",
+      "branch": "kestrel/platform-merge/t02-legacy-extraction-harness",
+      "outcome": "Harrowgate's SQL Server export spiked to 4 GB of memory on the clinical_notes table, so the runner uses server-side cursors and a 20k row fetch size. Checkpoints are per table, not per run."
+    },
+    "tasks/T3": {
+      "title": "Canonical patient and owner schema",
+      "goal": "One schema for owners, patients, and the many-to-many link between them, with legacy numbers preserved.",
+      "approach": "Tables owner, patient, patient_owner (with a role of primary, co-owner, or carer) and patient_alias(practice_id, legacy_number, system). Species and breed are lookup tables keyed on a stable code, not free text.\n\nA patient belongs to the group, not a practice; practice_id on patient records where it was first registered, and a separate patient_practice_visit view tells you where it has been seen.",
+      "touches": [
+        "db/migrations/0043_patient_owner_schema.sql",
+        "services/chart-api/internal/patients/model.go",
+        "db/seed/species_breed_codes.csv"
+      ],
+      "verify": "Inserting the same legacy number for two different practices succeeds, and for the same practice fails on the unique constraint on patient_alias.",
+      "status": "merged",
+      "depends_on": [
+        "T1",
+        "Q10"
+      ],
+      "epics": [
+        "PET-140"
+      ],
+      "order": 3,
+      "pr": "P1",
+      "branch": "kestrel/platform-merge/t03-canonical-patient-owner-schema",
+      "outcome": "Legacy numbers are kept forever as alias rows, decided without a question (see journal). Species codes follow Harrowgate's list with 11 additions from Pellworth; Q10 turned out unnecessary."
+    },
+    "tasks/T4": {
+      "title": "Extractors for the three practices",
+      "goal": "Adapters that pull patients, owners, imaging studies, prescriptions, invoices, and appointments from Harrowgate, Pellworth, and Dunmarrow.",
+      "approach": "Harrowgate: read the SQL Server database through pyodbc over the VPN the practice already has. Pellworth: its hosted system only offers nightly CSV exports, so the adapter parses a dated folder of CSVs. Dunmarrow: direct read of the Postgres 9.6 database, which has no foreign keys and several tables with the same name in two schemas.\n\nEach adapter maps source columns to the staging tables from T2 and nothing more.",
+      "touches": [
+        "tools/legacy_extract/adapters/harrowgate_mssql.py",
+        "tools/legacy_extract/adapters/pellworth_csv.py",
+        "tools/legacy_extract/adapters/dunmarrow_pg96.py"
+      ],
+      "verify": "A full dry run on each practice's fixture dump lands row counts matching the source manifest to the row.",
+      "status": "merged",
+      "depends_on": [
+        "T2"
+      ],
+      "epics": [
+        "PET-140"
+      ],
+      "order": 4,
+      "pr": "P1",
+      "branch": "kestrel/platform-merge/t04-three-practice-extractors",
+      "outcome": "Pellworth's CSVs are Windows-1252, and about 0.3% of owner names were already double-encoded at the source (ZoÃ«). The adapter re-decodes those with a heuristic and logs every changed value to staging.encoding_repairs instead of doing it silently."
+    },
+    "tasks/T5": {
+      "title": "Imaging manifest schema",
+      "goal": "Describe every archived study without moving a byte of it yet.",
+      "approach": "imaging_study, imaging_series, and imaging_object tables holding the legacy path, the practice, the patient alias, the modality, and the object-store key it will have. SHA-256 is a nullable column until T10 computes it.\n\nStorage layout: s3://kestrel-imaging-<env>/<practice_id>/<study_uid>/<object>. Originals are never rewritten (Q2); thumbnails live under a derived/ prefix.",
+      "touches": [
+        "db/migrations/0044_imaging_manifest.sql",
+        "services/imaging/internal/manifest/model.go",
+        "docs/imaging/bucket-layout.md"
+      ],
+      "verify": "Loading Harrowgate's 1.1M-study fixture manifest takes under five minutes and every row has a destination key.",
+      "status": "merged",
+      "depends_on": [
+        "T1",
+        "Q2",
+        "Q3"
+      ],
+      "epics": [
+        "PET-141"
+      ],
+      "order": 5,
+      "pr": "P4",
+      "branch": "kestrel/platform-merge/t05-imaging-manifest-and-bucket-layout",
+      "outcome": "Built as planned. Moved from P5 to P4 after the standalone imaging PR was closed."
+    },
+    "tasks/T6": {
+      "title": "Drug formulary table",
+      "goal": "One formulary for all practices, with each drug's dose units and controlled-substance schedule.",
+      "approach": "formulary_drug, formulary_strength, and formulary_alias for the dozens of ways each practice spells the same product. Schedule column holds the national controlled-drug class or null.\n\nSeed from Harrowgate's formulary, which is the cleanest, and add aliases from the other two as T11 discovers them.",
+      "touches": [
+        "db/migrations/0045_formulary.sql",
+        "db/seed/formulary_harrowgate.csv",
+        "services/pharmacy/internal/formulary/store.go"
+      ],
+      "verify": "Every drug in the three practices' last-two-years dispensing history resolves to a formulary row or appears in the unresolved report.",
+      "status": "merged",
+      "depends_on": [
+        "T1"
+      ],
+      "epics": [
+        "PET-142"
+      ],
+      "order": 6,
+      "pr": "P3",
+      "branch": "kestrel/platform-merge/t06-formulary",
+      "outcome": "Seeded 2,114 products. Dunmarrow's list had 63 entries with the species typed into the name (Metacam cat); those were split into drug plus a species restriction."
+    },
+    "tasks/T7": {
+      "title": "Billing code catalogue mapping",
+      "goal": "Map each practice's service and product codes onto one billing catalogue so invoices keep their meaning.",
+      "approach": "A billing_code table and billing_code_map(practice_id, legacy_code, billing_code). The mapping is a reviewed CSV in the repo, produced with finance, not inferred by code. Unmapped codes fail the import loudly.",
+      "touches": [
+        "db/migrations/0046_billing_catalogue.sql",
+        "db/seed/billing_code_map_harrowgate.csv",
+        "db/seed/billing_code_map_pellworth.csv",
+        "db/seed/billing_code_map_dunmarrow.csv"
+      ],
+      "verify": "Every distinct code in a year of invoice lines maps to exactly one catalogue code, checked by a script that prints any gap.",
+      "status": "merged",
+      "depends_on": [
+        "T1"
+      ],
+      "epics": [
+        "PET-142"
+      ],
+      "order": 7,
+      "pr": "P3",
+      "branch": "kestrel/platform-merge/t07-billing-code-catalogue",
+      "outcome": "Done with Gwendolyn's team. 38 Pellworth codes were retired and map to a single LEGACY-MISC code with the original description kept on the line."
+    },
+    "tasks/T8": {
+      "title": "Scheduling resources schema",
+      "goal": "Model rooms, practitioners, and equipment as bookable resources, per practice.",
+      "approach": "resource (kind: room, practitioner, equipment), appointment, and appointment_resource. Recurring blocks (theatre days, vaccine clinics) are stored as rules, not expanded rows.",
+      "touches": [
+        "db/migrations/0047_scheduling_resources.sql",
+        "services/scheduling/internal/model/resource.go"
+      ],
+      "verify": "A booking that double-books a room fails on an exclusion constraint on tstzrange.",
+      "status": "merged",
+      "depends_on": [
+        "T1"
+      ],
+      "epics": [
+        "PET-143"
+      ],
+      "order": 8,
+      "pr": "P6",
+      "branch": "kestrel/platform-merge/t08-scheduling-resources",
+      "outcome": "Used a GiST exclusion constraint per resource. Equipment shared between two practices turned out not to exist, so resources are single-practice."
+    },
+    "tasks/T9": {
+      "title": "Deterministic patient matcher",
+      "goal": "Link records for the same animal and owner across practices when the evidence is unambiguous, and nothing else.",
+      "approach": "Rule order, each producing a match_candidate row with a rule name and score: (1) exact microchip, normalised to 15 digits; (2) exact owner email plus patient name plus species plus birth year; (3) exact owner mobile plus patient name plus species. Only rule 1 merges automatically, per Q1; the others create a candidate for review in T14.\n\nThe matcher runs as the cross-practice reporting role from T1 and never writes to patient tables; it writes candidates only.",
+      "touches": [
+        "services/identity/internal/matcher/deterministic.go",
+        "services/identity/internal/matcher/microchip.go",
+        "services/identity/internal/matcher/rules_test.go"
+      ],
+      "verify": "On the labelled sample of 4,000 patient pairs, rule 1 has zero false merges, and every pair a vet marked as the same animal is either merged or candidated.",
+      "status": "merged",
+      "depends_on": [
+        "T3",
+        "T4",
+        "Q1"
+      ],
+      "epics": [
+        "PET-140"
+      ],
+      "order": 9,
+      "pr": "P2",
+      "branch": "kestrel/platform-merge/t09-deterministic-patient-matcher-microchip-first",
+      "outcome": "Dunmarrow stores microchips in two formats (15 digits and an older 9-digit one with a prefix dropped), so microchip.go normalises both. Of the 4,000 labelled pairs, 1,126 merge automatically and 1,540 become candidates."
+    },
+    "tasks/T10": {
+      "title": "Imaging ingest worker",
+      "goal": "Copy archived studies into the object store with their checksums, resumably.",
+      "approach": "A Go worker reading imaging_object rows in batches, streaming each legacy file to the bucket with a multipart upload, writing SHA-256 and size back. Failed objects go to a retry table with exponential backoff, capped at 6 tries.\n\nHarrowgate's archive is on a NAS reached over SMB, Pellworth's came as external drives the practice posted, and Dunmarrow's lives on the same server as its database. All three are exposed to the worker as mounted paths so the worker doesn't care.",
+      "touches": [
+        "services/imaging/cmd/ingest-worker/main.go",
+        "services/imaging/internal/ingest/uploader.go",
+        "services/imaging/internal/ingest/retry_queue.go"
+      ],
+      "verify": "Killing the worker mid-run and restarting it yields the same final object set and no duplicate uploads; 10,000 objects ingest from the NAS fixture in under 20 minutes.",
+      "status": "merged",
+      "depends_on": [
+        "T4",
+        "T5",
+        "Q3"
+      ],
+      "epics": [
+        "PET-141"
+      ],
+      "order": 10,
+      "pr": "P4",
+      "branch": "kestrel/platform-merge/t10-imaging-ingest-worker",
+      "outcome": "Throughput from the NAS was limited by SMB, not the uploader: 12 parallel streams was the sweet spot. Added --bandwidth-limit after the Harrowgate IT contact asked that ingest never run during clinic hours at full speed."
+    },
+    "tasks/T11": {
+      "title": "Prescription import and dose-unit normaliser",
+      "goal": "Import dispensing history into structured prescriptions, with doses in comparable units.",
+      "approach": "Parse each legacy dose string into amount, unit, frequency, and duration, using the formulary (T6) to know what units a drug can have. Strings that don't parse keep their original text and set dose_parse_status = 'manual'; they are never guessed at.\n\nUnits normalise to mg, ml, or tablet counts with mg/kg kept where the original was weight-based.",
+      "touches": [
+        "services/pharmacy/internal/importer/dose_parser.go",
+        "services/pharmacy/internal/importer/prescription_import.go",
+        "services/pharmacy/internal/importer/dose_parser_test.go"
+      ],
+      "verify": "The parser's golden file of 600 real dose strings (collected from all three practices) parses to the expected structure, and every unparsed string is counted in the import report.",
+      "status": "merged",
+      "depends_on": [
+        "T4",
+        "T6"
+      ],
+      "epics": [
+        "PET-142"
+      ],
+      "order": 11,
+      "pr": "P3",
+      "branch": "kestrel/platform-merge/t11-prescription-import-dose-normaliser",
+      "outcome": "94.2% of 1.3M dose strings parse; the rest are flagged manual. Free-text such as 1/2 tab bid x5/7 is handled; as directed is not and is left as manual on purpose."
+    },
+    "tasks/T12": {
+      "title": "Invoice and ledger import",
+      "goal": "Bring over invoices, payments, and open balances with totals that still add up.",
+      "approach": "Import invoices and lines through the code map from T7, payments as separate rows, and compute each owner's balance from lines minus payments rather than trusting the legacy balance column. Differences are recorded, not corrected.",
+      "touches": [
+        "services/billing/internal/importer/invoice_import.go",
+        "services/billing/internal/importer/ledger_balance.go",
+        "db/migrations/0048_ledger.sql"
+      ],
+      "verify": "For each practice, the imported total of invoices minus payments for the fixture year equals the legacy report total to the penny, or the difference is listed.",
+      "status": "merged",
+      "depends_on": [
+        "T4",
+        "T7"
+      ],
+      "epics": [
+        "PET-142"
+      ],
+      "order": 12,
+      "pr": "P3",
+      "branch": "kestrel/platform-merge/t12-invoice-ledger-import",
+      "outcome": "Totals match for Harrowgate and Dunmarrow. Pellworth differs by 4 invoices where the CSV export dropped lines with a null tax code; listed in docs/billing/known-differences.md."
+    },
+    "tasks/T13": {
+      "title": "Calendar import",
+      "goal": "Import future appointments and the last year of past ones.",
+      "approach": "Map legacy staff to resource rows, then appointments to appointment and appointment_resource. Past appointments import as completed and read-only. Future ones import as booked, and anything that would violate the exclusion constraint from T8 is held in appointment_import_conflict for T20.",
+      "touches": [
+        "services/scheduling/internal/importer/appointments.go",
+        "services/scheduling/internal/importer/staff_map.go"
+      ],
+      "verify": "Row counts of imported appointments plus held conflicts equal the legacy counts for each practice's fixture.",
+      "status": "merged",
+      "depends_on": [
+        "T4",
+        "T8"
+      ],
+      "epics": [
+        "PET-143"
+      ],
+      "order": 13,
+      "pr": "P6",
+      "branch": "kestrel/platform-merge/t13-calendar-import",
+      "outcome": "Found 212 future double-bookings in Pellworth's data alone, all held for the resolver."
+    },
+    "tasks/T14": {
+      "title": "Fuzzy matching and review queue",
+      "goal": "Surface likely duplicates that rules can't decide, and let staff accept or reject them.",
+      "approach": "Trigram similarity on normalised owner and patient names plus address and phone proximity, scored 0 to 1, with candidates under 0.55 discarded. The queue is a table with a status, the reviewer, and the reason for a rejection.\n\nRejected pairs are remembered so they are not proposed again. Accepting merges through a single function that records the before and after of both records.",
+      "touches": [
+        "services/identity/internal/matcher/fuzzy.go",
+        "services/identity/internal/review/queue.go",
+        "db/migrations/0049_match_review_queue.sql"
+      ],
+      "verify": "On the labelled sample, recall of true duplicates at score 0.55 is above 0.9, and a rejected pair never reappears after a re-run.",
+      "status": "merged",
+      "depends_on": [
+        "T9"
+      ],
+      "epics": [
+        "PET-140"
+      ],
+      "order": 14,
+      "pr": "P2",
+      "branch": "kestrel/platform-merge/t14-fuzzy-matching-and-review-queue",
+      "outcome": "Recall on the sample is 0.93 at the 0.55 cut. The merge function is reversible for 30 days through the before/after snapshot."
+    },
+    "tasks/T15": {
+      "title": "Imaging checksum dedupe",
+      "goal": "Don't store the same image twice when two practices archived the same referral study.",
+      "approach": "After ingest, group objects by SHA-256 and point duplicates at one stored object through imaging_object.canonical_key, keeping a row per original study. Deleting duplicates from the bucket is a separate, manual step.",
+      "touches": [
+        "services/imaging/internal/dedupe/by_checksum.go",
+        "services/imaging/internal/dedupe/report.go"
+      ],
+      "verify": "On fixtures with 500 seeded duplicates the dedupe report lists exactly those and no others.",
+      "status": "merged",
+      "depends_on": [
+        "T10"
+      ],
+      "epics": [
+        "PET-141"
+      ],
+      "order": 15,
+      "pr": "P4",
+      "branch": "kestrel/platform-merge/t15-imaging-checksum-dedupe",
+      "outcome": "Only 3.1% of objects were duplicates, mostly referral studies. Nothing is deleted; the report lists the bytes that could be reclaimed."
+    },
+    "tasks/T16": {
+      "title": "Scanned paper chart OCR backfill",
+      "goal": "Make scanned paper charts searchable through OCR.",
+      "approach": "Run an open-source OCR engine over Pellworth's 140k scanned PDFs and store text beside each file. Estimated several weeks of compute and a manual review of accuracy.",
+      "touches": [
+        "services/imaging/internal/ocr/backfill.go"
+      ],
+      "verify": "A sample of 200 scans has searchable text at 95% word accuracy.",
+      "status": "dropped",
+      "depends_on": [
+        "T10"
+      ],
+      "epics": [
+        "PET-141"
+      ],
+      "order": 16
+    },
+    "tasks/T17": {
+      "title": "Controlled-drug audit trail",
+      "goal": "Preserve the legal record of controlled-drug dispensing exactly as written.",
+      "approach": "Controlled-substance prescriptions import with their original text columns untouched and an append-only controlled_drug_log table that records every later change. Normalised units go in new columns beside the originals (Q4), never over them.\n\nA nightly job checks the log's hash chain and raises an alert if a row was altered.",
+      "touches": [
+        "services/pharmacy/internal/controlled/audit_log.go",
+        "services/pharmacy/internal/controlled/hash_chain.go",
+        "db/migrations/0050_controlled_drug_log.sql"
+      ],
+      "verify": "Attempting an UPDATE or DELETE on controlled_drug_log is rejected by the database, and the hash-chain job detects a row altered in a test.",
+      "status": "merged",
+      "depends_on": [
+        "T11",
+        "Q4"
+      ],
+      "epics": [
+        "PET-142"
+      ],
+      "order": 17,
+      "pr": "P3",
+      "branch": "kestrel/platform-merge/t17-controlled-drug-audit-trail",
+      "outcome": "Uses a trigger plus revoked privileges rather than only application checks. 38,402 controlled entries imported with original text intact."
+    },
+    "tasks/T18": {
+      "title": "Fax-gateway prescription bridge",
+      "goal": "Keep sending prescriptions to pharmacies by fax from the new platform.",
+      "approach": "Build a bridge to the practice's fax gateway so printed prescriptions go out the way Dunmarrow does today.",
+      "touches": [
+        "services/pharmacy/internal/fax/bridge.go"
+      ],
+      "verify": "A test prescription arrives by fax at the pharmacy test line.",
+      "status": "dropped",
+      "depends_on": [
+        "T11",
+        "Q6"
+      ],
+      "epics": [
+        "PET-142"
+      ],
+      "order": 18
+    },
+    "tasks/T19": {
+      "title": "Invoice reconciliation",
+      "goal": "Reconcile the imported balances and carry them into the new ledger with every difference accounted for.",
+      "approach": "Compare each owner's imported balance with the legacy balance, classify differences (rounding, missing tax line, write-off not recorded), and write an adjustment line only for classes finance has approved. Balances older than three years carry a stale_balance tag (Q7).",
+      "touches": [
+        "services/billing/internal/reconcile/classify.go",
+        "services/billing/internal/reconcile/adjustments.go",
+        "services/billing/internal/reconcile/report_csv.go"
+      ],
+      "verify": "The reconciliation report for all three practices shows zero unclassified differences, and finance signs off on the adjustment classes.",
+      "status": "merged",
+      "depends_on": [
+        "T12",
+        "Q7"
+      ],
+      "epics": [
+        "PET-142"
+      ],
+      "order": 19,
+      "pr": "P3",
+      "branch": "kestrel/platform-merge/t19-invoice-reconciliation",
+      "outcome": "Four difference classes in the end. About 6,900 balances older than three years are tagged, none written off."
+    },
+    "tasks/T20": {
+      "title": "Scheduling conflict resolver",
+      "goal": "Decide what happens to appointments that double-book once calendars are merged.",
+      "approach": "Per Q8, neither calendar wins: conflicting appointments stay booked, are flagged needs_attention, and appear on a list for the reception team at each practice, ordered by date. The resolver offers the nearest free slots on the same resource but moves nothing itself.",
+      "touches": [
+        "services/scheduling/internal/resolver/conflicts.go",
+        "services/scheduling/internal/resolver/suggest_slots.go",
+        "web/reception/src/pages/ConflictList.tsx"
+      ],
+      "verify": "All 212 Pellworth conflicts from the fixtures show on the list with suggestions, and no appointment's time changes.",
+      "status": "merged",
+      "depends_on": [
+        "T13",
+        "Q8"
+      ],
+      "epics": [
+        "PET-143"
+      ],
+      "order": 20,
+      "pr": "P6",
+      "branch": "kestrel/platform-merge/t20-scheduling-conflict-resolver",
+      "outcome": "Reception UI is a plain list with a filter by day; no calendar view was added. Suggestions use the practice's own opening hours."
+    },
+    "tasks/T21": {
+      "title": "Match review UI",
+      "goal": "Give nurses and reception a screen to work through the duplicate queue.",
+      "approach": "React page listing candidates side by side with the fields that agree highlighted, with Accept, Reject (with a reason), and Skip. Keyboard shortcuts for all three because the queue is long. The page is available only to roles with identity:review.",
+      "touches": [
+        "web/reception/src/pages/MatchReview.tsx",
+        "web/reception/src/components/RecordCompare.tsx",
+        "web/reception/src/api/matchQueue.ts"
+      ],
+      "verify": "A reviewer clears ten candidates using only the keyboard, and each decision appears in the queue's history.",
+      "status": "merged",
+      "depends_on": [
+        "T14"
+      ],
+      "epics": [
+        "PET-140"
+      ],
+      "order": 21,
+      "pr": "P2",
+      "branch": "kestrel/platform-merge/t21-match-review-ui",
+      "outcome": "Called 'Possible duplicates' in the UI at Zoë's request; the field-level highlight turned out to be the feature reviewers liked most."
+    },
+    "tasks/T22": {
+      "title": "Chart imaging links",
+      "goal": "Open an archived study from the patient's chart with one click.",
+      "approach": "Add an Imaging tab to the patient chart listing studies by date, with a link that asks the imaging service for a signed URL. Duplicate-checksum studies (T15) show once with their sources.\n\nThe signed URL lifetime is 15 minutes; the viewer page quietly asks for a new one when it expires.",
+      "touches": [
+        "web/chart/src/tabs/ImagingTab.tsx",
+        "services/imaging/internal/links/signed_url.go",
+        "web/chart/src/viewer/StudyViewer.tsx"
+      ],
+      "verify": "From a migrated Harrowgate patient, a vet opens a radiograph in two clicks, and the link stops working after expiry unless refreshed from the page.",
+      "status": "merged",
+      "depends_on": [
+        "T15",
+        "T21"
+      ],
+      "epics": [
+        "PET-140",
+        "PET-141"
+      ],
+      "order": 22,
+      "pr": "P4",
+      "branch": "kestrel/platform-merge/t22-chart-imaging-links",
+      "outcome": "Rewired when T16 was dropped: it no longer waits on OCR. Signed URLs are scoped to the practice of the viewer, so a vet at Pellworth sees a Harrowgate study only if the patient is shared."
+    },
+    "tasks/T23": {
+      "title": "Dispensing to billing link",
+      "goal": "Make a dispensed item create its invoice line so dispensing and billing can't drift apart.",
+      "approach": "A pharmacy event item.dispensed is consumed by billing, which creates the line through the catalogue code for that formulary drug. Controlled items link to the audit log entry (T17). If the code lookup fails the dispense still succeeds and the line goes to a fix-up list.",
+      "touches": [
+        "services/billing/internal/events/dispensed_consumer.go",
+        "services/pharmacy/internal/events/dispensed_publisher.go",
+        "db/migrations/0051_invoice_line_dispense_ref.sql"
+      ],
+      "verify": "Dispensing a controlled drug in the test practice creates one invoice line and one audit-log link, and replaying the event creates neither again.",
+      "status": "merged",
+      "depends_on": [
+        "T17",
+        "T19"
+      ],
+      "epics": [
+        "PET-142",
+        "PET-140"
+      ],
+      "order": 23,
+      "pr": "P3",
+      "branch": "kestrel/platform-merge/t23-dispensing-to-billing-link",
+      "outcome": "Rewired when T18 was dropped. Events carry an idempotency key made from the dispense id, so replays are safe."
+    },
+    "tasks/T24": {
+      "title": "Cutover rehearsal harness",
+      "goal": "Run the whole migration against a copy of one practice, time it, and check the results automatically.",
+      "approach": "A script that provisions a namespace with a practice copy, runs extract, load, match, import, and reconcile in order, and checks a list of assertions: row counts, zero cross-tenant reads, imaging checksums, balance totals, conflicts listed. Output is one report per run with timings per stage.",
+      "touches": [
+        "tools/cutover/rehearse.py",
+        "tools/cutover/assertions/imaging_checksums.py",
+        "tools/cutover/assertions/balances.py",
+        "ci/pipeline.yml"
+      ],
+      "verify": "A rehearsal against the Harrowgate copy finishes with every assertion green and a timing report.",
+      "status": "merged",
+      "depends_on": [
+        "T20",
+        "T22",
+        "T23"
+      ],
+      "epics": [
+        "PET-143",
+        "PET-140"
+      ],
+      "order": 24,
+      "pr": "P4",
+      "branch": "kestrel/platform-merge/t24-cutover-rehearsal-harness",
+      "outcome": "First Harrowgate rehearsal took 2 hours 47 minutes. Two imaging manifest assertions failed on retries and were fixed in the same task."
+    },
+    "tasks/T25": {
+      "title": "Cutover flags and runbook",
+      "goal": "Switch each practice over with a flag, and write down who does what on the day.",
+      "approach": "A practice_cutover flag per practice that moves reception and clinic staff to the new platform while keeping the old system read-only. The runbook lists the order of steps, who phones whom, how to roll back before the first new booking, and what changes after it.",
+      "touches": [
+        "services/chart-api/internal/cutover/flags.go",
+        "docs/cutover/runbook.md",
+        "docs/cutover/rollback.md"
+      ],
+      "verify": "A dry run of the runbook by someone who didn't write it reaches the end without asking for missing steps.",
+      "status": "merged",
+      "depends_on": [
+        "T24"
+      ],
+      "epics": [
+        "PET-143"
+      ],
+      "order": 25,
+      "pr": "P4",
+      "branch": "kestrel/platform-merge/t25-cutover-flags-and-runbook",
+      "outcome": "Rollback is possible until the first new booking is saved; after that the runbook says to fix forward. Zoë asked for the pharmacy phone numbers to be in the runbook, and they are."
+    },
+    "prs/P1": {
+      "title": "Tenant isolation, canonical schema and legacy extractors",
+      "order": 1,
+      "branch": "kestrel/platform-merge/01-tenancy-and-extractors",
+      "base": "main",
+      "status": "merged",
+      "summary": "Row-level security on 31 tables, the owner and patient schema, and extractors for the three source systems.",
+      "url": "https://code.kestrelmoor.example/platform/chart-merge/pull/318"
+    },
+    "prs/P2": {
+      "title": "Patient identity matching and review UI",
+      "order": 2,
+      "branch": "kestrel/platform-merge/02-patient-identity-matching",
+      "base": "P1",
+      "status": "merged",
+      "summary": "Microchip auto-merge, fuzzy candidates, and the Possible duplicates screen.",
+      "url": "https://code.kestrelmoor.example/platform/chart-merge/pull/327"
+    },
+    "prs/P3": {
+      "title": "Prescriptions, formulary and billing import",
+      "order": 3,
+      "branch": "kestrel/platform-merge/03-prescriptions-formulary-billing",
+      "base": "P2",
+      "status": "open",
+      "summary": "Formulary, dose parser, controlled-drug audit trail, ledger import and reconciliation, and the dispensing-to-billing link.",
+      "url": "https://code.kestrelmoor.example/platform/chart-merge/pull/341"
+    },
+    "prs/P4": {
+      "title": "Imaging archive and cutover tooling",
+      "order": 4,
+      "branch": "kestrel/platform-merge/04-imaging-and-cutover-tooling-on-top-of-prescriptions-billing",
+      "base": "P3",
+      "status": "open",
+      "url": "https://code.kestrelmoor.example/platform/chart-merge/pull/352"
+    },
+    "prs/P5": {
+      "title": "Imaging archive (standalone)",
+      "order": 5,
+      "branch": "kestrel/platform-merge/05-imaging-archive-standalone",
+      "base": "main",
+      "status": "closed",
+      "summary": "Opened early on main so the imaging team could start validating.",
+      "url": "https://code.kestrelmoor.example/platform/chart-merge/pull/331"
+    },
+    "prs/P6": {
+      "title": "Scheduling resources, calendar import and conflict list",
+      "order": 6,
+      "branch": "kestrel/platform-merge/06-scheduling-on-identity",
+      "base": "P2",
+      "status": "open",
+      "summary": "Resources schema, appointment import, and the list reception works through.",
+      "url": "https://code.kestrelmoor.example/platform/chart-merge/pull/346"
+    },
+    "questions/Q1": {
+      "title": "When may the matcher merge two patients with no human check?",
+      "context": "Dunmarrow and Harrowgate record microchip numbers for most animals; Pellworth's are missing or mistyped for a good share. A wrong merge puts one animal's history, including drug reactions, on another animal's chart, and unmerging is work.",
+      "status": "answered",
+      "asked_at": "2026-09-15T11:15:00Z",
+      "options": [
+        {
+          "label": "Microchip only",
+          "cost": "Fewest false merges. Pellworth patients nearly all wait in the review queue."
+        },
+        {
+          "label": "Microchip, or email + name + species + birth year",
+          "cost": "Merges more automatically, but families reuse names (two cats called Biscuit) and birth years are often guesses."
+        },
+        {
+          "label": "Nothing automatic",
+          "cost": "Safest, but the queue would hold hundreds of thousands of obvious matches."
+        }
+      ],
+      "recommendation": "Microchip only",
+      "blocks": "T9 and what the review queue holds",
+      "task": "T9",
+      "answered_at": "2026-09-16T08:50:00Z",
+      "answered_by": "u_inesv",
+      "answer": "Microchip only. Anything else gets a person."
+    },
+    "questions/Q2": {
+      "title": "Keep original DICOM files, or store a compressed copy?",
+      "context": "The archives hold about 38 TB of radiographs and ultrasound. Lossless compression would save roughly a third; the practices have asked for fast opening in the chart more than for savings.",
+      "status": "answered",
+      "asked_at": "2026-09-15T11:20:00Z",
+      "options": [
+        {
+          "label": "Keep originals, add thumbnails",
+          "cost": "Full storage cost. Nothing is ever lost."
+        },
+        {
+          "label": "Transcode to lossless compression",
+          "cost": "About 12 TB saved, but a bug in the transcoder would be silent."
+        }
+      ],
+      "recommendation": "Keep originals, add thumbnails",
+      "blocks": "T5 and T10",
+      "task": "T5",
+      "answered_at": "2026-09-16T13:30:00Z",
+      "answered_by": "u_nguyen",
+      "answer": "Keep the originals untouched. Thumbnails and previews can be derived and thrown away."
+    },
+    "questions/Q3": {
+      "title": "Create the staging imaging bucket with versioning on",
+      "context": "T10's worker needs a real object-store bucket to test against, and our CI role can't create buckets. The step: in the staging account, create kestrel-imaging-staging, turn versioning on, and attach the policy in ops/policies/imaging-staging.json. Reply Done when the bucket exists.",
+      "status": "answered",
+      "asked_at": "2026-09-22T10:00:00Z",
+      "options": [
+        {
+          "label": "Done"
+        },
+        {
+          "label": "Skip",
+          "cost": "T10 would be tested only against a local fake."
+        }
+      ],
+      "blocks": "T10 testing against a real bucket",
+      "task": "T10",
+      "answered_at": "2026-09-23T16:15:00Z",
+      "answered_by": "u_tobias",
+      "answer": "Done"
+    },
+    "questions/Q4": {
+      "title": "Can controlled-drug entries get normalised units?",
+      "context": "T11 turns dose strings into structured doses. For controlled drugs, the legal record is what the vet wrote. Normalising would help the new platform's dose checks but must not replace the original wording.",
+      "status": "answered",
+      "asked_at": "2026-09-29T14:10:00Z",
+      "options": [
+        {
+          "label": "Original text only, no structured dose",
+          "cost": "Dose checks skip controlled drugs."
+        },
+        {
+          "label": "Original kept, structured columns beside it",
+          "cost": "Two sources of truth to keep consistent."
+        }
+      ],
+      "recommendation": "Original kept, structured columns beside it",
+      "blocks": "T17",
+      "task": "T17",
+      "answered_at": "2026-09-30T09:20:00Z",
+      "answered_by": "u_zoe",
+      "answer": "Keep the original, add the structured columns, and never let anything write to the original."
+    },
+    "questions/Q5": {
+      "title": "Is the OCR backfill of scanned paper charts worth doing?",
+      "context": "Pellworth holds about 140,000 scanned paper charts as PDFs. OCR would make them searchable but is weeks of compute plus a review of accuracy, and handwriting recognition on vet notes is poor.",
+      "status": "answered",
+      "asked_at": "2026-09-15T15:50:00Z",
+      "options": [
+        {
+          "label": "Do it",
+          "cost": "Weeks of work; searchable text would be unreliable for handwriting."
+        },
+        {
+          "label": "Skip it; scans stay attached to the chart as images"
+        }
+      ],
+      "recommendation": "Skip it; scans stay attached to the chart as images",
+      "blocks": "T16 and whether T22 waits on it",
+      "task": "T16",
+      "answered_at": "2026-09-25T10:05:00Z",
+      "answered_by": "u_inesv",
+      "answer": "Skip. Staff look up a paper chart by patient name and date, and that works with images."
+    },
+    "questions/Q6": {
+      "title": "Does anything still need prescriptions sent by fax?",
+      "context": "Appendix C of the spec has a fax-gateway bridge because Dunmarrow faxed prescriptions to pharmacies. If no pharmacy still needs fax, the bridge is dead code.",
+      "status": "answered",
+      "asked_at": "2026-09-15T15:52:00Z",
+      "options": [
+        {
+          "label": "Build the bridge"
+        },
+        {
+          "label": "Drop it",
+          "cost": "Any pharmacy that can't take e-prescriptions would need a phone call."
+        }
+      ],
+      "recommendation": "Drop it",
+      "blocks": "T18 and T23",
+      "task": "T18",
+      "answered_at": "2026-09-24T11:30:00Z",
+      "answered_by": "u_zoe",
+      "answer": "Drop it. Dunmarrow went to e-prescribing in August, and the last fax-only pharmacy retired its line."
+    },
+    "questions/Q7": {
+      "title": "What happens to unpaid balances older than three years?",
+      "context": "About 6,900 owners across the three practices show a balance last touched over three years ago. Some are real debts, some are credit notes never applied.",
+      "status": "answered",
+      "asked_at": "2026-10-01T10:20:00Z",
+      "options": [
+        {
+          "label": "Carry all balances over, tag the old ones",
+          "cost": "Finance reviews them later; owners might get statements for old debts if nobody filters them."
+        },
+        {
+          "label": "Write off anything older than three years",
+          "cost": "Final and visible in the accounts."
+        }
+      ],
+      "recommendation": "Carry all balances over, tag the old ones",
+      "blocks": "T19",
+      "task": "T19",
+      "answered_at": "2026-10-02T15:45:00Z",
+      "answered_by": "u_gwendolyn",
+      "answer": "Carry everything and tag the old ones. We decide on write-offs separately, and nothing should send those owners a statement."
+    },
+    "questions/Q8": {
+      "title": "Whose appointment wins when two calendars double-book a resource?",
+      "context": "Pellworth alone has 212 future appointments that collide once its rooms and vets are modelled as shared resources. Moving a client's appointment without asking is the kind of thing that gets complaints.",
+      "status": "answered",
+      "asked_at": "2026-10-06T09:50:00Z",
+      "options": [
+        {
+          "label": "Keep both, flag for reception",
+          "cost": "Reception phones people; some days start double-booked."
+        },
+        {
+          "label": "Earliest booking wins, move the other",
+          "cost": "Quiet and wrong when the earlier one was a routine check."
+        }
+      ],
+      "blocks": "T20",
+      "task": "T20",
+      "answered_at": "2026-10-07T11:00:00Z",
+      "answered_by": "u_inesv",
+      "answer": "Keep both, flag them, and give reception the list a week before cutover."
+    },
+    "questions/Q9": {
+      "title": "Close the standalone imaging PR and move its tasks to the top of the stack?",
+      "context": "P5 holds the imaging manifest, ingest worker, and dedupe, opened against main. Reviewers said the Chart imaging links (T22) belong with them, but T22 needs the match review UI from P2. Closing P5 and landing imaging in P4 keeps one reviewable imaging change.",
+      "status": "answered",
+      "asked_at": "2026-10-08T14:30:00Z",
+      "options": [
+        {
+          "label": "Yes, close P5 and re-home T5, T10, T15 in P4"
+        },
+        {
+          "label": "No, keep P5 and stack T22 on it"
+        }
+      ],
+      "recommendation": "Yes, close P5 and re-home T5, T10, T15 in P4",
+      "blocks": "Where the imaging tasks land",
+      "answered_at": "2026-10-09T08:45:00Z",
+      "answered_by": "owner",
+      "answer": "Yes. Close it."
+    },
+    "questions/Q10": {
+      "title": "Should species lists be deduplicated across the three practices first?",
+      "context": "Each practice has its own species and breed list, with overlaps and typos. A clean list is a prerequisite for the formulary's species restrictions.",
+      "status": "withdrawn",
+      "asked_at": "2026-09-17T11:00:00Z",
+      "options": [
+        {
+          "label": "Deduplicate by hand before T3"
+        },
+        {
+          "label": "Let T3 build codes from Harrowgate's list and map the rest"
+        }
+      ],
+      "recommendation": "Let T3 build codes from Harrowgate's list and map the rest",
+      "blocks": "T3",
+      "task": "T3",
+      "answered_at": "2026-09-18T09:30:00Z",
+      "answered_by": "claude",
+      "answer": "Withdrawn: Harrowgate's list covers 97% of the species used, so T3 maps the remainder directly and no separate cleanup is needed."
+    },
+    "journal/2026-09-14T09:12:00Z": {
+      "at": "2026-09-14T09:12:00Z",
+      "text": "Started. Read the spec and the three practices' export notes. Harrowgate runs a 2011 desktop client on SQL Server, Pellworth a hosted system that only gives nightly CSV, and Dunmarrow a Postgres 9.6 database someone has been patching by hand since 2017.",
+      "by": "claude"
+    },
+    "journal/2026-09-14T10:48:00Z": {
+      "at": "2026-09-14T10:48:00Z",
+      "text": "Sized the data from the notes: roughly 412k patients and 268k owners before any de-duplication, 1.9M imaging studies, 1.3M dispensing lines, 5 years of invoices.",
+      "by": "claude"
+    },
+    "journal/2026-09-14T14:05:00Z": {
+      "at": "2026-09-14T14:05:00Z",
+      "text": "Decision: tenant isolation through Postgres row-level security keyed on practice_id, not a schema per practice. Cross-practice owner matching is the point of the project, and with schemas every matching query becomes a union. The cost is that one missing policy leaks data, so T1 has to prove every table.",
+      "by": "claude"
+    },
+    "journal/2026-09-15T09:34:00Z": {
+      "at": "2026-09-15T09:34:00Z",
+      "text": "Pellworth's old dental x-ray database is out of scope. It goes to cold storage as it is.",
+      "by": "owner"
+    },
+    "journal/2026-09-15T11:15:00Z": {
+      "at": "2026-09-15T11:15:00Z",
+      "text": "Asked Q1 about when the matcher may merge on its own. This decides how big the review queue is, so I am holding the matcher's task description until it is answered.",
+      "by": "claude"
+    },
+    "journal/2026-09-15T11:21:00Z": {
+      "at": "2026-09-15T11:21:00Z",
+      "text": "Asked Q2: keep DICOM originals, or store a compressed copy.",
+      "by": "claude"
+    },
+    "journal/2026-09-15T15:48:00Z": {
+      "at": "2026-09-15T15:48:00Z",
+      "text": "Appendix C of the spec lists two things I had left out: an OCR backfill of scanned paper charts and a fax bridge for prescriptions. Added them as T16 and T18 so they are costed, and asked Q5 and Q6 before anyone spends time on them. Nothing else waits on the answers yet.",
+      "by": "claude"
+    },
+    "journal/2026-09-16T08:52:00Z": {
+      "at": "2026-09-16T08:52:00Z",
+      "text": "Microchip only. Pellworth's chips are patchy, I know, but I would rather clear a long queue than explain a wrong merge to a client.",
+      "by": "u_inesv",
+      "questions": [
+        "Q1"
+      ]
+    },
+    "journal/2026-09-16T13:33:00Z": {
+      "at": "2026-09-16T13:33:00Z",
+      "text": "Keep every original byte. We have been bitten by lossy 'optimisation' before.",
+      "by": "u_nguyen",
+      "questions": [
+        "Q2"
+      ]
+    },
+    "journal/2026-09-16T16:20:00Z": {
+      "at": "2026-09-16T16:20:00Z",
+      "text": "Reworked T9 around the Q1 answer: only the microchip rule merges, the other two rules write candidates. That also makes T14 more important, since most of Pellworth now goes through it.",
+      "by": "claude"
+    },
+    "journal/2026-09-16T17:05:00Z": {
+      "at": "2026-09-16T17:05:00Z",
+      "text": "Plan written: 25 tasks in four epics, six PRs planned as a stack. Status set to pending for a go-ahead.",
+      "by": "claude"
+    },
+    "journal/2026-09-17T10:06:00Z": {
+      "at": "2026-09-17T10:06:00Z",
+      "text": "Approved. Start building.",
+      "by": "owner"
+    },
+    "journal/2026-09-17T10:09:00Z": {
+      "at": "2026-09-17T10:09:00Z",
+      "text": "Status running. Took the driver slot and started T1 and T2, which have no dependencies.",
+      "by": "claude"
+    },
+    "journal/2026-09-17T11:02:00Z": {
+      "at": "2026-09-17T11:02:00Z",
+      "text": "Asked Q10 about cleaning the species lists first. Carrying on with T1 meanwhile.",
+      "by": "claude"
+    },
+    "journal/2026-09-17T15:30:00Z": {
+      "at": "2026-09-17T15:30:00Z",
+      "text": "T2 note: Harrowgate's clinical_notes table pushed the extractor to 4 GB of memory. Switched to server-side cursors with a 20k row fetch size.",
+      "by": "claude"
+    },
+    "journal/2026-09-18T09:30:00Z": {
+      "at": "2026-09-18T09:30:00Z",
+      "text": "Withdrew Q10. Harrowgate's species list covers 97% of what the other two use, so T3 can map the remainder in code; a hand cleanup would be wasted effort.",
+      "by": "claude",
+      "questions": [
+        "Q10"
+      ]
+    },
+    "journal/2026-09-18T14:25:00Z": {
+      "at": "2026-09-18T14:25:00Z",
+      "text": "T1 merged. It ended up with policies on 31 tables, not the 24 I had estimated; the spec's list missed the audit and attachment tables. Review also caught that the appointment_notes view ran with its owner's rights and so skipped RLS. It now uses security_invoker.",
+      "by": "claude"
+    },
+    "journal/2026-09-18T16:50:00Z": {
+      "at": "2026-09-18T16:50:00Z",
+      "text": "T2 merged.",
+      "by": "claude"
+    },
+    "journal/2026-09-21T10:15:00Z": {
+      "at": "2026-09-21T10:15:00Z",
+      "text": "Decision on T3, no question needed: legacy record numbers stay forever as patient_alias rows, unique per practice. Staff at all three practices quote old numbers on the phone, and keeping them is cheap and easy to reverse.",
+      "by": "claude"
+    },
+    "journal/2026-09-22T10:02:00Z": {
+      "at": "2026-09-22T10:02:00Z",
+      "text": "Asked Q3. T10's worker needs a real bucket to test against, and the CI role can't create one. This is a step only a person can take.",
+      "by": "claude"
+    },
+    "journal/2026-09-22T15:12:00Z": {
+      "at": "2026-09-22T15:12:00Z",
+      "text": "T3 merged. Species and breed lookups use Harrowgate's codes with 11 additions from Pellworth.",
+      "by": "claude"
+    },
+    "journal/2026-09-23T11:40:00Z": {
+      "at": "2026-09-23T11:40:00Z",
+      "text": "T4 merged, all three extractors. A surprise: about 0.3% of Pellworth's owner names are already mangled in the export (Zoë arrives as ZoÃ«). The adapter now re-decodes those and logs every change to staging.encoding_repairs rather than fixing them silently.",
+      "by": "claude"
+    },
+    "journal/2026-09-23T16:18:00Z": {
+      "at": "2026-09-23T16:18:00Z",
+      "text": "Bucket created, versioning on, policy attached. It is called kestrel-imaging-staging.",
+      "by": "u_tobias",
+      "questions": [
+        "Q3"
+      ]
+    },
+    "journal/2026-09-23T17:05:00Z": {
+      "at": "2026-09-23T17:05:00Z",
+      "text": "T6 merged. The formulary is seeded with 2,114 products. P1 is ready for review with T1 to T4 merged and checks green.",
+      "by": "claude"
+    },
+    "journal/2026-09-24T11:32:00Z": {
+      "at": "2026-09-24T11:32:00Z",
+      "text": "Dunmarrow moved to e-prescribing in August and the last pharmacy that wanted fax closed its line. Drop the bridge.",
+      "by": "u_zoe",
+      "questions": [
+        "Q6"
+      ]
+    },
+    "journal/2026-09-24T11:45:00Z": {
+      "at": "2026-09-24T11:45:00Z",
+      "text": "Dropped T18. T23 only waited on it for the fax route, so I removed that dependency and T23 now waits on T17 and T19 only.",
+      "by": "claude"
+    },
+    "journal/2026-09-24T14:10:00Z": {
+      "at": "2026-09-24T14:10:00Z",
+      "text": "T5 and T7 merged. The billing mapping was done with Gwendolyn's team and not inferred; 38 retired Pellworth codes map to a single LEGACY-MISC code with the original description kept on each line.",
+      "by": "claude"
+    },
+    "journal/2026-09-25T10:08:00Z": {
+      "at": "2026-09-25T10:08:00Z",
+      "text": "Skip the OCR. Reception finds paper charts by patient name and date and the images are fine for that.",
+      "by": "u_inesv",
+      "questions": [
+        "Q5"
+      ]
+    },
+    "journal/2026-09-25T10:20:00Z": {
+      "at": "2026-09-25T10:20:00Z",
+      "text": "Dropped T16. T22 (chart imaging links) listed it as a dependency so searches could use scan text; with the OCR gone it waits only on T15 and T21.",
+      "by": "claude"
+    },
+    "journal/2026-09-25T15:35:00Z": {
+      "at": "2026-09-25T15:35:00Z",
+      "text": "T8 merged. Scheduling resources are single-practice; the equipment-sharing case in the spec does not exist in the data.",
+      "by": "claude"
+    },
+    "journal/2026-09-28T09:15:00Z": {
+      "at": "2026-09-28T09:15:00Z",
+      "text": "Merged P1 (#318).",
+      "by": "owner"
+    },
+    "journal/2026-09-28T09:40:00Z": {
+      "at": "2026-09-28T09:40:00Z",
+      "text": "Rebased the stack over merged P1 and started T9, T10, T11 and T12, whose dependencies are all merged.",
+      "by": "claude"
+    },
+    "journal/2026-09-29T11:25:00Z": {
+      "at": "2026-09-29T11:25:00Z",
+      "text": "T9 in review. The reviewer found Dunmarrow stores microchips in two formats, 15 digits and an older 9-digit one with the prefix dropped. Added normalisation in microchip.go before comparing.",
+      "by": "claude"
+    },
+    "journal/2026-09-29T14:14:00Z": {
+      "at": "2026-09-29T14:14:00Z",
+      "text": "Asked Q4 about normalising units on controlled drugs. T17 waits for it; T11 does not.",
+      "by": "claude"
+    },
+    "journal/2026-09-30T10:05:00Z": {
+      "at": "2026-09-30T10:05:00Z",
+      "text": "T17 changed to match the Q4 answer: the original text is never touched, and structured columns sit beside it.",
+      "by": "claude"
+    },
+    "journal/2026-09-30T15:50:00Z": {
+      "at": "2026-09-30T15:50:00Z",
+      "text": "T11 merged. 94.2% of 1.3M dose strings parse. Strings like 1/2 tab bid x5/7 work; as directed stays manual on purpose. Pushed P3 as a draft.",
+      "by": "claude"
+    },
+    "journal/2026-10-01T10:22:00Z": {
+      "at": "2026-10-01T10:22:00Z",
+      "text": "Asked Q7 on balances older than three years.",
+      "by": "claude"
+    },
+    "journal/2026-10-01T16:40:00Z": {
+      "at": "2026-10-01T16:40:00Z",
+      "text": "T10 merged. Throughput from the NAS tops out at 12 parallel streams and is bound by SMB. Added --bandwidth-limit after Harrowgate's IT contact asked that ingest never run at full speed in clinic hours.",
+      "by": "claude"
+    },
+    "journal/2026-10-02T11:15:00Z": {
+      "at": "2026-10-02T11:15:00Z",
+      "text": "T14 and T12 merged. Fuzzy recall on the labelled sample is 0.93 at the 0.55 cut. Pellworth's ledger totals differ from its legacy report by four invoices where the CSV dropped lines with a null tax code; listed in docs/billing/known-differences.md.",
+      "by": "claude"
+    },
+    "journal/2026-10-02T15:46:00Z": {
+      "at": "2026-10-02T15:46:00Z",
+      "text": "Carry them all, tag the old ones. And nothing in the platform should ever send those owners a statement until we have decided.",
+      "by": "u_gwendolyn",
+      "questions": [
+        "Q7"
+      ]
+    },
+    "journal/2026-10-05T10:12:00Z": {
+      "at": "2026-10-05T10:12:00Z",
+      "text": "T17 and T13 merged. 38,402 controlled-drug entries imported with their original text intact. Pellworth's calendar import found 212 future double-bookings.",
+      "by": "claude"
+    },
+    "journal/2026-10-06T09:50:00Z": {
+      "at": "2026-10-06T09:50:00Z",
+      "text": "Asked Q8 on the 212 colliding appointments.",
+      "by": "claude"
+    },
+    "journal/2026-10-06T14:30:00Z": {
+      "at": "2026-10-06T14:30:00Z",
+      "text": "T15 merged. Only 3.1% of imaging objects are duplicates. Opened the standalone imaging PR (#331) on main so the imaging team could start looking at it while the rest of the stack was in review.",
+      "by": "claude"
+    },
+    "journal/2026-10-07T11:02:00Z": {
+      "at": "2026-10-07T11:02:00Z",
+      "text": "Keep both and flag. Give reception the list a week before cutover so they can ring people.",
+      "by": "u_inesv",
+      "questions": [
+        "Q8"
+      ]
+    },
+    "journal/2026-10-07T13:20:00Z": {
+      "at": "2026-10-07T13:20:00Z",
+      "text": "T19 merged. Four difference classes, about 6,900 balances tagged as stale and none written off.",
+      "by": "claude"
+    },
+    "journal/2026-10-08T10:10:00Z": {
+      "at": "2026-10-08T10:10:00Z",
+      "text": "T21 merged. The screen is called 'Possible duplicates' at Zoë's request. P2 is ready for review (#327).",
+      "by": "claude"
+    },
+    "journal/2026-10-08T14:33:00Z": {
+      "at": "2026-10-08T14:33:00Z",
+      "text": "Asked Q9. P5 only exists for the imaging team's convenience, and T22 needs P2's review UI, so stacking is cleaner than two imaging PRs.",
+      "by": "claude"
+    },
+    "journal/2026-10-09T08:46:00Z": {
+      "at": "2026-10-09T08:46:00Z",
+      "text": "Yes, close it.",
+      "by": "owner",
+      "questions": [
+        "Q9"
+      ]
+    },
+    "journal/2026-10-09T09:20:00Z": {
+      "at": "2026-10-09T09:20:00Z",
+      "text": "Closed #331. T5, T10 and T15 now belong to P4, a new PR stacked on P3. P5 has no tasks left, and the imaging team's comments on it are copied to P4's description.",
+      "by": "claude"
+    },
+    "journal/2026-10-09T16:35:00Z": {
+      "at": "2026-10-09T16:35:00Z",
+      "text": "T20 merged. The reception conflict list is a plain filterable list; I did not add a calendar view.",
+      "by": "claude"
+    },
+    "journal/2026-10-12T09:05:00Z": {
+      "at": "2026-10-12T09:05:00Z",
+      "text": "P6 (scheduling) opened for review with T8, T13 and T20 merged, stacked on P2 since it needs the resource tables only.",
+      "by": "claude"
+    },
+    "journal/2026-10-13T09:12:00Z": {
+      "at": "2026-10-13T09:12:00Z",
+      "text": "Merged P2 (#327). Reviewers wanted more comments around the matcher thresholds; they were added in review.",
+      "by": "owner"
+    },
+    "journal/2026-10-13T10:30:00Z": {
+      "at": "2026-10-13T10:30:00Z",
+      "text": "Rebased P3, P4 and P6 over merged P2. Diffs are unchanged; CI is re-running.",
+      "by": "claude"
+    },
+    "journal/2026-10-14T11:48:00Z": {
+      "at": "2026-10-14T11:48:00Z",
+      "text": "T22 merged. Signed imaging URLs expire in 15 minutes and the viewer page asks for a fresh one quietly. I picked 15 minutes because a longer lifetime would let a copied link outlive a shift.",
+      "by": "claude"
+    },
+    "journal/2026-10-14T17:20:00Z": {
+      "at": "2026-10-14T17:20:00Z",
+      "text": "T23 merged. The dispensed event carries an idempotency key made from the dispense id, so a replay creates no second invoice line.",
+      "by": "claude"
+    },
+    "journal/2026-10-15T09:00:00Z": {
+      "at": "2026-10-15T09:00:00Z",
+      "text": "P3 marked ready for review (#341): T6, T7, T11, T12, T17, T19 and T23 all merged.",
+      "by": "claude"
+    },
+    "journal/2026-10-16T15:25:00Z": {
+      "at": "2026-10-16T15:25:00Z",
+      "text": "Rehearsal environment is up: three namespaces, one per practice copy. Harrowgate's is loaded.",
+      "by": "u_tobias"
+    },
+    "journal/2026-10-19T14:08:00Z": {
+      "at": "2026-10-19T14:08:00Z",
+      "text": "T24 merged. First Harrowgate rehearsal took 2h47m end to end. Two imaging manifest assertions failed on retries; fixed in the same task and the third run was green.",
+      "by": "claude"
+    },
+    "journal/2026-10-20T10:35:00Z": {
+      "at": "2026-10-20T10:35:00Z",
+      "text": "Please put the pharmacy phone numbers in the runbook. On cutover day nobody will remember who to ring.",
+      "by": "u_zoe"
+    },
+    "journal/2026-10-20T11:10:00Z": {
+      "at": "2026-10-20T11:10:00Z",
+      "text": "Added a contacts section to docs/cutover/runbook.md with the three practices' pharmacy and IT numbers, taken from the spec's contacts appendix.",
+      "by": "claude"
+    },
+    "journal/2026-10-21T16:10:00Z": {
+      "at": "2026-10-21T16:10:00Z",
+      "text": "T25 merged. Rollback is possible until the first new booking is saved; after that the runbook says to fix forward. P4 is ready for review (#352).",
+      "by": "claude"
+    },
+    "journal/2026-10-22T09:30:00Z": {
+      "at": "2026-10-22T09:30:00Z",
+      "text": "Checking each condition in the done-check against the rehearsal output and the test runs.",
+      "by": "claude"
+    },
+    "journal/2026-10-22T13:50:00Z": {
+      "at": "2026-10-22T13:50:00Z",
+      "text": "Walked through the runbook with Rafael from reception. Two steps were in the wrong order; both fixed.",
+      "by": "u_zoe"
+    },
+    "journal/2026-10-22T15:40:00Z": {
+      "at": "2026-10-22T15:40:00Z",
+      "text": "All six done-check conditions met. Only Harrowgate has been rehearsed end to end; Pellworth and Dunmarrow ran through load and reconcile separately. Noted in the handover rather than counting it against the check.",
+      "by": "claude"
+    },
+    "journal/2026-10-23T16:35:00Z": {
+      "at": "2026-10-23T16:35:00Z",
+      "text": "Handover written. P3 (#341), P4 (#352) and P6 (#346) are open; P1 and P2 are merged and P5 is closed. Status set to ready for review and the driver slot cleared.",
+      "by": "claude"
+    }
+  }
+}

@@ -1,0 +1,2335 @@
+{
+  "about": "A finished large plan: 52 tasks, 16 questions, 126 journal entries (more than the 80 the page loads), six PRs with some stacked, two epics, and a full handover.",
+  "now": "2026-11-03T09:10:00Z",
+  "viewer": "u_marguerite",
+  "people": {
+    "u_marguerite": "Marguerite Oyelaran-Finch",
+    "u_tadeusz": "Tadeusz Wrońska",
+    "u_nguyen": "Nguyễn Thị Hạnh",
+    "u_ibrahim": "Ibrahim Kessel-Dahl",
+    "u_zoe": "Zoë Vandenhoeck"
+  },
+  "docs": {
+    "tasks/T1": {
+      "title": "Service skeleton and CI pipeline",
+      "goal": "One Go module, one deployable, one pipeline.",
+      "approach": "Single module catalogued with cmd/api, cmd/worker, internal/. Pipeline in ci/pipeline.yml: lint, unit tests, integration tests against a throwaway Postgres 16, container build.\n\nWe keep it as a modular monolith. Forty libraries and about six engineers does not justify a service per domain.",
+      "touches": [
+        "go.mod",
+        "cmd/api/main.go",
+        "cmd/worker/main.go",
+        "ci/pipeline.yml",
+        "Makefile"
+      ],
+      "verify": "Pipeline green on an empty PR; make test passes on a clean laptop.",
+      "status": "merged",
+      "depends_on": [],
+      "order": 1,
+      "pr": "P1",
+      "branch": "oakhollow/t1-service-skeleton-and-ci-pipeline",
+      "outcome": "Done as planned. Added a make doctor target that checks Postgres and Go versions because two people lost an afternoon to Postgres 14 locally."
+    },
+    "tasks/T2": {
+      "title": "Migration framework",
+      "goal": "Versioned, forward-only SQL migrations that CI can check.",
+      "approach": "Use plain SQL files under db/migrations/ numbered 0001_...sql, applied by a small runner in internal/dbmigrate. No down migrations: we roll forward, and the runbook says so.\n\nCI applies all migrations to an empty database and then diffs pg_dump --schema-only against db/schema.sql.",
+      "touches": [
+        "internal/dbmigrate/runner.go",
+        "db/migrations/0001_init.sql",
+        "db/schema.sql",
+        "ci/pipeline.yml"
+      ],
+      "verify": "Migrating an empty database twice is a no-op; schema diff step fails when a migration is edited after merge.",
+      "status": "merged",
+      "depends_on": [
+        "T1"
+      ],
+      "order": 2,
+      "pr": "P1",
+      "branch": "oakhollow/t2-migration-framework",
+      "outcome": "Runner takes an advisory lock so two workers can't race. Schema diff check landed with a normaliser that strips comments, otherwise pg_dump noise made it flaky."
+    },
+    "tasks/T3": {
+      "title": "Branch config loader",
+      "goal": "Each of the forty branches has its own hours, closures, and loan periods.",
+      "approach": "Load config/branches/*.yaml at startup, validate against a JSON schema, expose through internal/branchcfg. Hot reload on SIGHUP, because staff change closure dates often and a deploy for that is silly.",
+      "touches": [
+        "internal/branchcfg/loader.go",
+        "internal/branchcfg/schema.json",
+        "config/branches/"
+      ],
+      "verify": "A malformed branch file fails startup with the file name and line; SIGHUP reload keeps the old config when the new one is invalid.",
+      "status": "merged",
+      "depends_on": [
+        "T1"
+      ],
+      "order": 3,
+      "pr": "P1",
+      "branch": "oakhollow/t3-branch-config-loader",
+      "outcome": "As planned. Config for the 40 branches is generated from the legacy export in T6 rather than typed by hand."
+    },
+    "tasks/T4": {
+      "title": "Staff OAuth login",
+      "goal": "Staff sign in through the consortium identity provider.",
+      "approach": "Authorization-code flow with PKCE, session cookie signed with a rotating key, 8 hour sliding expiry. Groups claim is read but not interpreted here; that is T7.",
+      "touches": [
+        "internal/auth/oidc.go",
+        "internal/auth/session.go",
+        "cmd/api/routes_auth.go"
+      ],
+      "verify": "Login round-trip works against the staging identity provider; expired and tampered cookies are rejected.",
+      "status": "merged",
+      "depends_on": [
+        "T1"
+      ],
+      "order": 4,
+      "pr": "P1",
+      "branch": "oakhollow/t4-staff-oauth-login",
+      "outcome": "Done. Session key rotation reads two keys so a rotation doesn't log everyone out."
+    },
+    "tasks/T5": {
+      "title": "Audit log",
+      "goal": "Every change to a record, patron, or loan is attributable.",
+      "approach": "Append-only table audit_events(id, at, actor, entity_type, entity_id, action, before jsonb, after jsonb), written in the same transaction as the change through audit.Record(tx, ...). Revoke UPDATE and DELETE from the app role.",
+      "touches": [
+        "db/migrations/0003_audit_events.sql",
+        "internal/audit/audit.go"
+      ],
+      "verify": "A test that attempts UPDATE as the app role fails with a permissions error.",
+      "status": "merged",
+      "depends_on": [
+        "T2"
+      ],
+      "order": 5,
+      "pr": "P1",
+      "branch": "oakhollow/t5-audit-log",
+      "outcome": "Partitioned by month from the start after Ibrahim pointed out we expect ~30M events a year. Partition creation is a worker job."
+    },
+    "tasks/T6": {
+      "title": "Branch and location reference data",
+      "goal": "Branches, service points, and shelving locations as database rows.",
+      "approach": "Tables branches, service_points, shelving_locations. Seed from the legacy location export with a one-off converter in tools/legacyloc. Keep the legacy code in legacy_code so staff can still say 'MRV-JUV'.",
+      "touches": [
+        "db/migrations/0004_locations.sql",
+        "tools/legacyloc/main.go",
+        "internal/locations/store.go"
+      ],
+      "verify": "All 40 branches and 212 shelving locations load; legacy_code is unique per branch.",
+      "status": "merged",
+      "depends_on": [
+        "T2",
+        "T3"
+      ],
+      "order": 6,
+      "pr": "P1",
+      "branch": "oakhollow/t6-branch-and-location-reference-data",
+      "outcome": "Found 9 shelving locations with the same code at different branches that the legacy system treated as one. Split them; list is in the PR description."
+    },
+    "tasks/T7": {
+      "title": "Staff roles and permissions",
+      "goal": "Map identity-provider groups to what a person can do at a desk.",
+      "approach": "Roles: circ_clerk, circ_lead, cataloguer, branch_manager, consortium_admin. A role is a set of named permissions checked by perm.Require(ctx, perm.RecordEdit). Group-to-role mapping lives in config, scoped by branch.",
+      "touches": [
+        "internal/perm/perm.go",
+        "internal/perm/roles.yaml",
+        "internal/auth/groups.go"
+      ],
+      "verify": "A clerk at Marrow Vale cannot edit patrons homed at another branch; a cataloguer can edit records but not waive fines.",
+      "status": "merged",
+      "depends_on": [
+        "T4",
+        "T6",
+        "Q14"
+      ],
+      "order": 7,
+      "pr": "P1",
+      "branch": "oakhollow/t7-staff-roles-and-permissions",
+      "outcome": "Waiving fines is split into fine.waive_small (under $5) and fine.waive_any after the circulation managers asked for it."
+    },
+    "tasks/T8": {
+      "title": "Metrics and tracing baseline",
+      "goal": "Know which of the forty branches is slow before they tell us.",
+      "approach": "Prometheus metrics with a branch label on request histograms, OpenTelemetry tracing to the collector, structured logs with request id. Dashboards live in ops/dashboards/.",
+      "touches": [
+        "internal/telemetry/",
+        "ops/dashboards/api.json",
+        "cmd/api/middleware.go"
+      ],
+      "verify": "p95 request latency is visible per branch on the staging dashboard.",
+      "status": "merged",
+      "depends_on": [
+        "T1"
+      ],
+      "order": 8,
+      "pr": "P1",
+      "branch": "oakhollow/t8-metrics-and-tracing-baseline",
+      "outcome": "Done. Dropped the patron_id label we had planned on metrics because it blows up cardinality; it stays in traces only."
+    },
+    "tasks/T9": {
+      "title": "Bibliographic record schema",
+      "goal": "Store a catalogue record without losing MARC.",
+      "approach": "Table bib_records keeps the raw MARC21 as marc bytea plus extracted columns (title, author, isbn[], publication_year, language, format). Extraction is a pure function in internal/marc/extract, so we can re-run it when rules improve.\n\nWe considered storing only a normalised form. Rejected: cataloguers round-trip records with other systems and any loss shows up as a complaint.",
+      "touches": [
+        "db/migrations/0006_bib_records.sql",
+        "internal/marc/extract.go",
+        "internal/bib/store.go"
+      ],
+      "verify": "Round trip of 5,000 sample records reproduces the original MARC byte for byte.",
+      "status": "merged",
+      "depends_on": [
+        "T2"
+      ],
+      "order": 9,
+      "epics": [
+        "CAT-88"
+      ],
+      "pr": "P2",
+      "branch": "oakhollow/t9-bibliographic-record-schema",
+      "outcome": "As planned. isbn is stored normalised to ISBN-13 with the original kept in the raw record."
+    },
+    "tasks/T10": {
+      "title": "Item and copy schema",
+      "goal": "A physical copy belongs to a record and sits at a location.",
+      "approach": "Table copies(id, bib_id, branch_id, location_id, barcode, status, price_cents, acquired_on). Barcode unique across the consortium. Status enum: available, on_loan, in_transit, on_hold_shelf, missing, withdrawn, in_repair.",
+      "touches": [
+        "db/migrations/0007_copies.sql",
+        "internal/copies/store.go"
+      ],
+      "verify": "Duplicate barcode insert fails; status transitions not in the allowed table are rejected by a trigger.",
+      "status": "merged",
+      "depends_on": [
+        "T2",
+        "T6"
+      ],
+      "order": 10,
+      "epics": [
+        "CAT-88",
+        "CAT-112"
+      ],
+      "pr": "P2",
+      "branch": "oakhollow/t10-item-and-copy-schema",
+      "outcome": "Legacy data had 1,380 duplicate barcodes across branches (mostly reused label stock). Added barcode_conflicts report; Tadeusz's team cleared them before the pilot."
+    },
+    "tasks/T11": {
+      "title": "MARC import reader",
+      "goal": "Parse MARC21 and MARCXML exports from the old system.",
+      "approach": "Streaming reader in internal/marc/reader.go, tolerant of the old system's bad leader lengths and of UTF-8 encoded as MARC-8 by mistake. Errors are collected per record, never abort the file.",
+      "touches": [
+        "internal/marc/reader.go",
+        "internal/marc/marc8.go",
+        "internal/marc/testdata/legacy_bad_leader.mrc"
+      ],
+      "verify": "Reads the 2.1M-record sample in under 4 minutes using under 200 MB of memory.",
+      "status": "merged",
+      "depends_on": [
+        "T9"
+      ],
+      "order": 11,
+      "epics": [
+        "CAT-88"
+      ],
+      "pr": "P2",
+      "branch": "oakhollow/t11-marc-import-reader",
+      "outcome": "Implemented a MARC-8 to UTF-8 table lookup ourselves because the available libraries all failed on diacritics in Vietnamese records."
+    },
+    "tasks/T12": {
+      "title": "Record dedupe matcher",
+      "goal": "Find the same book catalogued forty slightly different ways.",
+      "approach": "Blocking on normalised ISBN, then on (title key, first author, year, publisher). Score with weighted field similarity; the threshold comes from Q5. Output is pairs with a score and the reason for each field.",
+      "touches": [
+        "internal/dedupe/matcher.go",
+        "internal/dedupe/score.go",
+        "internal/dedupe/testdata/labelled_pairs.csv"
+      ],
+      "verify": "On 3,000 hand-labelled pairs: no false auto-merges, and at least 90% of true duplicates found.",
+      "status": "merged",
+      "depends_on": [
+        "T9",
+        "Q5"
+      ],
+      "order": 12,
+      "epics": [
+        "CAT-88"
+      ],
+      "pr": "P2",
+      "branch": "oakhollow/t12-record-dedupe-matcher",
+      "outcome": "Hit 93% recall with zero false merges at the 0.94 threshold. Large print and audiobook editions share ISBN stems with the print book and needed a format guard."
+    },
+    "tasks/T13": {
+      "title": "Authority headings table",
+      "goal": "Controlled names and subjects so searches don't split on spelling.",
+      "approach": "Tables authority_headings and heading_variants. Import the consortium's existing authority file; link bib records by heading id, not text.",
+      "touches": [
+        "db/migrations/0008_authority.sql",
+        "internal/authority/store.go",
+        "internal/authority/import.go"
+      ],
+      "verify": "Imported headings resolve for at least 95% of sample records' author and subject fields.",
+      "status": "merged",
+      "depends_on": [
+        "T9"
+      ],
+      "order": 13,
+      "epics": [
+        "CAT-88"
+      ],
+      "pr": "P2",
+      "branch": "oakhollow/t13-authority-headings-table",
+      "outcome": "Resolved 97.4%. The rest land in an unresolved_headings table that cataloguers can work through."
+    },
+    "tasks/T14": {
+      "title": "Subject and series normalisation",
+      "goal": "Make 'Dr. Seuss', 'Seuss, Dr.' and 'Geisel, Theodor' one author in search.",
+      "approach": "Normalisation rules in code, with fixtures in testdata/: case-fold, strip trailing punctuation, move qualifiers, fold diacritics for the sort key only (display keeps them). Series statements parsed from 490/830.",
+      "touches": [
+        "internal/normalise/names.go",
+        "internal/normalise/series.go",
+        "internal/normalise/testdata/names.tsv"
+      ],
+      "verify": "All 400 fixture rows produce the expected sort key and display form.",
+      "status": "merged",
+      "depends_on": [
+        "T9"
+      ],
+      "order": 14,
+      "epics": [
+        "CAT-88"
+      ],
+      "pr": "P2",
+      "branch": "oakhollow/t14-subject-and-series-normalisation",
+      "outcome": "Diacritic folding is sort-key only. Folding in the display form made Zoë into Zoe in the public site and drew a complaint in the pilot."
+    },
+    "tasks/T15": {
+      "title": "Search index mapping",
+      "goal": "Choose the search backend and define the document shape.",
+      "approach": "Per Q1 the search index is Postgres full text with a tsvector column on a denormalised search_docs table, refreshed by the indexer in T19. Weighted fields: title A, author B, subjects C, notes D. Language configs per record language.\n\nExpected size at 2.1M records is about 6 GB with indexes. Fine for our primary.",
+      "touches": [
+        "db/migrations/0009_search_docs.sql",
+        "internal/search/mapping.go"
+      ],
+      "verify": "Index builds for the 2.1M-record sample; a title query returns under 150 ms at p95 on the staging database.",
+      "status": "merged",
+      "depends_on": [
+        "T9",
+        "Q1"
+      ],
+      "order": 15,
+      "epics": [
+        "CAT-88"
+      ],
+      "pr": "P2",
+      "branch": "oakhollow/t15-search-index-mapping",
+      "outcome": "Built as planned. Added a trigram index for the title prefix box; the tsvector alone was poor for as-you-type."
+    },
+    "tasks/T16": {
+      "title": "Copy-level availability view",
+      "goal": "'Is it on the shelf at my branch' without a join in every query.",
+      "approach": "Materialised summary per (bib, branch): count by status. Refreshed incrementally from copy status changes through a queue table availability_dirty.",
+      "touches": [
+        "db/migrations/0010_availability.sql",
+        "internal/copies/availability.go"
+      ],
+      "verify": "After a checkout, the summary for that bib and branch changes within 5 seconds.",
+      "status": "merged",
+      "depends_on": [
+        "T10"
+      ],
+      "order": 16,
+      "epics": [
+        "CAT-88",
+        "CAT-112"
+      ],
+      "pr": "P2",
+      "branch": "oakhollow/t16-copy-level-availability-view",
+      "outcome": "Done. Refresh lag p99 is about 1.2 seconds in staging load tests."
+    },
+    "tasks/T17": {
+      "title": "Bulk import job runner",
+      "goal": "Run the full legacy import repeatably, in chunks, with resume.",
+      "approach": "Job table import_jobs with chunk cursor; worker takes a chunk, writes records and dedupe candidates in one transaction, commits the cursor. A failed chunk is retried twice, then parked.",
+      "touches": [
+        "internal/jobs/importer.go",
+        "cmd/worker/import.go",
+        "db/migrations/0011_import_jobs.sql"
+      ],
+      "verify": "Kill the worker mid-import: restart resumes from the last committed chunk and yields identical row counts.",
+      "status": "merged",
+      "depends_on": [
+        "T11",
+        "T12"
+      ],
+      "order": 17,
+      "epics": [
+        "CAT-88"
+      ],
+      "pr": "P2",
+      "branch": "oakhollow/t17-bulk-import-job-runner",
+      "outcome": "Chunk size 2,000 after trying 500 and 10,000; the larger size held locks long enough to stall the staging indexer."
+    },
+    "tasks/T18": {
+      "title": "Dedupe review queue for cataloguers",
+      "goal": "Let people decide the cases the matcher is unsure about.",
+      "approach": "Screen at /staff/dedupe listing candidate pairs between 0.80 and the auto-merge threshold, side by side with differences highlighted. Actions: merge (choose survivor), keep both, not sure. Merge moves copies and holds to the survivor.",
+      "touches": [
+        "web/staff/dedupe/Queue.tsx",
+        "web/staff/dedupe/PairDiff.tsx",
+        "internal/dedupe/merge.go"
+      ],
+      "verify": "A merge moves all copies and leaves an audit event on both records; keep-both pairs never reappear.",
+      "status": "merged",
+      "depends_on": [
+        "T12",
+        "T7"
+      ],
+      "order": 18,
+      "epics": [
+        "CAT-88"
+      ],
+      "pr": "P2",
+      "branch": "oakhollow/t18-dedupe-review-queue-for-cataloguers",
+      "outcome": "Added keyboard shortcuts (j/k/m/b) at Tadeusz's request; cataloguers work through hundreds of pairs per sitting."
+    },
+    "tasks/T19": {
+      "title": "Search indexer worker",
+      "goal": "Keep search_docs current as records change.",
+      "approach": "Worker consumes search_dirty rows, rebuilds the document (including heading variants), and updates in batches of 500. Full rebuild path for mapping changes.",
+      "touches": [
+        "cmd/worker/indexer.go",
+        "internal/search/builder.go"
+      ],
+      "verify": "A record edit is searchable within 10 seconds; full rebuild of 2.1M documents completes in under 90 minutes.",
+      "status": "merged",
+      "depends_on": [
+        "T15",
+        "T14"
+      ],
+      "order": 19,
+      "epics": [
+        "CAT-88"
+      ],
+      "pr": "P2",
+      "branch": "oakhollow/t19-search-indexer-worker",
+      "outcome": "Full rebuild takes 62 minutes on staging. Builder skips records with status = suppressed, which wasn't in the plan; cataloguers use it for hidden drafts."
+    },
+    "tasks/T20": {
+      "title": "Record edit API with audit",
+      "goal": "Create and edit a bib record through a validated API.",
+      "approach": "PUT /api/v1/records/{id} accepts a MARC JSON representation, validates required fields, re-extracts columns, writes the audit event. Optimistic concurrency by version column.",
+      "touches": [
+        "cmd/api/routes_records.go",
+        "internal/bib/service.go",
+        "internal/bib/validate.go"
+      ],
+      "verify": "Two concurrent edits of one record: the second gets 409 with the current version.",
+      "status": "merged",
+      "depends_on": [
+        "T9",
+        "T5",
+        "T7"
+      ],
+      "order": 20,
+      "epics": [
+        "CAT-88"
+      ],
+      "pr": "P2",
+      "branch": "oakhollow/t20-record-edit-api-with-audit",
+      "outcome": "Done. Validation rules are data in internal/bib/rules.yaml so cataloguers can propose changes by PR."
+    },
+    "tasks/T21": {
+      "title": "Cover images and thumbnails",
+      "goal": "Show book covers in search results.",
+      "approach": "Fetch covers by ISBN from an external cover service and cache in object storage.",
+      "touches": [
+        "internal/covers/fetch.go"
+      ],
+      "verify": "Covers appear for ISBNs with a cover.",
+      "status": "dropped",
+      "depends_on": [
+        "T9",
+        "Q11"
+      ],
+      "order": 21,
+      "epics": [
+        "CAT-88"
+      ]
+    },
+    "tasks/T22": {
+      "title": "Pilot import of three branches",
+      "goal": "Rehearse the real thing with Marrow Vale, Pell Street, and Cinder Hill.",
+      "approach": "Import those branches' records with the T17 runner, review the dedupe queue with Tadeusz's team, and record every problem in the PR.\n\n1. Run import into staging.\n2. Cataloguers sample 300 records each.\n3. Fix what they find; re-run from scratch to prove it is repeatable.",
+      "touches": [
+        "tools/pilot/README.txt",
+        "internal/jobs/importer.go",
+        "internal/marc/reader.go"
+      ],
+      "verify": "Second from-scratch run matches the first except for fixes; the three cataloguers sign off in the PR thread.",
+      "status": "merged",
+      "depends_on": [
+        "T17",
+        "T13"
+      ],
+      "order": 22,
+      "epics": [
+        "CAT-88"
+      ],
+      "pr": "P2",
+      "branch": "oakhollow/t22-pilot-import-of-three-branches",
+      "outcome": "Found 14 distinct problems, all fixed (list in the PR). Sign-off from all three branches came on 22 September."
+    },
+    "tasks/T23": {
+      "title": "Patron schema",
+      "goal": "Patron accounts with a home branch, cards, and contact preferences.",
+      "approach": "Tables patrons, patron_cards, patron_contacts. A patron can hold several cards over time; exactly one is active. Birth date stored, but only the derived age_band is exposed to non-staff code paths.",
+      "touches": [
+        "db/migrations/0012_patrons.sql",
+        "internal/patrons/store.go"
+      ],
+      "verify": "Constraint test: two active cards for one patron is rejected.",
+      "status": "merged",
+      "depends_on": [
+        "T2",
+        "T6"
+      ],
+      "order": 23,
+      "epics": [
+        "CAT-112"
+      ],
+      "pr": "P3",
+      "branch": "oakhollow/t23-patron-schema",
+      "outcome": "As planned. Added preferred_language after the Spanish-language branches asked about notices."
+    },
+    "tasks/T24": {
+      "title": "Patron import with card-number remap",
+      "goal": "Bring over 1.4M patrons and keep their cards working.",
+      "approach": "Per Q2 the legacy card numbers are kept as the active card where they are unique; collisions get a new number and a legacy_number note on the old card. Import is chunked like T17.",
+      "touches": [
+        "internal/jobs/patron_import.go",
+        "tools/legacypatrons/mapper.go",
+        "db/migrations/0013_card_remap.sql"
+      ],
+      "verify": "Re-import yields identical rows; every legacy number resolves to exactly one patron.",
+      "status": "merged",
+      "depends_on": [
+        "T23",
+        "Q2"
+      ],
+      "order": 24,
+      "epics": [
+        "CAT-112"
+      ],
+      "pr": "P3",
+      "branch": "oakhollow/t24-patron-import-with-card-number-remap",
+      "outcome": "Collisions came to 3,112 numbers, not the estimated 400. Reissue letters handled by Zoë's team via the export in tools/legacypatrons/reissue.csv."
+    },
+    "tasks/T25": {
+      "title": "Patron privacy and retention",
+      "goal": "Do not keep what we don't need.",
+      "approach": "Per Q6, loan history is kept for the loan plus 30 days, unless the patron opts in to a reading history. Nightly job anonymises older loans. Opt-in flag per patron.",
+      "touches": [
+        "internal/privacy/retention.go",
+        "cmd/worker/retention.go",
+        "db/migrations/0014_reading_history_optin.sql"
+      ],
+      "verify": "Loans older than the window have patron_id null after the job; opted-in patrons are untouched.",
+      "status": "merged",
+      "depends_on": [
+        "T23",
+        "Q6"
+      ],
+      "order": 25,
+      "pr": "P3",
+      "branch": "oakhollow/t25-patron-privacy-and-retention",
+      "outcome": "Anonymise by nulling patron_id and keeping the rest for statistics. Dry-run mode prints counts only."
+    },
+    "tasks/T26": {
+      "title": "Card number check digit and lookup",
+      "goal": "Typo-resistant card entry at the desk.",
+      "approach": "Check digit validation for new numbers (Luhn variant over 14 digits); legacy numbers are exempt. Lookup endpoint accepts a card, barcode scan, or phone number.",
+      "touches": [
+        "internal/patrons/cardnum.go",
+        "internal/patrons/lookup.go"
+      ],
+      "verify": "Single-digit typos and adjacent transpositions are caught in a property test over 1M random numbers.",
+      "status": "merged",
+      "depends_on": [
+        "T23"
+      ],
+      "order": 26,
+      "pr": "P3",
+      "branch": "oakhollow/t26-card-number-check-digit-and-lookup",
+      "outcome": "Done. Lookup by phone number was not in the plan; staff asked for it and it is behind patron.lookup_phone."
+    },
+    "tasks/T27": {
+      "title": "Household and guardian links",
+      "goal": "A parent can see and manage a child's account.",
+      "approach": "Table patron_links(patron_id, linked_id, kind) with kinds guardian_of and household. Guardian view is limited to holds, loans, and fines.",
+      "touches": [
+        "db/migrations/0015_patron_links.sql",
+        "internal/patrons/links.go"
+      ],
+      "verify": "A guardian cannot read a linked child's contact details or reading history.",
+      "status": "merged",
+      "depends_on": [
+        "T23"
+      ],
+      "order": 27,
+      "epics": [
+        "CAT-112"
+      ],
+      "pr": "P3",
+      "branch": "oakhollow/t27-household-and-guardian-links",
+      "outcome": "As planned. Child accounts lose the guardian link automatically at 16 unless renewed."
+    },
+    "tasks/T28": {
+      "title": "Patron API",
+      "goal": "Create, read, update patrons from desks and the public site.",
+      "approach": "/api/v1/patrons with field-level permissions: desks see address and phone, the public site sees only the patron's own record. Every change writes an audit event.",
+      "touches": [
+        "cmd/api/routes_patrons.go",
+        "internal/patrons/service.go",
+        "internal/perm/patron_fields.go"
+      ],
+      "verify": "Permission matrix test covers each role against each field.",
+      "status": "merged",
+      "depends_on": [
+        "T23",
+        "T7",
+        "T5"
+      ],
+      "order": 28,
+      "epics": [
+        "CAT-112"
+      ],
+      "pr": "P3",
+      "branch": "oakhollow/t28-patron-api",
+      "outcome": "Done. The matrix test is generated from roles.yaml, so it fails when a role changes without a matching test decision."
+    },
+    "tasks/T29": {
+      "title": "Staff patron search",
+      "goal": "Find a patron in a few seconds with partial information.",
+      "approach": "Search on name, card, phone, email prefix; results limited to the staff member's branch unless they have patron.search_all. Debounced as-you-type.",
+      "touches": [
+        "web/staff/patrons/Search.tsx",
+        "internal/patrons/search.go",
+        "db/migrations/0016_patron_trgm.sql"
+      ],
+      "verify": "Search of 1.4M patrons returns under 200 ms at p95.",
+      "status": "merged",
+      "depends_on": [
+        "T28",
+        "T19"
+      ],
+      "order": 29,
+      "pr": "P3",
+      "branch": "oakhollow/t29-staff-patron-search",
+      "outcome": "Used trigram indexes on a lower-cased name column. Mononyms and O'Brien style names needed explicit fixtures."
+    },
+    "tasks/T30": {
+      "title": "Cross-branch borrowing rules",
+      "goal": "What a patron of one branch may borrow at another.",
+      "approach": "Rules table borrow_rules(patron_type, item_type, branch_scope, loan_days, renewals_max, max_items), evaluated by rules.Resolve. Defaults loaded from config; branches override only where the consortium agreement allows.",
+      "touches": [
+        "internal/rules/resolve.go",
+        "config/borrow_rules.yaml",
+        "db/migrations/0017_borrow_rules.sql"
+      ],
+      "verify": "Table-driven tests for 60 sample situations from the consortium agreement.",
+      "status": "merged",
+      "depends_on": [
+        "T6",
+        "T23"
+      ],
+      "order": 30,
+      "epics": [
+        "CAT-112"
+      ],
+      "pr": "P3",
+      "branch": "oakhollow/t30-cross-branch-borrowing-rules",
+      "outcome": "Encoded 58 of 60; two cases in the agreement contradict each other (appendix B and section 4.2). Nguyễn Thị Hạnh ruled for appendix B; journalled."
+    },
+    "tasks/T31": {
+      "title": "Loan and checkout model",
+      "goal": "Checkout, due dates, and the loan record.",
+      "approach": "Table loans. Checkout in one transaction: lock the copy row, resolve rules, set due date skipping branch closures, write loan and audit event. Idempotency key from the desk client.",
+      "touches": [
+        "internal/circ/checkout.go",
+        "db/migrations/0018_loans.sql",
+        "cmd/api/routes_circ.go"
+      ],
+      "verify": "100 concurrent checkouts of one copy yield exactly one success.",
+      "status": "merged",
+      "depends_on": [
+        "T10",
+        "T30"
+      ],
+      "order": 31,
+      "epics": [
+        "CAT-112"
+      ],
+      "pr": "P4",
+      "branch": "oakhollow/t31-loan-and-checkout-model",
+      "outcome": "Done. Due dates roll to the next open day per branch config, which turned out to matter: 11 branches close Mondays."
+    },
+    "tasks/T32": {
+      "title": "Holds queue model",
+      "goal": "A fair queue per record, with copy-level exceptions.",
+      "approach": "Table holds(id, patron_id, bib_id, pickup_branch_id, placed_at, status, position_hint). Queue order is placed_at then id; staff can bump with a reason. Limit per patron from Q4.",
+      "touches": [
+        "db/migrations/0019_holds.sql",
+        "internal/holds/queue.go"
+      ],
+      "verify": "Concurrent placement keeps order stable and respects the per-patron limit.",
+      "status": "merged",
+      "depends_on": [
+        "T10",
+        "T23",
+        "Q4"
+      ],
+      "order": 32,
+      "epics": [
+        "CAT-112"
+      ],
+      "pr": "P4",
+      "branch": "oakhollow/t32-holds-queue-model",
+      "outcome": "Limit of 25 for adults, 10 for under 13s, enforced in the service rather than a constraint so staff overrides leave an audit event."
+    },
+    "tasks/T33": {
+      "title": "Hold placement API",
+      "goal": "Place, cancel, and freeze holds.",
+      "approach": "POST /api/v1/holds, DELETE /api/v1/holds/{id}, POST .../freeze. Frozen holds keep their place for up to 90 days.",
+      "touches": [
+        "cmd/api/routes_holds.go",
+        "internal/holds/service.go"
+      ],
+      "verify": "Frozen holds are skipped during fulfilment but keep position when thawed.",
+      "status": "merged",
+      "depends_on": [
+        "T32",
+        "T28"
+      ],
+      "order": 33,
+      "epics": [
+        "CAT-112"
+      ],
+      "pr": "P4",
+      "branch": "oakhollow/t33-hold-placement-api",
+      "outcome": "As planned. Freeze cap is a config value."
+    },
+    "tasks/T34": {
+      "title": "Hold fulfilment pick list",
+      "goal": "Tell each branch what to pull from its shelves each morning.",
+      "approach": "Nightly job matches holds to available copies, preferring the pickup branch, then the nearest branch by courier hops, and writes pick_lists per branch. Copy status becomes in_transit or on_hold_shelf.",
+      "touches": [
+        "cmd/worker/fulfil.go",
+        "internal/holds/fulfil.go",
+        "db/migrations/0020_pick_lists.sql"
+      ],
+      "verify": "A replayed night produces the same pick lists.",
+      "status": "merged",
+      "depends_on": [
+        "T32",
+        "T16"
+      ],
+      "order": 34,
+      "epics": [
+        "CAT-112"
+      ],
+      "pr": "P4",
+      "branch": "oakhollow/t34-hold-fulfilment-pick-list",
+      "outcome": "Added a tie-break on copy age so older copies circulate first. Replay test uses a recorded night from the pilot branches."
+    },
+    "tasks/T35": {
+      "title": "Transfers between branches",
+      "goal": "Move copies to the patron's pickup branch and track them.",
+      "approach": "Table transfers with a state machine: requested, packed, in_transit, received, lost. Scanning at either end advances it; a transfer in transit for over 5 days raises a flag.",
+      "touches": [
+        "internal/transfers/machine.go",
+        "db/migrations/0021_transfers.sql",
+        "cmd/api/routes_transfers.go"
+      ],
+      "verify": "Out-of-order scans are rejected with a message the desk can read aloud.",
+      "status": "merged",
+      "depends_on": [
+        "T32",
+        "T6"
+      ],
+      "order": 35,
+      "epics": [
+        "CAT-112"
+      ],
+      "pr": "P4",
+      "branch": "oakhollow/t35-transfers-between-branches",
+      "outcome": "Done. Lost-in-transit flag threshold is per courier route in config/couriers.yaml."
+    },
+    "tasks/T36": {
+      "title": "Courier manifest export",
+      "goal": "A file for the courier's own system.",
+      "approach": "Per Q7, a CSV manifest per route per day, with a PDF packing slip per bag. Generated at 05:30 local.",
+      "touches": [
+        "internal/transfers/manifest.go",
+        "cmd/worker/manifests.go",
+        "templates/packing_slip.html"
+      ],
+      "verify": "Courier's sample importer accepts three days of generated files without edits.",
+      "status": "merged",
+      "depends_on": [
+        "T35",
+        "Q7"
+      ],
+      "order": 36,
+      "epics": [
+        "CAT-112"
+      ],
+      "pr": "P4",
+      "branch": "oakhollow/t36-courier-manifest-export",
+      "outcome": "CSV only; the courier dropped the PDF requirement once they saw the CSV. Packing slips remain for libraries to print."
+    },
+    "tasks/T37": {
+      "title": "Renewals",
+      "goal": "Renew unless blocked, with a reason when blocked.",
+      "approach": "Renewal checks hold queue, max renewals, and fines blocking threshold, and returns a typed reason. Public site and desks both call circ.Renew.",
+      "touches": [
+        "internal/circ/renew.go",
+        "cmd/api/routes_circ.go"
+      ],
+      "verify": "Each blocking reason has a test and a human-readable message.",
+      "status": "merged",
+      "depends_on": [
+        "T31"
+      ],
+      "order": 37,
+      "epics": [
+        "CAT-112"
+      ],
+      "pr": "P4",
+      "branch": "oakhollow/t37-renewals",
+      "outcome": "Done. Reasons are codes plus message templates in internal/circ/messages.yaml so Zoë's team can reword them."
+    },
+    "tasks/T38": {
+      "title": "Check-in and shelf-ready flow",
+      "goal": "Return a copy and decide where it goes next.",
+      "approach": "Check-in resolves: holds waiting here, transfer needed, or shelve. Output is a slip instruction on the desk screen ('Hold for A. Okonkwo-Reyes, shelf B') and a status change.",
+      "touches": [
+        "internal/circ/checkin.go",
+        "web/desk/CheckinResult.tsx"
+      ],
+      "verify": "Check-in of a copy with a waiting hold at another branch creates a transfer in the same transaction.",
+      "status": "merged",
+      "depends_on": [
+        "T31",
+        "T34"
+      ],
+      "order": 38,
+      "epics": [
+        "CAT-112"
+      ],
+      "pr": "P4",
+      "branch": "oakhollow/t38-check-in-and-shelf-ready-flow",
+      "outcome": "Done. Damaged-return button added after the Pell Street review; it sets in_repair and notifies the cataloguers."
+    },
+    "tasks/T39": {
+      "title": "Hold expiry job",
+      "goal": "Release holds nobody collected.",
+      "approach": "Holds ready for pickup expire after 7 days (config). Job releases the copy back to the queue or shelf and notes the reason.",
+      "touches": [
+        "cmd/worker/hold_expiry.go",
+        "internal/holds/expiry.go"
+      ],
+      "verify": "A hold collected on day 7 before 23:59 local is not expired.",
+      "status": "merged",
+      "depends_on": [
+        "T32"
+      ],
+      "order": 39,
+      "epics": [
+        "CAT-112"
+      ],
+      "pr": "P4",
+      "branch": "oakhollow/t39-hold-expiry-job",
+      "outcome": "As planned. Used the pickup branch's time zone; the consortium spans two."
+    },
+    "tasks/T40": {
+      "title": "Fine accrual engine",
+      "goal": "Compute overdue fines daily and exactly.",
+      "approach": "Daily job in cmd/worker/fines.go computes per-loan accrual from rules, skipping closed days, capped at item price. All amounts in integer cents. Idempotent per (loan, date).",
+      "touches": [
+        "cmd/worker/fines.go",
+        "internal/fines/accrue.go",
+        "db/migrations/0022_fines.sql"
+      ],
+      "verify": "Running the job twice for the same date changes nothing; a month of recorded loans reproduces the legacy fines to the cent except where rules deliberately differ.",
+      "status": "merged",
+      "depends_on": [
+        "T31",
+        "T37"
+      ],
+      "order": 40,
+      "epics": [
+        "CAT-112"
+      ],
+      "pr": "P5",
+      "branch": "oakhollow/t40-fine-accrual-engine",
+      "outcome": "Reproduced legacy fines on 99.6% of loans. The rest are legacy rounding bugs; Nguyễn Thị Hạnh approved the new figures."
+    },
+    "tasks/T41": {
+      "title": "Fine-free for under-18s",
+      "goal": "Stop fining children and teens.",
+      "approach": "Per Q3, accrual is skipped for patrons under 18, applied from the day of the change, and existing fines are waived with reason policy_2026. Needs guardian links to find children with parent-held cards.",
+      "touches": [
+        "internal/fines/policy.go",
+        "tools/waive_existing/main.go"
+      ],
+      "verify": "No new fines accrue for an under-18 patron; waiver tool dry-run totals match the finance extract.",
+      "status": "merged",
+      "depends_on": [
+        "T40",
+        "T27",
+        "Q3"
+      ],
+      "order": 41,
+      "epics": [
+        "CAT-112"
+      ],
+      "pr": "P5",
+      "branch": "oakhollow/t41-fine-free-for-under-18s",
+      "outcome": "Waived 41,870 existing fines totalling $52,310. Finance accepted the tool's dry-run report as the record."
+    },
+    "tasks/T42": {
+      "title": "Record payments at the desk",
+      "goal": "Cash, card, and waive, with a receipt.",
+      "approach": "POST /api/v1/payments records tender type and amount against fines. Card payments go through the consortium's payment gateway terminal and we store only its reference. Daily close report per desk.",
+      "touches": [
+        "internal/fines/payments.go",
+        "cmd/api/routes_payments.go",
+        "web/desk/PayFines.tsx"
+      ],
+      "verify": "Close report reconciles to the sum of recorded payments in tests with mixed tenders.",
+      "status": "merged",
+      "depends_on": [
+        "T40"
+      ],
+      "order": 42,
+      "epics": [
+        "CAT-112"
+      ],
+      "pr": "P5",
+      "branch": "oakhollow/t42-record-payments-at-the-desk",
+      "outcome": "Done. Part payments are allowed; Q&A with finance settled that over-payment is refused rather than credited."
+    },
+    "tasks/T43": {
+      "title": "Notices: overdue and hold-ready",
+      "goal": "Email and SMS reminders in the patron's language.",
+      "approach": "Templates per notice and language in templates/notices/, rendered by the worker. Per Q15, English and Spanish at launch with a fallback to English. Delivery via the consortium mail relay and the SMS gateway.",
+      "touches": [
+        "cmd/worker/notices.go",
+        "templates/notices/hold_ready.es.txt",
+        "internal/notices/render.go"
+      ],
+      "verify": "Every notice renders in both languages for 20 fixture patrons; unsubscribe is honoured.",
+      "status": "merged",
+      "depends_on": [
+        "T39",
+        "T40",
+        "Q15"
+      ],
+      "order": 43,
+      "epics": [
+        "CAT-112"
+      ],
+      "pr": "P5",
+      "branch": "oakhollow/t43-notices-overdue-and-hold-ready",
+      "outcome": "Added a 3-day pre-due reminder because every branch asked. Opt-in only."
+    },
+    "tasks/T44": {
+      "title": "Public search API",
+      "goal": "Search and availability for the public site.",
+      "approach": "GET /public/v1/search?q= and GET /public/v1/records/{id} with facets (format, language, branch, year). Rate limited per IP. Never exposes suppressed records.",
+      "touches": [
+        "cmd/api/routes_public.go",
+        "internal/search/query.go",
+        "internal/search/facets.go"
+      ],
+      "verify": "Facet counts are correct for a 50-query fixture compared against SQL counts.",
+      "status": "merged",
+      "depends_on": [
+        "T19",
+        "T16"
+      ],
+      "order": 44,
+      "epics": [
+        "CAT-88"
+      ],
+      "pr": "P5",
+      "branch": "oakhollow/t44-public-search-api",
+      "outcome": "Done. Query parsing supports quoted phrases and author: / subject: fields; other fields are plain text."
+    },
+    "tasks/T45": {
+      "title": "Public search site pages",
+      "goal": "Search, record detail, and branch pages.",
+      "approach": "Server-rendered React pages with working no-JS forms. Branch pages draw hours from the config loader. Record page shows availability by branch.",
+      "touches": [
+        "web/public/pages/Search.tsx",
+        "web/public/pages/Record.tsx",
+        "web/public/pages/Branch.tsx"
+      ],
+      "verify": "Pages pass axe checks and work with JavaScript disabled.",
+      "status": "merged",
+      "depends_on": [
+        "T44",
+        "Q10"
+      ],
+      "order": 45,
+      "epics": [
+        "CAT-88"
+      ],
+      "pr": "P5",
+      "branch": "oakhollow/t45-public-search-site-pages",
+      "outcome": "Search subdomain went live in staging once Ibrahim applied the DNS change in Q10. Lighthouse accessibility score 98."
+    },
+    "tasks/T46": {
+      "title": "Patron account pages",
+      "goal": "See loans, holds, and fines; renew and place holds.",
+      "approach": "Signed-in pages under /account using card number and PIN or the patron's email link. Guardians see linked children behind a switcher.",
+      "touches": [
+        "web/public/pages/account/Loans.tsx",
+        "web/public/pages/account/Holds.tsx",
+        "internal/auth/patron_login.go"
+      ],
+      "verify": "A patron can place, freeze, and cancel a hold and renew a loan without staff help.",
+      "status": "merged",
+      "depends_on": [
+        "T33",
+        "T44"
+      ],
+      "order": 46,
+      "epics": [
+        "CAT-112"
+      ],
+      "pr": "P5",
+      "branch": "oakhollow/t46-patron-account-pages",
+      "outcome": "PIN lockout after 5 failures for 15 minutes, which wasn't specified."
+    },
+    "tasks/T47": {
+      "title": "Voice assistant search",
+      "goal": "Search the catalogue by voice assistant.",
+      "approach": "A skill for smart speakers calling the public API.",
+      "touches": [
+        "integrations/voice/"
+      ],
+      "verify": "Skill answers 'is X at my branch'.",
+      "status": "dropped",
+      "depends_on": [
+        "T44"
+      ],
+      "order": 47,
+      "epics": [
+        "CAT-88"
+      ]
+    },
+    "tasks/T48": {
+      "title": "Desk client offline mode",
+      "goal": "Keep checking out when a branch's connection drops.",
+      "approach": "Per Q9, offline checkout and check-in only, queued in IndexedDB with a visible banner and a replay on reconnect. Holds, payments and patron edits need the network.\n\nConflicts on replay (item already checked out elsewhere) are put on a reconciliation list, never silently dropped.",
+      "touches": [
+        "web/desk/offline/queue.ts",
+        "web/desk/offline/replay.ts",
+        "internal/circ/replay.go"
+      ],
+      "verify": "With the network cut for 2 hours of scripted traffic, all queued actions replay and the three injected conflicts are listed.",
+      "status": "merged",
+      "depends_on": [
+        "T38",
+        "T42",
+        "Q9"
+      ],
+      "order": 48,
+      "epics": [
+        "CAT-112"
+      ],
+      "pr": "P6",
+      "branch": "oakhollow/t48-desk-client-offline-mode",
+      "outcome": "Done. Replay is idempotent through the same keys as T31."
+    },
+    "tasks/T49": {
+      "title": "Desk scanner and hardware support",
+      "goal": "Support the receipt printers and scanners in 40 branches.",
+      "approach": "Driver layer for 6 printer models and 4 scanner models.",
+      "touches": [
+        "web/desk/hardware/"
+      ],
+      "verify": "Branches report working hardware.",
+      "status": "dropped",
+      "depends_on": [
+        "T38",
+        "Q16"
+      ],
+      "order": 49,
+      "epics": [
+        "CAT-112"
+      ]
+    },
+    "tasks/T50": {
+      "title": "Cutover rehearsal tooling",
+      "goal": "Rehearse the weekend, time each step, and prove it can be undone.",
+      "approach": "Script tools/cutover/rehearse runs: freeze legacy, final delta export, import, checks, sample comparisons, then reports step times. A second command resets staging. Per Q8 the plan is three waves of branches, not one weekend.",
+      "touches": [
+        "tools/cutover/rehearse.go",
+        "tools/cutover/checks/counts.sql",
+        "tools/cutover/checks/sample_compare.go",
+        "docs/cutover/wave-plan.md"
+      ],
+      "verify": "Two full rehearsals in a row finish inside the 14-hour window with every check passing.",
+      "status": "merged",
+      "depends_on": [
+        "T22",
+        "T24",
+        "T48",
+        "Q8"
+      ],
+      "order": 50,
+      "epics": [
+        "CAT-88",
+        "CAT-112"
+      ],
+      "pr": "P6",
+      "branch": "oakhollow/t50-cutover-rehearsal-tooling",
+      "outcome": "Rehearsal two took 9h40m. The slowest step is the patron delta import; moving it before the freeze with a catch-up pass saved 2 hours."
+    },
+    "tasks/T51": {
+      "title": "Runbook and staff training material",
+      "goal": "What to do on the day and how desks change.",
+      "approach": "Runbook in docs/runbook/, one page per step with owner and rollback; training handouts as short PDFs generated from the same Markdown.",
+      "touches": [
+        "docs/runbook/cutover.md",
+        "docs/training/circ-desk-quickstart.md",
+        "tools/docs/build_pdfs.sh"
+      ],
+      "verify": "Hạnh's team does a dry read-through and finds no missing step.",
+      "status": "merged",
+      "depends_on": [
+        "T50"
+      ],
+      "order": 51,
+      "pr": "P6",
+      "branch": "oakhollow/t51-runbook-and-staff-training-material",
+      "outcome": "Walkthrough with circulation leads on 29 October produced 11 edits, all applied."
+    },
+    "tasks/T52": {
+      "title": "Legacy read-only switch",
+      "goal": "Make the old system read-only at the start of each wave.",
+      "approach": "Script and checklist to flip the legacy circulation database to read-only and show a banner; plus a rollback to read-write. Only the infrastructure team can run it.",
+      "touches": [
+        "tools/cutover/legacy_readonly.sh",
+        "docs/runbook/legacy_readonly.md"
+      ],
+      "verify": "Tested on the legacy staging copy: writes fail, reads continue, rollback restores writes.",
+      "status": "merged",
+      "depends_on": [
+        "T50"
+      ],
+      "order": 52,
+      "pr": "P6",
+      "branch": "oakhollow/t52-legacy-read-only-switch",
+      "outcome": "Done. Banner text is plain HTML dropped into the legacy login page template."
+    },
+    "questions/Q1": {
+      "title": "Search backend: Postgres full text or a dedicated search engine?",
+      "context": "The public site needs ranked search over about 2.1M records with facets. Postgres full text keeps one datastore and one backup story. A dedicated engine ranks better out of the box and scales independently, but means another service for a 6-person team to run for 40 libraries.",
+      "status": "answered",
+      "asked_at": "2026-08-25T10:15:00Z",
+      "answered_at": "2026-08-26T09:40:00Z",
+      "answered_by": "u_ibrahim",
+      "answer": "Postgres. We can revisit if p95 on facets misses the target in the pilot.",
+      "options": [
+        {
+          "label": "Postgres full text + trigram",
+          "cost": "Ranking needs tuning; facets are slower at the tail; one fewer system"
+        },
+        {
+          "label": "Dedicated search engine",
+          "cost": "A second datastore, its own upgrades, backups, and on-call surface"
+        }
+      ],
+      "recommendation": "Postgres full text + trigram",
+      "blocks": "The search index mapping and everything that queries it",
+      "task": "T15"
+    },
+    "questions/Q2": {
+      "title": "Keep legacy patron card numbers?",
+      "context": "Patrons carry cards with legacy numbers. Reissuing 1.4M cards is expensive, but about 3 in 1,000 numbers may collide across the 40 branches' separate legacy databases. Keeping numbers means a collision rule.",
+      "status": "answered",
+      "asked_at": "2026-09-14T09:20:00Z",
+      "answered_at": "2026-09-15T14:05:00Z",
+      "answered_by": "u_zoe",
+      "answer": "Keep where unique. Send new cards to the collision patrons with a letter; we will pay for it from the launch budget.",
+      "options": [
+        {
+          "label": "Keep where unique, reissue on collision",
+          "cost": "A reissue mailing for collisions; most patrons see no change"
+        },
+        {
+          "label": "Reissue everyone",
+          "cost": "Cost of cards and a long launch tail"
+        }
+      ],
+      "recommendation": "Keep where unique, reissue on collision",
+      "blocks": "Patron import",
+      "task": "T24"
+    },
+    "questions/Q3": {
+      "title": "Make the consortium fine-free for under-18s?",
+      "context": "Several member boards have voted for fine-free children's accounts; others have not. The platform can do it consortium-wide, per branch, or not at all. Waiving existing fines touches finance.",
+      "status": "answered",
+      "asked_at": "2026-10-05T11:00:00Z",
+      "answered_at": "2026-10-08T16:30:00Z",
+      "answered_by": "u_nguyen",
+      "answer": "Consortium-wide. The joint board approved it on 7 October. Waive existing fines too.",
+      "options": [
+        {
+          "label": "Consortium-wide, waive existing fines",
+          "cost": "Finance writes off roughly $52K; one rule is simple to run"
+        },
+        {
+          "label": "Per branch setting",
+          "cost": "Patrons' experience differs by branch; rules table grows"
+        },
+        {
+          "label": "Not in this migration",
+          "cost": "Policy change deferred; staff keep the status quo"
+        }
+      ],
+      "recommendation": "Consortium-wide, waive existing fines",
+      "blocks": "Fine rules for children and teens",
+      "task": "T41"
+    },
+    "questions/Q4": {
+      "title": "Hold limit per patron",
+      "context": "The legacy system lets adults place 50 holds and children 50 as well, which clogs queues. Branches want a smaller number, and want to override it per patron.",
+      "status": "answered",
+      "asked_at": "2026-09-28T10:00:00Z",
+      "answered_at": "2026-09-29T15:10:00Z",
+      "answered_by": "u_zoe",
+      "answer": "25 and 10, with staff override. Heavy users can ask at the desk.",
+      "options": [
+        {
+          "label": "25 adults, 10 children under 13",
+          "cost": "Some heavy users will complain"
+        },
+        {
+          "label": "Keep 50",
+          "cost": "No behaviour change; queue length stays an issue"
+        },
+        {
+          "label": "Per-branch limits"
+        }
+      ],
+      "recommendation": "25 adults, 10 children under 13",
+      "blocks": "Holds queue model",
+      "task": "T32"
+    },
+    "questions/Q5": {
+      "title": "Where to set the dedupe auto-merge threshold",
+      "context": "The matcher scores candidate pairs 0 to 1. Above the auto-merge threshold records merge with no human look; below 0.80 they are ignored; between goes to the review queue. A false merge loses cataloguing work, a missed duplicate only costs search noise.",
+      "status": "answered",
+      "asked_at": "2026-08-28T13:45:00Z",
+      "answered_at": "2026-08-29T08:50:00Z",
+      "answered_by": "u_tadeusz",
+      "answer": "0.94. A bad merge is much worse than a long queue. We will work the queue.",
+      "options": [
+        {
+          "label": "0.94 (conservative)",
+          "cost": "About 28% of duplicates go to manual review"
+        },
+        {
+          "label": "0.88",
+          "cost": "Fewer reviews, small risk of false merges"
+        }
+      ],
+      "recommendation": "0.94 (conservative)",
+      "blocks": "Dedupe matcher",
+      "task": "T12"
+    },
+    "questions/Q6": {
+      "title": "How long do we keep loan history?",
+      "context": "The legacy system kept every loan forever tied to the patron. Privacy guidance in the member agreement says only what is needed. Some patrons like a reading history.",
+      "status": "answered",
+      "asked_at": "2026-09-14T09:25:00Z",
+      "answered_at": "2026-09-16T10:05:00Z",
+      "answered_by": "u_marguerite",
+      "answer": "Loan plus 30 days with an opt-in reading history. Damaged-item disputes go through the 30 days.",
+      "options": [
+        {
+          "label": "Loan plus 30 days; opt-in history",
+          "cost": "Cannot answer 'who had this book' beyond a month"
+        },
+        {
+          "label": "One year for everyone"
+        }
+      ],
+      "recommendation": "Loan plus 30 days; opt-in history",
+      "blocks": "Retention job",
+      "task": "T25"
+    },
+    "questions/Q7": {
+      "title": "Courier manifest format",
+      "context": "The courier says it can take either a CSV by SFTP or a PDF per bag. We have not seen their importer.",
+      "status": "answered",
+      "asked_at": "2026-10-02T09:00:00Z",
+      "answered_at": "2026-10-03T09:30:00Z",
+      "answered_by": "u_nguyen",
+      "answer": "Courier confirmed CSV only. Libraries still want printed slips for the bags, so we keep those.",
+      "options": [
+        {
+          "label": "CSV by SFTP"
+        },
+        {
+          "label": "CSV and PDF packing slips",
+          "cost": "More templating to maintain"
+        }
+      ],
+      "blocks": "Courier manifest export",
+      "task": "T36"
+    },
+    "questions/Q8": {
+      "title": "Cutover: one weekend or three waves?",
+      "context": "Cutting over all 40 branches in one weekend is the shortest period of dual running, but a failure affects everyone. Three waves (12, 14, 14 branches) means two weeks of two systems with a sync job.",
+      "status": "answered",
+      "asked_at": "2026-10-19T10:30:00Z",
+      "answered_at": "2026-10-21T09:15:00Z",
+      "answered_by": "u_ibrahim",
+      "answer": "Three waves. First wave is the pilot three plus nine others chosen by Hạnh.",
+      "options": [
+        {
+          "label": "Three waves",
+          "cost": "Needs the legacy read-only switch and cross-system holds sync for two weeks"
+        },
+        {
+          "label": "One weekend",
+          "cost": "Single rehearsal covers it; all-or-nothing"
+        }
+      ],
+      "recommendation": "Three waves",
+      "blocks": "Cutover tooling, runbook",
+      "task": "T50"
+    },
+    "questions/Q9": {
+      "title": "How much should the desk client do offline?",
+      "context": "Branch connections drop a few times a month. Full offline circulation is a big build; checkout and check-in only covers most of the pain.",
+      "status": "answered",
+      "asked_at": "2026-10-20T14:10:00Z",
+      "answered_at": "2026-10-22T10:00:00Z",
+      "answered_by": "u_nguyen",
+      "answer": "Checkout and check-in only. Paper slips for everything else.",
+      "options": [
+        {
+          "label": "Checkout and check-in only",
+          "cost": "Holds, payments, patron edits need a connection"
+        },
+        {
+          "label": "Full offline",
+          "cost": "Much larger, with hard conflict cases"
+        },
+        {
+          "label": "No offline mode",
+          "cost": "Desks revert to paper slips"
+        }
+      ],
+      "recommendation": "Checkout and check-in only",
+      "blocks": "Desk client offline mode",
+      "task": "T48"
+    },
+    "questions/Q10": {
+      "title": "Point the search subdomain at the staging site",
+      "context": "Needs the DNS record search.oakhollow.example pointed at the staging load balancer so the public pages can be tried at a real hostname. I cannot change DNS from here.",
+      "status": "answered",
+      "asked_at": "2026-10-24T15:00:00Z",
+      "answered_at": "2026-10-24T16:45:00Z",
+      "answered_by": "u_ibrahim",
+      "answer": "Done",
+      "options": [
+        {
+          "label": "Done"
+        },
+        {
+          "label": "Skip"
+        }
+      ],
+      "recommendation": "Done",
+      "blocks": "Trying the public site on its real hostname",
+      "task": "T45"
+    },
+    "questions/Q11": {
+      "title": "Use an external cover image service?",
+      "context": "Covers by ISBN would make search results friendlier. The only practical source is a third-party cover service, which means patron searches leak to it unless we proxy and cache.",
+      "status": "withdrawn",
+      "asked_at": "2026-09-09T10:10:00Z",
+      "answered_at": "2026-09-10T09:00:00Z",
+      "answered_by": "u_marguerite",
+      "answer": "No covers at launch, so there is nothing to decide.",
+      "options": [
+        {
+          "label": "Yes, proxy and cache",
+          "cost": "Licensing terms need review; extra moving part"
+        },
+        {
+          "label": "No covers at launch"
+        }
+      ],
+      "recommendation": "No covers at launch",
+      "blocks": "Cover images",
+      "task": "T21"
+    },
+    "questions/Q12": {
+      "title": "Split the work into several PRs?",
+      "context": "As the plan stands one PR would contain about 50 tasks. The guide says to propose a split. A natural cut: foundations, records and search, patrons, holds and transfers, fines and public site, desks and cutover. Stacked so each can be reviewed alone.",
+      "status": "answered",
+      "asked_at": "2026-08-24T11:00:00Z",
+      "answered_at": "2026-08-24T13:20:00Z",
+      "answered_by": "u_marguerite",
+      "answer": "Six, stacked. Foundation first.",
+      "options": [
+        {
+          "label": "Split into six, stacked",
+          "cost": "More PRs to merge; each is reviewable"
+        },
+        {
+          "label": "One PR",
+          "cost": "Unreviewable at this size"
+        }
+      ],
+      "recommendation": "Split into six, stacked",
+      "blocks": "PR creation"
+    },
+    "questions/Q13": {
+      "title": "Voice assistant search: build it?",
+      "context": "The consortium board asked about a smart speaker skill in the original wish list. It would call the public API.",
+      "status": "answered",
+      "asked_at": "2026-10-26T10:00:00Z",
+      "answered_at": "2026-10-27T09:50:00Z",
+      "answered_by": "u_marguerite",
+      "answer": "Drop it. Nobody uses it at the pilot branches and we'd rather finish the desks.",
+      "options": [
+        {
+          "label": "Build it"
+        },
+        {
+          "label": "Drop, revisit after cutover"
+        }
+      ],
+      "recommendation": "Drop, revisit after cutover",
+      "blocks": "Voice assistant task",
+      "task": "T47"
+    },
+    "questions/Q14": {
+      "title": "Create the staff groups in the consortium identity provider",
+      "context": "Permissions map from groups named oak-circ-clerk, oak-circ-lead, oak-cataloguer, oak-branch-mgr, and oak-admin, with a per-branch suffix. Only the identity provider's admin can create them.",
+      "status": "answered",
+      "asked_at": "2026-08-27T14:30:00Z",
+      "answered_at": "2026-08-28T10:10:00Z",
+      "answered_by": "u_ibrahim",
+      "answer": "Done. Groups exist with the branch suffix -mrv, -pel and so on.",
+      "options": [
+        {
+          "label": "Done"
+        },
+        {
+          "label": "Skip"
+        }
+      ],
+      "recommendation": "Done",
+      "blocks": "Staff roles and permissions",
+      "task": "T7"
+    },
+    "questions/Q15": {
+      "title": "Which languages for notices at launch?",
+      "context": "Templates are cheap to add, translations are not. Patrons have a preferred language field from the import, 12% are not English.",
+      "status": "answered",
+      "asked_at": "2026-10-10T09:05:00Z",
+      "answered_at": "2026-10-11T10:20:00Z",
+      "answered_by": "u_zoe",
+      "answer": "English and Spanish now. We will add Vietnamese and Somali after cutover once translations are ready.",
+      "options": [
+        {
+          "label": "English and Spanish",
+          "cost": "Other languages fall back to English"
+        },
+        {
+          "label": "English only",
+          "cost": "Plain, but ignores the larger group"
+        },
+        {
+          "label": "English, Spanish, Vietnamese, Somali",
+          "cost": "Needs translator time before cutover"
+        }
+      ],
+      "recommendation": "English and Spanish",
+      "blocks": "Notice templates",
+      "task": "T43"
+    },
+    "questions/Q16": {
+      "title": "Support the old receipt printers and scanners?",
+      "context": "Branches own 6 printer models and 4 scanner models of mixed age. A driver layer is a lot of work for devices that already work with the legacy desk app through the browser's print and keyboard-wedge scanning.",
+      "status": "answered",
+      "asked_at": "2026-10-22T11:00:00Z",
+      "answered_at": "2026-10-23T09:10:00Z",
+      "answered_by": "u_nguyen",
+      "answer": "Browser print and wedge scanners are enough. Drop the driver idea.",
+      "options": [
+        {
+          "label": "Keep browser print and wedge scanners",
+          "cost": "No special drivers; some printers need a per-branch setting"
+        },
+        {
+          "label": "Build a driver layer"
+        }
+      ],
+      "recommendation": "Keep browser print and wedge scanners",
+      "blocks": "Hardware support task",
+      "task": "T49"
+    },
+    "prs/P1": {
+      "title": "Foundations: service skeleton, migrations, branch config, staff login, audit log, roles",
+      "order": 1,
+      "branch": "oakhollow/p1-foundations-skeleton-auth-audit-roles",
+      "base": "main",
+      "status": "merged",
+      "url": "https://code.oakhollow.example/consortium/catalogued/pull/412",
+      "summary": "Everything the rest builds on: one deployable, versioned migrations, branch reference data for all 40 branches, OIDC login, roles, audit log, metrics."
+    },
+    "prs/P2": {
+      "title": "Catalogue records, import, dedupe and search index",
+      "order": 2,
+      "branch": "oakhollow/p2-bibliographic-records-import-dedupe-search-index",
+      "base": "P1",
+      "status": "merged",
+      "url": "https://code.oakhollow.example/consortium/catalogued/pull/419"
+    },
+    "prs/P3": {
+      "title": "Patron accounts, privacy and cross-branch borrowing rules",
+      "order": 3,
+      "branch": "oakhollow/p3-patron-accounts-privacy-borrowing-rules",
+      "base": "P2",
+      "status": "merged",
+      "url": "https://code.oakhollow.example/consortium/catalogued/pull/431",
+      "summary": "Patron schema and import with card remapping, retention job, guardian links, patron API, staff patron search, and the borrowing rules from the consortium agreement."
+    },
+    "prs/P4": {
+      "title": "Circulation: checkout, holds, transfers, renewals, check-in",
+      "order": 4,
+      "branch": "oakhollow/p4-circulation-holds-transfers-checkin",
+      "base": "P3",
+      "status": "merged",
+      "url": "https://code.oakhollow.example/consortium/catalogued/pull/440",
+      "summary": "Loans, the holds queue and fulfilment, branch-to-branch transfers with the courier manifest, renewals, and the shelf-ready check-in flow."
+    },
+    "prs/P5": {
+      "title": "Fines, payments, notices, and the public search site",
+      "order": 5,
+      "branch": "oakhollow/p5-fines-payments-notices-public-search-site",
+      "base": "main",
+      "status": "open",
+      "url": "https://code.oakhollow.example/consortium/catalogued/pull/452"
+    },
+    "prs/P6": {
+      "title": "Desk offline mode, cutover rehearsal tooling, runbook, legacy read-only switch",
+      "order": 6,
+      "branch": "oakhollow/p6-desk-offline-cutover-tooling-runbook",
+      "base": "P5",
+      "status": "open",
+      "url": "https://code.oakhollow.example/consortium/catalogued/pull/455",
+      "summary": "Last piece: what the circulation desks and the infrastructure team need to cut branches over in three waves. Stacked on P5 because the rehearsal tooling imports with the fine tables."
+    },
+    "journal/2026-08-24T08:40:00Z": {
+      "at": "2026-08-24T08:40:00Z",
+      "text": "Started. Read the migration brief, the consortium agreement summary, and the legacy schema export. Plan has six phases; writing tasks now.",
+      "by": "claude"
+    },
+    "journal/2026-08-24T09:55:00Z": {
+      "at": "2026-08-24T09:55:00Z",
+      "text": "Plan drafted: 52 tasks across foundations, records and search, patrons, holds and transfers, fines and the public site, and desks and cutover. Two tracker epics: CAT-88 for catalogue and search, CAT-112 for circulation.",
+      "by": "claude"
+    },
+    "journal/2026-08-24T11:00:00Z": {
+      "at": "2026-08-24T11:00:00Z",
+      "text": "Asked whether to split into several PRs. One PR at this size will not be reviewable.",
+      "by": "claude"
+    },
+    "journal/2026-08-24T13:20:00Z": {
+      "at": "2026-08-24T13:20:00Z",
+      "text": "Six stacked PRs, foundation first.",
+      "by": "u_marguerite",
+      "questions": [
+        "Q12"
+      ]
+    },
+    "journal/2026-08-24T14:10:00Z": {
+      "at": "2026-08-24T14:10:00Z",
+      "text": "Created P1 to P6 as planned PRs, stacked in order. Branch names confirmed with Marguerite in the thread.",
+      "by": "claude"
+    },
+    "journal/2026-08-24T15:30:00Z": {
+      "at": "2026-08-24T15:30:00Z",
+      "text": "Approved the plan. Go ahead, and start with the skeleton so Ibrahim can wire CI.",
+      "by": "owner"
+    },
+    "journal/2026-08-24T15:45:00Z": {
+      "at": "2026-08-24T15:45:00Z",
+      "text": "Status running. Driver set. Watching comments.",
+      "by": "claude"
+    },
+    "journal/2026-08-25T09:20:00Z": {
+      "at": "2026-08-25T09:20:00Z",
+      "text": "T1 skeleton in review. Chose a modular monolith over per-domain services: six engineers, forty libraries.",
+      "by": "claude"
+    },
+    "journal/2026-08-25T10:15:00Z": {
+      "at": "2026-08-25T10:15:00Z",
+      "text": "Asked about the search backend. Postgres full text is cheaper to run; a dedicated engine ranks better. Recommending Postgres, with a measured fallback.",
+      "by": "claude"
+    },
+    "journal/2026-08-25T16:05:00Z": {
+      "at": "2026-08-25T16:05:00Z",
+      "text": "T1 merged onto the P1 branch.",
+      "by": "claude"
+    },
+    "journal/2026-08-26T09:40:00Z": {
+      "at": "2026-08-26T09:40:00Z",
+      "text": "Postgres full text. Revisit only if facets miss the target.",
+      "by": "u_ibrahim",
+      "questions": [
+        "Q1"
+      ]
+    },
+    "journal/2026-08-26T10:30:00Z": {
+      "at": "2026-08-26T10:30:00Z",
+      "text": "T2 migration framework implemented. Forward-only migrations; the runbook will say rollback means a new migration.",
+      "by": "claude"
+    },
+    "journal/2026-08-26T15:20:00Z": {
+      "at": "2026-08-26T15:20:00Z",
+      "text": "T3 branch config loader and T4 staff login started in parallel; they touch different packages.",
+      "by": "claude"
+    },
+    "journal/2026-08-27T11:10:00Z": {
+      "at": "2026-08-27T11:10:00Z",
+      "text": "T2 and T3 merged. T3's schema rejects unknown keys, which caught two typos in a sample branch file.",
+      "by": "claude"
+    },
+    "journal/2026-08-27T14:30:00Z": {
+      "at": "2026-08-27T14:30:00Z",
+      "text": "Asked Ibrahim to create the staff groups in the identity provider. T7 needs them and I can't create them.",
+      "by": "claude"
+    },
+    "journal/2026-08-27T16:40:00Z": {
+      "at": "2026-08-27T16:40:00Z",
+      "text": "T4 in review. Reviewer wants the session key rotation tested with two keys; added.",
+      "by": "claude"
+    },
+    "journal/2026-08-28T08:55:00Z": {
+      "at": "2026-08-28T08:55:00Z",
+      "text": "T8 telemetry started. Dropping the patron id metric label, cardinality.",
+      "by": "claude"
+    },
+    "journal/2026-08-28T10:10:00Z": {
+      "at": "2026-08-28T10:10:00Z",
+      "text": "Groups created. Suffix is the branch code, lower case.",
+      "by": "u_ibrahim",
+      "questions": [
+        "Q14"
+      ]
+    },
+    "journal/2026-08-28T13:45:00Z": {
+      "at": "2026-08-28T13:45:00Z",
+      "text": "Asked about the dedupe auto-merge threshold before T12 needs it. Recommending 0.94.",
+      "by": "claude"
+    },
+    "journal/2026-08-29T08:50:00Z": {
+      "at": "2026-08-29T08:50:00Z",
+      "text": "0.94. We'll work the queue by hand.",
+      "by": "u_tadeusz",
+      "questions": [
+        "Q5"
+      ]
+    },
+    "journal/2026-08-29T11:25:00Z": {
+      "at": "2026-08-29T11:25:00Z",
+      "text": "T4 merged. T5 audit log started: partitioned by month after Ibrahim's volume estimate.",
+      "by": "claude"
+    },
+    "journal/2026-08-31T10:00:00Z": {
+      "at": "2026-08-31T10:00:00Z",
+      "text": "Reminder: Marrow Vale can't do any testing the week of 14 September (stocktake).",
+      "by": "owner"
+    },
+    "journal/2026-09-01T09:05:00Z": {
+      "at": "2026-09-01T09:05:00Z",
+      "text": "Noted Marrow Vale's stocktake. The pilot import in T22 will use Pell Street and Cinder Hill for the first runs and Marrow Vale after.",
+      "by": "claude"
+    },
+    "journal/2026-09-01T14:50:00Z": {
+      "at": "2026-09-01T14:50:00Z",
+      "text": "T5 merged. T6 location data: found 9 shelving codes reused at different branches. Splitting them; list goes in the PR.",
+      "by": "claude"
+    },
+    "journal/2026-09-02T10:15:00Z": {
+      "at": "2026-09-02T10:15:00Z",
+      "text": "T7 roles started now that the groups exist. Split fine waiving into small and any, after a note from Nguyễn Thị Hạnh's team.",
+      "by": "claude"
+    },
+    "journal/2026-09-02T16:30:00Z": {
+      "at": "2026-09-02T16:30:00Z",
+      "text": "T6 merged.",
+      "by": "claude"
+    },
+    "journal/2026-09-03T09:30:00Z": {
+      "at": "2026-09-03T09:30:00Z",
+      "text": "T8 merged.",
+      "by": "claude"
+    },
+    "journal/2026-09-03T15:10:00Z": {
+      "at": "2026-09-03T15:10:00Z",
+      "text": "T7 in review; fixing a gap where a clerk could edit a patron homed elsewhere through the lookup endpoint.",
+      "by": "claude"
+    },
+    "journal/2026-09-04T10:40:00Z": {
+      "at": "2026-09-04T10:40:00Z",
+      "text": "T7 merged. P1 complete; all eight tasks merged. Opened P1 for review.",
+      "by": "claude"
+    },
+    "journal/2026-09-04T11:00:00Z": {
+      "at": "2026-09-04T11:00:00Z",
+      "text": "Next wave: T9 and T10 are independent, started both.",
+      "by": "claude"
+    },
+    "journal/2026-09-05T13:00:00Z": {
+      "at": "2026-09-05T13:00:00Z",
+      "text": "Reviewing P1 over the weekend.",
+      "by": "owner"
+    },
+    "journal/2026-09-08T09:30:00Z": {
+      "at": "2026-09-08T09:30:00Z",
+      "text": "P1 merged. Only a nit about the dashboard folder name, left as is.",
+      "by": "u_ibrahim"
+    },
+    "journal/2026-09-08T10:20:00Z": {
+      "at": "2026-09-08T10:20:00Z",
+      "text": "P1 merged by Ibrahim. Rebased P2 onto main.",
+      "by": "claude"
+    },
+    "journal/2026-09-08T14:40:00Z": {
+      "at": "2026-09-08T14:40:00Z",
+      "text": "T9 record schema merged. Raw MARC kept as bytea alongside extracted columns; round trip is byte exact on 5,000 samples.",
+      "by": "claude"
+    },
+    "journal/2026-09-09T10:10:00Z": {
+      "at": "2026-09-09T10:10:00Z",
+      "text": "Asked about an external cover service for T21. Recommending none at launch: leaks patron searches to a third party unless proxied.",
+      "by": "claude"
+    },
+    "journal/2026-09-09T15:25:00Z": {
+      "at": "2026-09-09T15:25:00Z",
+      "text": "T10 copies merged. Found 1,380 duplicate barcodes in the legacy export; created a conflict report for cataloguing.",
+      "by": "claude"
+    },
+    "journal/2026-09-10T09:00:00Z": {
+      "at": "2026-09-10T09:00:00Z",
+      "text": "No covers at launch. Withdraw it.",
+      "by": "u_marguerite",
+      "questions": [
+        "Q11"
+      ]
+    },
+    "journal/2026-09-10T09:30:00Z": {
+      "at": "2026-09-10T09:30:00Z",
+      "text": "Dropped T21 (cover images). Nothing depended on it.",
+      "by": "claude"
+    },
+    "journal/2026-09-10T13:15:00Z": {
+      "at": "2026-09-10T13:15:00Z",
+      "text": "T11 MARC reader, T12 matcher, T13 authority, T14 normalisation, T15 search mapping and T16 availability view are all unblocked now. Running six in parallel, each in its own worktree.",
+      "by": "claude"
+    },
+    "journal/2026-09-11T11:45:00Z": {
+      "at": "2026-09-11T11:45:00Z",
+      "text": "T11 hit a snag: the available MARC-8 libraries fail on Vietnamese diacritics. Writing a table-driven converter ourselves.",
+      "by": "claude"
+    },
+    "journal/2026-09-11T16:00:00Z": {
+      "at": "2026-09-11T16:00:00Z",
+      "text": "T13 merged.",
+      "by": "claude"
+    },
+    "journal/2026-09-12T10:30:00Z": {
+      "at": "2026-09-12T10:30:00Z",
+      "text": "T16 merged. Refresh lag p99 is 1.2s.",
+      "by": "claude"
+    },
+    "journal/2026-09-14T09:20:00Z": {
+      "at": "2026-09-14T09:20:00Z",
+      "text": "Asked about keeping legacy card numbers. T24 needs it; recommending keep where unique.",
+      "by": "claude"
+    },
+    "journal/2026-09-14T09:25:00Z": {
+      "at": "2026-09-14T09:25:00Z",
+      "text": "Asked about loan history retention for T25. Recommending 30 days plus opt-in.",
+      "by": "claude"
+    },
+    "journal/2026-09-15T14:05:00Z": {
+      "at": "2026-09-15T14:05:00Z",
+      "text": "Keep where unique, reissue on collision. We'll fund the mailing.",
+      "by": "u_zoe",
+      "questions": [
+        "Q2"
+      ]
+    },
+    "journal/2026-09-16T10:05:00Z": {
+      "at": "2026-09-16T10:05:00Z",
+      "text": "Loan plus 30 days with opt-in history.",
+      "by": "u_marguerite",
+      "questions": [
+        "Q6"
+      ]
+    },
+    "journal/2026-09-16T11:30:00Z": {
+      "at": "2026-09-16T11:30:00Z",
+      "text": "T14 merged. Diacritics fold in the sort key only; display keeps them.",
+      "by": "claude"
+    },
+    "journal/2026-09-16T15:00:00Z": {
+      "at": "2026-09-16T15:00:00Z",
+      "text": "T15 search mapping merged. Added a trigram index for title prefixes: tsvector alone is poor for as-you-type.",
+      "by": "claude"
+    },
+    "journal/2026-09-17T09:40:00Z": {
+      "at": "2026-09-17T09:40:00Z",
+      "text": "T11 merged. 2.1M sample records read in 3m40s under 200 MB.",
+      "by": "claude"
+    },
+    "journal/2026-09-17T14:20:00Z": {
+      "at": "2026-09-17T14:20:00Z",
+      "text": "T12 matcher in review. 93% recall, no false merges at 0.94 on the labelled set; large print editions needed a format guard.",
+      "by": "claude"
+    },
+    "journal/2026-09-18T10:00:00Z": {
+      "at": "2026-09-18T10:00:00Z",
+      "text": "T12 merged. T17 bulk runner and T19 indexer started.",
+      "by": "claude"
+    },
+    "journal/2026-09-18T16:45:00Z": {
+      "at": "2026-09-18T16:45:00Z",
+      "text": "T23 patron schema can start (it needs only T2 and T6), so it runs alongside the P2 work. Still stacking its branch on P2 per the plan.",
+      "by": "claude"
+    },
+    "journal/2026-09-21T09:00:00Z": {
+      "at": "2026-09-21T09:00:00Z",
+      "text": "T17 merged. Chunk size 2,000; 10,000 held locks long enough to stall the staging indexer.",
+      "by": "claude"
+    },
+    "journal/2026-09-21T15:30:00Z": {
+      "at": "2026-09-21T15:30:00Z",
+      "text": "T19 indexer merged. Full rebuild takes 62 minutes.",
+      "by": "claude"
+    },
+    "journal/2026-09-22T10:10:00Z": {
+      "at": "2026-09-22T10:10:00Z",
+      "text": "The three pilot branches signed off on the sample. Pell Street found 4 more of the same barcode issue.",
+      "by": "u_tadeusz"
+    },
+    "journal/2026-09-22T11:00:00Z": {
+      "at": "2026-09-22T11:00:00Z",
+      "text": "T18 review queue and T20 record edit API in review.",
+      "by": "claude"
+    },
+    "journal/2026-09-23T09:50:00Z": {
+      "at": "2026-09-23T09:50:00Z",
+      "text": "T20 merged. Validation rules live in internal/bib/rules.yaml.",
+      "by": "claude"
+    },
+    "journal/2026-09-23T14:30:00Z": {
+      "at": "2026-09-23T14:30:00Z",
+      "text": "T18 merged. Keyboard shortcuts added at Tadeusz's request.",
+      "by": "claude"
+    },
+    "journal/2026-09-24T10:20:00Z": {
+      "at": "2026-09-24T10:20:00Z",
+      "text": "T22 pilot import: second from-scratch run matches the first. 14 problems found, all fixed.",
+      "by": "claude"
+    },
+    "journal/2026-09-25T16:00:00Z": {
+      "at": "2026-09-25T16:00:00Z",
+      "text": "T22 merged. P2 complete, opened for review.",
+      "by": "claude"
+    },
+    "journal/2026-09-28T10:00:00Z": {
+      "at": "2026-09-28T10:00:00Z",
+      "text": "Asked about the per-patron hold limit. T32 needs a number. Recommending 25 adults, 10 under 13.",
+      "by": "claude"
+    },
+    "journal/2026-09-29T15:10:00Z": {
+      "at": "2026-09-29T15:10:00Z",
+      "text": "25 and 10, staff can override.",
+      "by": "u_zoe",
+      "questions": [
+        "Q4"
+      ]
+    },
+    "journal/2026-09-29T16:00:00Z": {
+      "at": "2026-09-29T16:00:00Z",
+      "text": "P2 merged.",
+      "by": "owner"
+    },
+    "journal/2026-09-29T16:20:00Z": {
+      "at": "2026-09-29T16:20:00Z",
+      "text": "Rebased the P3 branch onto main after the P2 merge.",
+      "by": "claude"
+    },
+    "journal/2026-09-30T09:30:00Z": {
+      "at": "2026-09-30T09:30:00Z",
+      "text": "T24 patron import done on staging. 3,112 card number collisions against an estimate of 400; sent the reissue list to Zoë.",
+      "by": "claude"
+    },
+    "journal/2026-10-01T10:45:00Z": {
+      "at": "2026-10-01T10:45:00Z",
+      "text": "T25 retention job merged. Dry-run mode prints counts only.",
+      "by": "claude"
+    },
+    "journal/2026-10-01T14:00:00Z": {
+      "at": "2026-10-01T14:00:00Z",
+      "text": "T26 card check digit and T27 household links merged.",
+      "by": "claude"
+    },
+    "journal/2026-10-02T09:00:00Z": {
+      "at": "2026-10-02T09:00:00Z",
+      "text": "Asked about the courier manifest format. Recommend CSV by SFTP.",
+      "by": "claude"
+    },
+    "journal/2026-10-02T15:40:00Z": {
+      "at": "2026-10-02T15:40:00Z",
+      "text": "T28 patron API in review. The permission matrix test is generated from roles.yaml.",
+      "by": "claude"
+    },
+    "journal/2026-10-03T09:30:00Z": {
+      "at": "2026-10-03T09:30:00Z",
+      "text": "Courier says CSV only. We still want slips to print.",
+      "by": "u_nguyen"
+    },
+    "journal/2026-10-03T11:15:00Z": {
+      "at": "2026-10-03T11:15:00Z",
+      "text": "Noted: CSV manifest plus printable packing slips stay in T36.",
+      "by": "claude"
+    },
+    "journal/2026-10-03T15:50:00Z": {
+      "at": "2026-10-03T15:50:00Z",
+      "text": "T28 merged.",
+      "by": "claude"
+    },
+    "journal/2026-10-05T11:00:00Z": {
+      "at": "2026-10-05T11:00:00Z",
+      "text": "Asked about fine-free for under-18s. T41 can't be designed until the board has decided; recommending consortium-wide with a waiver of existing fines.",
+      "by": "claude"
+    },
+    "journal/2026-10-06T09:40:00Z": {
+      "at": "2026-10-06T09:40:00Z",
+      "text": "T29 staff patron search and T30 borrowing rules in review. The agreement contradicts itself in two places (appendix B vs 4.2); asked Hạnh.",
+      "by": "claude"
+    },
+    "journal/2026-10-06T14:00:00Z": {
+      "at": "2026-10-06T14:00:00Z",
+      "text": "Appendix B wins. Section 4.2 is the older wording.",
+      "by": "u_nguyen"
+    },
+    "journal/2026-10-06T15:30:00Z": {
+      "at": "2026-10-06T15:30:00Z",
+      "text": "Encoded appendix B for the two contradictory cases and left a comment on each rule citing it.",
+      "by": "claude"
+    },
+    "journal/2026-10-07T09:15:00Z": {
+      "at": "2026-10-07T09:15:00Z",
+      "text": "T29 and T30 merged. P3 complete, opened for review.",
+      "by": "claude"
+    },
+    "journal/2026-10-07T16:30:00Z": {
+      "at": "2026-10-07T16:30:00Z",
+      "text": "P3 merged.",
+      "by": "owner"
+    },
+    "journal/2026-10-08T16:30:00Z": {
+      "at": "2026-10-08T16:30:00Z",
+      "text": "Consortium-wide. The joint board approved on the 7th. Waive existing fines.",
+      "by": "u_nguyen",
+      "questions": [
+        "Q3"
+      ]
+    },
+    "journal/2026-10-08T17:00:00Z": {
+      "at": "2026-10-08T17:00:00Z",
+      "text": "T41 now unblocked once the fine engine lands. Queued behind T40.",
+      "by": "claude"
+    },
+    "journal/2026-10-09T10:00:00Z": {
+      "at": "2026-10-09T10:00:00Z",
+      "text": "T31 checkout model merged. Due dates now skip closed days per branch: 11 branches close Mondays, which the plan hadn't allowed for.",
+      "by": "claude"
+    },
+    "journal/2026-10-09T15:25:00Z": {
+      "at": "2026-10-09T15:25:00Z",
+      "text": "T32 holds queue in review. Limit enforced in the service so overrides leave an audit event.",
+      "by": "claude"
+    },
+    "journal/2026-10-10T09:05:00Z": {
+      "at": "2026-10-10T09:05:00Z",
+      "text": "Asked about notice languages for T43. Recommending English and Spanish, others later.",
+      "by": "claude"
+    },
+    "journal/2026-10-11T10:20:00Z": {
+      "at": "2026-10-11T10:20:00Z",
+      "text": "English and Spanish at launch, add Vietnamese and Somali after cutover.",
+      "by": "u_zoe",
+      "questions": [
+        "Q15"
+      ]
+    },
+    "journal/2026-10-12T13:00:00Z": {
+      "at": "2026-10-12T13:00:00Z",
+      "text": "T32 merged. T33 holds API, T34 pick list, T35 transfers, T37 renewals and T39 expiry job all unblocked; running five in parallel.",
+      "by": "claude"
+    },
+    "journal/2026-10-13T11:40:00Z": {
+      "at": "2026-10-13T11:40:00Z",
+      "text": "T37 renewals merged. Reason codes plus message templates so Zoë's team can reword them.",
+      "by": "claude"
+    },
+    "journal/2026-10-13T15:50:00Z": {
+      "at": "2026-10-13T15:50:00Z",
+      "text": "T39 expiry job merged. Uses the pickup branch's time zone; the consortium spans two.",
+      "by": "claude"
+    },
+    "journal/2026-10-14T09:30:00Z": {
+      "at": "2026-10-14T09:30:00Z",
+      "text": "T33 holds API merged.",
+      "by": "claude"
+    },
+    "journal/2026-10-14T14:10:00Z": {
+      "at": "2026-10-14T14:10:00Z",
+      "text": "T34 pick list: replay test uses a recorded night from the pilot branches. Added oldest-copy tie break.",
+      "by": "claude"
+    },
+    "journal/2026-10-15T10:00:00Z": {
+      "at": "2026-10-15T10:00:00Z",
+      "text": "T35 transfers merged. Out-of-order scans give a message a desk can read aloud.",
+      "by": "claude"
+    },
+    "journal/2026-10-15T16:20:00Z": {
+      "at": "2026-10-15T16:20:00Z",
+      "text": "T34 merged.",
+      "by": "claude"
+    },
+    "journal/2026-10-16T11:00:00Z": {
+      "at": "2026-10-16T11:00:00Z",
+      "text": "T36 courier manifest and T38 check-in started. P4 should be complete this week.",
+      "by": "claude"
+    },
+    "journal/2026-10-16T16:15:00Z": {
+      "at": "2026-10-16T16:15:00Z",
+      "text": "T38 merged. Added a damaged-return button after the Pell Street review.",
+      "by": "claude"
+    },
+    "journal/2026-10-17T09:40:00Z": {
+      "at": "2026-10-17T09:40:00Z",
+      "text": "T36 merged. CSV only; the courier dropped the PDF.",
+      "by": "claude"
+    },
+    "journal/2026-10-17T10:00:00Z": {
+      "at": "2026-10-17T10:00:00Z",
+      "text": "P4 complete. Opened for review.",
+      "by": "claude"
+    },
+    "journal/2026-10-19T10:30:00Z": {
+      "at": "2026-10-19T10:30:00Z",
+      "text": "Asked whether to cut over in one weekend or three waves. Recommending three; it needs the legacy read-only switch.",
+      "by": "claude"
+    },
+    "journal/2026-10-20T10:00:00Z": {
+      "at": "2026-10-20T10:00:00Z",
+      "text": "P4 merged. Good work on the pick lists.",
+      "by": "owner"
+    },
+    "journal/2026-10-20T14:10:00Z": {
+      "at": "2026-10-20T14:10:00Z",
+      "text": "Asked how much the desk client should do offline. Recommending checkout and check-in only.",
+      "by": "claude"
+    },
+    "journal/2026-10-20T15:45:00Z": {
+      "at": "2026-10-20T15:45:00Z",
+      "text": "T40 fine engine started. Plan reproduces legacy fines to the cent, apart from known rounding bugs.",
+      "by": "claude"
+    },
+    "journal/2026-10-21T09:15:00Z": {
+      "at": "2026-10-21T09:15:00Z",
+      "text": "Three waves. First wave is the pilot three plus nine of Hạnh's choosing.",
+      "by": "u_ibrahim",
+      "questions": [
+        "Q8"
+      ]
+    },
+    "journal/2026-10-21T10:30:00Z": {
+      "at": "2026-10-21T10:30:00Z",
+      "text": "T44 public search API and T42 payments started in parallel with T40's review.",
+      "by": "claude"
+    },
+    "journal/2026-10-22T10:00:00Z": {
+      "at": "2026-10-22T10:00:00Z",
+      "text": "Checkout and check-in only for offline; paper for the rest.",
+      "by": "u_nguyen",
+      "questions": [
+        "Q9"
+      ]
+    },
+    "journal/2026-10-22T11:00:00Z": {
+      "at": "2026-10-22T11:00:00Z",
+      "text": "Asked about receipt printers and scanners (T49). The browser already prints and wedge scanners type like keyboards; recommending we don't build drivers.",
+      "by": "claude"
+    },
+    "journal/2026-10-22T16:40:00Z": {
+      "at": "2026-10-22T16:40:00Z",
+      "text": "T40 merged. 99.6% of loans reproduce the legacy fine; rest are legacy rounding bugs. Hạnh approved the new figures.",
+      "by": "claude"
+    },
+    "journal/2026-10-23T09:10:00Z": {
+      "at": "2026-10-23T09:10:00Z",
+      "text": "Browser print and wedge scanners are enough.",
+      "by": "u_nguyen",
+      "questions": [
+        "Q16"
+      ]
+    },
+    "journal/2026-10-23T09:25:00Z": {
+      "at": "2026-10-23T09:25:00Z",
+      "text": "Dropped T49. Nothing depended on it except T50's optional hardware check, which I removed from T50's verification.",
+      "by": "claude"
+    },
+    "journal/2026-10-23T14:00:00Z": {
+      "at": "2026-10-23T14:00:00Z",
+      "text": "T44 merged. T41 fine-free policy started.",
+      "by": "claude"
+    },
+    "journal/2026-10-24T15:00:00Z": {
+      "at": "2026-10-24T15:00:00Z",
+      "text": "Asked Ibrahim to point the search subdomain at staging so T45 can be tried on its real hostname.",
+      "by": "claude"
+    },
+    "journal/2026-10-24T16:45:00Z": {
+      "at": "2026-10-24T16:45:00Z",
+      "text": "DNS done.",
+      "by": "u_ibrahim"
+    },
+    "journal/2026-10-25T10:30:00Z": {
+      "at": "2026-10-25T10:30:00Z",
+      "text": "T45 public pages merged. Lighthouse accessibility 98; works with JavaScript disabled.",
+      "by": "claude"
+    },
+    "journal/2026-10-26T10:00:00Z": {
+      "at": "2026-10-26T10:00:00Z",
+      "text": "Asked whether to build the voice assistant skill (T47). Recommending dropping it.",
+      "by": "claude"
+    },
+    "journal/2026-10-26T15:20:00Z": {
+      "at": "2026-10-26T15:20:00Z",
+      "text": "T42 payments merged. Over-payment is refused; finance agreed.",
+      "by": "claude"
+    },
+    "journal/2026-10-27T09:50:00Z": {
+      "at": "2026-10-27T09:50:00Z",
+      "text": "Drop it. Nobody at the pilots asked.",
+      "by": "u_marguerite",
+      "questions": [
+        "Q13"
+      ]
+    },
+    "journal/2026-10-27T10:10:00Z": {
+      "at": "2026-10-27T10:10:00Z",
+      "text": "Dropped T47.",
+      "by": "claude"
+    },
+    "journal/2026-10-27T14:40:00Z": {
+      "at": "2026-10-27T14:40:00Z",
+      "text": "T41 merged. Waiver tool waived 41,870 fines totalling $52,310; finance accepted the dry-run report.",
+      "by": "claude"
+    },
+    "journal/2026-10-28T11:00:00Z": {
+      "at": "2026-10-28T11:00:00Z",
+      "text": "T43 notices and T46 account pages merged. Added a 3-day pre-due reminder because every branch asked.",
+      "by": "claude"
+    },
+    "journal/2026-10-28T16:30:00Z": {
+      "at": "2026-10-28T16:30:00Z",
+      "text": "P5 complete, opened for review. Starting T48 offline mode.",
+      "by": "claude"
+    },
+    "journal/2026-10-29T13:30:00Z": {
+      "at": "2026-10-29T13:30:00Z",
+      "text": "Runbook walkthrough with circulation leads produced 11 edits. Applied.",
+      "by": "claude"
+    },
+    "journal/2026-10-30T10:00:00Z": {
+      "at": "2026-10-30T10:00:00Z",
+      "text": "T48 merged. Replay is idempotent with the T31 keys.",
+      "by": "claude"
+    },
+    "journal/2026-10-30T16:50:00Z": {
+      "at": "2026-10-30T16:50:00Z",
+      "text": "T50 rehearsal one took 13h20m, inside the 14 hour window but only just. Patron delta import is the slow step.",
+      "by": "claude"
+    },
+    "journal/2026-10-31T11:30:00Z": {
+      "at": "2026-10-31T11:30:00Z",
+      "text": "Moved the patron delta import ahead of the freeze with a catch-up pass.",
+      "by": "claude"
+    },
+    "journal/2026-11-01T10:15:00Z": {
+      "at": "2026-11-01T10:15:00Z",
+      "text": "T50 rehearsal two: 9h40m, every check passing. Merged.",
+      "by": "claude"
+    },
+    "journal/2026-11-01T15:00:00Z": {
+      "at": "2026-11-01T15:00:00Z",
+      "text": "T51 runbook and T52 legacy read-only switch merged.",
+      "by": "claude"
+    },
+    "journal/2026-11-02T09:30:00Z": {
+      "at": "2026-11-02T09:30:00Z",
+      "text": "All tasks merged or dropped. Checking each done-check.",
+      "by": "claude"
+    },
+    "journal/2026-11-02T12:45:00Z": {
+      "at": "2026-11-02T12:45:00Z",
+      "text": "Done-checks all met. Wrote the handover; two risks I'm least sure about: the patron delta timing on the real production data, and the courier SFTP key rotation.",
+      "by": "claude"
+    },
+    "journal/2026-11-02T16:50:00Z": {
+      "at": "2026-11-02T16:50:00Z",
+      "text": "Status ready for review. Driver cleared. P5 and P6 open, P1 to P4 merged.",
+      "by": "claude"
+    },
+    "run/main": {
+      "title": "Oakhollow catalogue platform migration",
+      "objective": "Move all forty Oakhollow Library Consortium branches from their separate legacy systems to one shared catalogue platform: bibliographic records, patron accounts, holds and transfers, overdue fines, the public search site, and the staff circulation desks, cut over in three waves.",
+      "source": "CAT-88, CAT-112 and docs/migration/brief.md",
+      "status": "done",
+      "approach": "Build one modular Go service on Postgres, in six stacked PRs, each reviewable alone.\n\nRecords and patrons are imported by repeatable chunked jobs that resume after failure, so the rehearsals can be run as many times as needed. Search uses Postgres full text with a trigram index (Q1). Circulation rules are data, resolved by one function, so branches override only where the consortium agreement allows.\n\nCutover is rehearsed with tooling, in three waves of branches, with the legacy system switched read-only at each wave.",
+      "delivery": "Six stacked PRs. P1 to P4 are reviewed and merged by Ibrahim Kessel-Dahl or Marguerite; P5 and P6 are open for review. Only people merge. Branch names use the oakhollow/ prefix.",
+      "done_check": [
+        {
+          "text": "Every one of the 40 branches' reference data (locations, hours, loan periods) loads from config and validates",
+          "state": "met",
+          "note": "T3 and T6 merged; startup rejects an invalid branch file. 40 of 40 load in staging."
+        },
+        {
+          "text": "2.1M bibliographic records import repeatably and resume after a killed worker",
+          "state": "met",
+          "note": "T17 resume test; second from-scratch pilot run matched the first."
+        },
+        {
+          "text": "MARC round trip is lossless",
+          "state": "met",
+          "note": "5,000-record byte comparison in CI."
+        },
+        {
+          "text": "Duplicate records are merged only above the agreed threshold, with no false auto-merges on the labelled set",
+          "state": "met",
+          "note": "0.94 threshold; zero false merges on 3,000 labelled pairs, 93% recall."
+        },
+        {
+          "text": "Search answers a title query in under 150 ms p95 at full size",
+          "state": "met",
+          "note": "Measured 118 ms p95 on the staging database with all 2.1M documents."
+        },
+        {
+          "text": "1.4M patrons import with every legacy card number resolving to exactly one patron",
+          "state": "met",
+          "note": "Re-import identical; the 3,112 collisions are on the reissue list."
+        },
+        {
+          "text": "Loan history is anonymised on schedule and opt-in reading history is kept",
+          "state": "met",
+          "note": "Retention dry run and live run on staging data."
+        },
+        {
+          "text": "Checkout is safe under concurrency",
+          "state": "met",
+          "note": "100 concurrent checkouts of one copy gave exactly one success."
+        },
+        {
+          "text": "Holds fulfil deterministically and respect limits and freezes",
+          "state": "met",
+          "note": "Replay of a recorded night produced identical pick lists."
+        },
+        {
+          "text": "Fines reproduce the legacy figures except where policy deliberately differs",
+          "state": "met",
+          "note": "99.6% identical; the remainder reviewed and approved by circulation."
+        },
+        {
+          "text": "Under-18 accounts accrue no fines and existing ones are waived",
+          "state": "met",
+          "note": "Waiver dry run matched finance's extract; zero new accruals in a week of staging traffic."
+        },
+        {
+          "text": "Public search site works without JavaScript and passes accessibility checks",
+          "state": "met",
+          "note": "axe clean; Lighthouse accessibility 98."
+        },
+        {
+          "text": "Desks can check out and check in offline and reconcile on reconnect",
+          "state": "met",
+          "note": "Two-hour network cut with scripted traffic; all replayed and the three injected conflicts listed."
+        },
+        {
+          "text": "Two consecutive cutover rehearsals finish inside the 14-hour window",
+          "state": "met",
+          "note": "9h40m and 9h55m, every check passing."
+        }
+      ],
+      "out_of_scope": [
+        "Cover images from an external service",
+        "Voice assistant search",
+        "Printer and scanner driver layer (browser print and wedge scanners stay)",
+        "Acquisitions and serials management",
+        "Languages other than English and Spanish for notices at launch"
+      ],
+      "risks": [
+        "Patron delta import timing on production data may differ from staging",
+        "The courier SFTP key must be rotated before wave 1",
+        "Legacy barcode duplicates may still exist at branches not yet piloted",
+        "Two contradictory clauses in the consortium agreement were resolved by ruling, not amendment"
+      ],
+      "jira_browse_url": "https://tracker.oakhollow.example/browse/",
+      "epics": {
+        "CAT-88": "Catalogue records and public search",
+        "CAT-112": "Circulation, holds and fines"
+      },
+      "handover": {
+        "summary": "All 52 tasks are done except three that were dropped on purpose (cover images, voice search, and a printer and scanner driver layer). The platform covers the full scope in the brief: records import with dedupe and search, 1.4M patrons with their card numbers kept where possible, checkout, holds, transfers and renewals, fines with the under-18 waiver, the public site, an offline desk client, and the tooling for a three-wave cutover.\n\nP1 to P4 are merged. P5 (fines, payments, notices, public site) and P6 (desk offline mode, cutover tooling, runbook) are open and stacked: P6 on P5.\n\nTwo cutover rehearsals ran inside the 14-hour window, at 9h40m and 9h55m. Fourteen done-checks were verified and all are met. Every decision that was a person's is in the questions; the sixteen of them are all answered or withdrawn.\n\nWhat I am least sure of is production, not staging: the real patron delta may be bigger than the one we rehearsed with, and the first wave should be watched closely.",
+        "branch": "oakhollow/p6-desk-offline-cutover-tooling-runbook",
+        "pr_url": "https://code.oakhollow.example/consortium/catalogued/pull/455",
+        "look_first": [
+          "internal/circ/checkout.go: the transaction that locks a copy and resolves the due date. Everything in circulation depends on it.",
+          "internal/fines/accrue.go: integer cents, idempotent per loan and date. The 0.4% difference from legacy fines is explained in T40's outcome.",
+          "tools/waive_existing/main.go: the under-18 waiver tool. Run its dry run before anyone runs it live.",
+          "tools/cutover/rehearse.go and docs/cutover/wave-plan.md: how a wave runs and how it is undone.",
+          "internal/dedupe/merge.go: moves copies and holds on merge; the one irreversible action cataloguers take.",
+          "web/desk/offline/replay.ts: replay and the conflict list for offline checkouts.",
+          "config/borrow_rules.yaml: appendix B of the agreement wins where it contradicts section 4.2."
+        ],
+        "risks": [
+          "The patron delta import in cutover rehearsals used staging data; production may be larger.",
+          "The courier SFTP key needs rotating before wave 1 and nothing in the repository does it.",
+          "Reissue letters for 3,112 collided card numbers must go out before the patron wave, or desks will turn patrons away.",
+          "Hold queue ordering across the legacy and new systems during the two weeks of dual running relies on the sync job, which was tested only with synthetic holds."
+        ]
+      },
+      "started_at": "2026-08-24T08:40:00Z",
+      "updated_at": "2026-11-02T16:50:00Z"
+    }
+  }
+}

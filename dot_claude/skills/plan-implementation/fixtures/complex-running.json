@@ -1,0 +1,1138 @@
+{
+  "about": "The blocked mid-run state of a complex plan: nothing implementing or fixing, tasks waiting on reviewers, outside work and open questions, with a five-PR stack and four epics.",
+  "now": "2026-10-30T09:10:00Z",
+  "viewer": "u_ingrid",
+  "people": {
+    "u_ingrid": "Ingrid Solheim-Okafor",
+    "u_tuan": "Nguyễn Thanh Tuấn",
+    "u_zoe": "Zoë Marchetti",
+    "u_dariusz": "Dariusz Wieczorek",
+    "u_inesv": "Inês Carvalho",
+    "u_amara": "Amara Oyelaran",
+    "u_former": null
+  },
+  "docs": {
+    "run/main": {
+      "title": "Electronic customs declarations through the Kestrel gateway",
+      "objective": "Let Halcyon Freightways file import declarations electronically with the national customs gateway straight from a confirmed booking, with tariff classification, duty estimates, broker review, and carrier manifests all in the same flow. The legacy EDI mailbox closes on 31 December, so cutover has to be staged lane by lane and finished before then.",
+      "source": "docs/specs/customs-efiling-2026.md (CUST-77 and its sibling epics)",
+      "status": "running",
+      "approach": "Build bottom-up in four stacked pull requests so each can be reviewed on its own. Foundations first (schema, signed gateway client with safe retries, tariff import, carrier envelope, flags), then the declaration builder, state machine, duty core and portal shell, then the duty rules, classification review and amendment flow, and finally the carrier manifests, sandbox conformance and cutover.\n\nEvery path that can reach the gateway sits behind `customs.efiling.*` flags that default off, and a dry-run mode builds and validates without sending. Work that does not need the real gateway is finished against a fake gateway that can script delays and rejections.\n\nDuty calculation is kept as pure functions over effective-dated tariff rows, so any declaration can be recomputed against the schedule in force when it was filed.",
+      "delivery": "Five stacked PRs, each based on the one before. Only people merge. P1 and P2 hold what must be in place before anyone can file; P3 is the duty, classification and portal work; P4 is carrier manifests and the sandbox run; P5 is the cutover runbook. Branches are cut off the PR branch they land in, and the base moves up the stack as each one merges.",
+      "done_check": [
+        {
+          "text": "A confirmed booking turns into a validated declaration with its documents attached, with no re-keying",
+          "state": "met",
+          "note": "Dry-run of all 212 August test bookings built and validated; the 9 failures were the deliberately broken fixtures."
+        },
+        {
+          "text": "A submission that times out can be retried without creating a second declaration",
+          "state": "met",
+          "note": "Fault-injection test in the client suite; also exercised against the fake gateway in T17."
+        },
+        {
+          "text": "Suggested HS codes are applied automatically only above the agreed confidence",
+          "state": "met",
+          "note": "98.6% agreement on 500 historical lines at the 0.85 threshold."
+        },
+        {
+          "text": "Estimated duty is within 0.5% of the gateway's assessment on the replay set",
+          "state": "unmet",
+          "note": "Currently 1.8% off on the preferential-origin lanes because T18 is not merged, so the general rate is being applied. Re-check after T18 and T22."
+        },
+        {
+          "text": "All 12 conformance scenarios pass against the gateway sandbox",
+          "state": "unchecked"
+        },
+        {
+          "text": "Electronic filing is live on every lane before the legacy mailbox closes on 31 December",
+          "state": "unchecked"
+        }
+      ],
+      "out_of_scope": [
+        "Export declarations and transit documents",
+        "Re-platforming the broker portal's authentication",
+        "Customs bonds and guarantee accounts",
+        "Carriers other than Brightwater Maritime and the two already in the feed contract"
+      ],
+      "risks": [
+        "The sandbox request takes 5 to 10 working days after submission, and nothing else gates the E2E run. Every day it waits compresses the pilot before 31 December.",
+        "Brightwater Maritime's production feed is not due until early December, so manifest reconciliation will see real volume only a few weeks before cutover.",
+        "Preferential rates change what customers pay; a wrong rule table is a compliance problem, not just a bug.",
+        "The gateway has no webhooks, so polling load grows with open declarations; the tail of the schedule (hourly) is an assumption we have not load-tested."
+      ],
+      "jira_browse_url": "https://tracker.halcyon-freight.example/browse/",
+      "epics": {
+        "CUST-77": "Declaration filing",
+        "CUST-81": "Tariff classification and duty",
+        "CUST-85": "Broker portal",
+        "CUST-92": "Carrier feeds and manifests"
+      },
+      "driver": {
+        "session": "drive-customs-efiling-b7",
+        "since": "2026-08-19T09:20:00Z"
+      },
+      "started_at": "2026-08-17T09:12:00Z",
+      "updated_at": "2026-10-28T16:40:00Z"
+    },
+    "tasks/T1": {
+      "title": "Declaration tables and migrations",
+      "order": 1,
+      "status": "merged",
+      "goal": "Give a declaration, its lines, and its status history a home in the bookings database.",
+      "approach": "Three tables: `customs_declaration`, `customs_declaration_line`, `customs_declaration_event`. The event table is append-only; the declaration row carries a denormalised `current_state` so the portal list view does not have to aggregate. Money is numeric(14,4) with a currency column, never a float.\n\nMigration `0147_customs_declarations.sql` is additive only, so the old booking service keeps running against it until cutover.",
+      "touches": [
+        "db/migrations/0147_customs_declarations.sql",
+        "services/bookings/internal/customs/store/declaration_store.go"
+      ],
+      "verify": "Migration applies and rolls back on a copy of last night's snapshot; store round-trip tests pass.",
+      "depends_on": [],
+      "epics": [
+        "CUST-77"
+      ],
+      "pr": "P1",
+      "branch": "cust-77-declaration-tables-and-migrations",
+      "outcome": "Landed as planned, plus a partial unique index on (`booking_id`, `lane_code`) where state is not withdrawn, so a booking cannot hold two live declarations for one lane."
+    },
+    "tasks/T2": {
+      "title": "Gateway client: request signing and transport",
+      "order": 2,
+      "status": "merged",
+      "goal": "A Go client that can talk to the customs gateway's REST endpoints with the signature scheme it requires.",
+      "approach": "The gateway wants an HMAC-SHA512 over the canonical request plus an X-KCG-Timestamp within 90 seconds of its clock. Implement signing in `signer.go`, keep transport separate so tests can swap it, and read the key and key id from the secrets mount, never from env.\n\nClock skew gets its own error type so the retry layer (T7) can tell it apart from a rejection.",
+      "touches": [
+        "services/customs-gateway/client/signer.go",
+        "services/customs-gateway/client/transport.go",
+        "services/customs-gateway/client/errors.go"
+      ],
+      "verify": "Signature test vectors from the gateway's published spec pass; skew beyond 90s returns `ErrClockSkew`.",
+      "depends_on": [],
+      "epics": [
+        "CUST-77"
+      ],
+      "pr": "P1",
+      "branch": "cust-77-gateway-client-signing-and-transport",
+      "outcome": "Done. The spec's test vectors had one typo in the canonical-request example (a trailing newline); we followed the prose and noted it in `client/README.md`."
+    },
+    "tasks/T3": {
+      "title": "Tariff schedule import job",
+      "order": 3,
+      "status": "merged",
+      "goal": "Load the national tariff schedule into Postgres on a schedule so classification and duty read from our own tables.",
+      "approach": "Nightly job pulling the gateway's tariff CSV bundle (~410 MB unpacked), diffing against `tariff_line`, and applying changes inside one transaction per chapter. Rows are effective-dated, never updated in place, because a declaration must be re-computable against the schedule in force on its filing date.",
+      "touches": [
+        "jobs/tariff-import/main.py",
+        "jobs/tariff-import/chapter_diff.py",
+        "db/migrations/0148_tariff_line.sql"
+      ],
+      "verify": "Import of the October schedule plus the superseding November draft yields correct effective ranges; a second run is a no-op.",
+      "depends_on": [],
+      "epics": [
+        "CUST-81"
+      ],
+      "pr": "P1",
+      "branch": "cust-81-tariff-schedule-import-job",
+      "outcome": "Done. Chapters 98 and 99 (special provisions) have a different column layout, so they got their own parser rather than a branch inside the main one."
+    },
+    "tasks/T4": {
+      "title": "Carrier feed envelope parser",
+      "order": 4,
+      "status": "merged",
+      "goal": "Read the common envelope all partner carriers wrap their shipment feeds in, before any carrier-specific mapping.",
+      "approach": "Parse the envelope (sender, feed type, sequence number, checksum) and hand the body to a registered normaliser by `feed_type`. Out-of-sequence and duplicate feeds are quarantined, not dropped, in `carrier_feed_quarantine`.",
+      "touches": [
+        "services/carrier-feeds/envelope/parser.go",
+        "services/carrier-feeds/envelope/sequence.go"
+      ],
+      "verify": "Fixture feeds with gaps, duplicates and a bad checksum land in quarantine with the right reason.",
+      "depends_on": [],
+      "epics": [
+        "CUST-92"
+      ],
+      "pr": "P1",
+      "branch": "cust-92-carrier-feed-envelope-parser",
+      "outcome": "Done as planned."
+    },
+    "tasks/T5": {
+      "title": "Feature flags for e-filing",
+      "order": 5,
+      "status": "merged",
+      "goal": "Per-lane switches so nothing files electronically until we say so.",
+      "approach": "Three flags in the existing flag service: `customs.efiling.enabled` (master), `customs.efiling.lanes` (list of lane codes), and `customs.portal.declarations_tab`. Defaults all off in every environment.",
+      "touches": [
+        "config/flags/customs.yaml",
+        "services/bookings/internal/customs/flags.go"
+      ],
+      "verify": "Flags off: no code path reaches the gateway client. Flags on in staging for lane NL-ROT-GB: the path is reachable.",
+      "depends_on": [],
+      "epics": [
+        "CUST-77",
+        "CUST-85"
+      ],
+      "pr": "P1",
+      "branch": "cust-77-efiling-feature-flags",
+      "outcome": "Done. Added a fourth flag, `customs.efiling.dry_run`, which builds and validates a declaration without submitting; T12 needed it."
+    },
+    "tasks/T6": {
+      "title": "Map bookings to declaration drafts",
+      "order": 6,
+      "status": "merged",
+      "goal": "Turn a confirmed booking into a declaration draft without a clerk retyping anything.",
+      "approach": "Mapper from the booking aggregate to `customs_declaration` + lines: consignor/consignee, incoterm, goods lines with weights and package counts, transport leg, and the lane code. Anything the booking cannot supply is left null and listed in `missing_fields`, so the portal can ask for it.",
+      "touches": [
+        "services/bookings/internal/customs/mapper/booking_to_declaration.go",
+        "services/bookings/internal/customs/mapper/missing_fields.go"
+      ],
+      "verify": "Golden-file tests for twelve real (anonymised) bookings, including a consolidated LCL one with 31 lines.",
+      "depends_on": [
+        "T1"
+      ],
+      "epics": [
+        "CUST-77"
+      ],
+      "pr": "P1",
+      "branch": "cust-77-booking-to-declaration-mapper",
+      "outcome": "Done. LCL consolidations map to one declaration per consignee, not per booking; the plan had assumed one per booking."
+    },
+    "tasks/T7": {
+      "title": "Retries and idempotency keys",
+      "order": 7,
+      "status": "merged",
+      "goal": "A submission that times out must be safe to send again.",
+      "approach": "Idempotency key = declaration id + submission attempt group, sent as Idempotency-Key. Retry with jittered backoff on 502/503/timeouts and on `ErrClockSkew` once after re-syncing. Never retry a 4xx. The gateway keeps keys for 24 hours, so after that window a retry is a new submission and needs a human.",
+      "touches": [
+        "services/customs-gateway/client/retry.go",
+        "services/customs-gateway/client/idempotency.go"
+      ],
+      "verify": "Fault-injection test: kill the connection after the gateway accepts but before we read the response; exactly one declaration exists on the fake gateway.",
+      "depends_on": [
+        "T2"
+      ],
+      "epics": [
+        "CUST-77"
+      ],
+      "pr": "P1",
+      "branch": "cust-77-gateway-retries-and-idempotency-keys",
+      "outcome": "Done. The 24-hour window is enforced in the client: past it, `Submit` returns `ErrKeyExpired` instead of silently creating a duplicate."
+    },
+    "tasks/T8": {
+      "title": "HS code lookup service",
+      "order": 8,
+      "status": "merged",
+      "goal": "Look up a tariff line by commodity code and effective date.",
+      "approach": "Read-only gRPC service over `tariff_line` with an LRU cache keyed on (code, date). Handles the 6-, 8- and 10-digit forms; shorter codes resolve to their heading with a flag, not an error.",
+      "touches": [
+        "services/tariff/lookup/server.go",
+        "services/tariff/lookup/cache.go",
+        "proto/tariff/v1/lookup.proto"
+      ],
+      "verify": "Lookup for 200 sampled historical codes matches the clerk-confirmed lines.",
+      "depends_on": [
+        "T3"
+      ],
+      "epics": [
+        "CUST-81"
+      ],
+      "pr": "P1",
+      "branch": "cust-81-hs-code-lookup-service",
+      "outcome": "Done."
+    },
+    "tasks/T9": {
+      "title": "Normalise Brightwater Maritime feeds",
+      "order": 9,
+      "status": "merged",
+      "goal": "First carrier feed mapped into our shipment model; it is also the template for the others.",
+      "approach": "Brightwater sends container-level events in a fixed-width legacy format. Write the normaliser as a table of field offsets plus a validator, and emit `carrier_shipment_fact` rows. Container numbers are checked against the ISO 6346 check digit; failures are flagged, not rejected.",
+      "touches": [
+        "services/carrier-feeds/brightwater/normaliser.go",
+        "services/carrier-feeds/brightwater/offsets.go",
+        "testdata/carriers/brightwater/2026-08-sample.feed"
+      ],
+      "verify": "A week of production feed replayed in staging produces facts matching the carrier's own weekly statement.",
+      "depends_on": [
+        "T4"
+      ],
+      "epics": [
+        "CUST-92"
+      ],
+      "pr": "P1",
+      "branch": "cust-92-brightwater-maritime-feed-normaliser",
+      "outcome": "Done. The check-digit test caught 14 containers with typos in the sample week, which is why failures are flagged rather than rejected."
+    },
+    "tasks/T10": {
+      "title": "Attach commercial invoice and packing list",
+      "order": 10,
+      "status": "merged",
+      "goal": "A declaration carries its supporting documents, and they stay retrievable.",
+      "approach": "Link existing document rows to declarations through `customs_declaration_document`. Store the SHA-256 of each file at attach time. Retention follows the answer to Q3.",
+      "touches": [
+        "services/documents/internal/attach/declaration_documents.go",
+        "db/migrations/0149_declaration_documents.sql"
+      ],
+      "verify": "Attach, detach, and re-attach a revised invoice; the old version is still reachable by hash.",
+      "depends_on": [
+        "T1",
+        "Q3"
+      ],
+      "epics": [
+        "CUST-77"
+      ],
+      "pr": "P1",
+      "branch": "cust-77-declaration-document-attachments",
+      "outcome": "Done. Retention is a per-document `retain_until` computed at attach time from the Q3 answer."
+    },
+    "tasks/T11": {
+      "title": "Portal route shell and permission scopes",
+      "order": 11,
+      "status": "merged",
+      "goal": "A place in the broker portal for declarations, visible only to people allowed to see them.",
+      "approach": "New `/declarations` route group behind `customs.portal.declarations_tab`. Two scopes: `declarations:read` and `declarations:file`. Brokers get both; customer users get neither yet.",
+      "touches": [
+        "portal/src/routes/declarations/index.tsx",
+        "portal/src/auth/scopes.ts"
+      ],
+      "verify": "A broker sees the tab with the flag on; a customer user gets a 404, not a 403.",
+      "depends_on": [
+        "T5"
+      ],
+      "epics": [
+        "CUST-85"
+      ],
+      "pr": "P2",
+      "branch": "cust-85-portal-route-shell-and-scopes",
+      "outcome": "Done. Chose 404 over 403 for customer users so the route's existence is not disclosed."
+    },
+    "tasks/T12": {
+      "title": "Declaration builder and pre-submission validation",
+      "order": 12,
+      "status": "merged",
+      "goal": "Produce the exact payload the gateway wants, and refuse to send one that will bounce.",
+      "approach": "1. Assemble the gateway XML from the draft, lines, and attached documents.\n2. Validate against the gateway's XSD plus our own rules (weights add up, every line has a tariff code in force on the filing date, declarant block per Q1).\n3. Store the built payload and its hash on the declaration, so what was sent is always provable.\n\nBuilding and validation both run under `customs.efiling.dry_run`.",
+      "touches": [
+        "services/bookings/internal/customs/builder/gateway_xml.go",
+        "services/bookings/internal/customs/builder/validate.go",
+        "services/bookings/internal/customs/builder/schema/declaration-v4.xsd"
+      ],
+      "verify": "Dry-run every declaration from the August test bookings; zero XSD failures, and each deliberately broken fixture fails with the expected rule id.",
+      "depends_on": [
+        "T6",
+        "T7",
+        "T10",
+        "Q1"
+      ],
+      "epics": [
+        "CUST-77"
+      ],
+      "pr": "P2",
+      "branch": "cust-77-declaration-builder-and-pre-submission-validation",
+      "outcome": "Done. Declarant block files as Halcyon with the broker as indirect representative (Q1). 9 validation rules instead of the planned 6: gross >= net weight, packages > 0 and ISO country codes were added after the first review pass."
+    },
+    "tasks/T13": {
+      "title": "Classification suggestions with confidence",
+      "order": 13,
+      "status": "merged",
+      "goal": "Suggest an HS code for a goods description and say how sure we are.",
+      "approach": "Rank candidates from the lookup service using the description, past confirmed lines for the same consignor, and the product's commodity tags. Return the top three with a score in [0,1]. Auto-apply only when the top score is at or above the Q4 threshold and the margin to the second is at least 0.15.",
+      "touches": [
+        "services/tariff/suggest/ranker.go",
+        "services/tariff/suggest/history.go"
+      ],
+      "verify": "On 500 historical lines, auto-applied suggestions agree with the clerk's code at least 98% of the time.",
+      "depends_on": [
+        "T8",
+        "Q4"
+      ],
+      "epics": [
+        "CUST-81"
+      ],
+      "pr": "P2",
+      "branch": "cust-81-classification-suggestions",
+      "outcome": "Done. Agreement on auto-applied lines was 98.6% at the 0.85 threshold from Q4; the margin rule was added after two near-ties on chapter 85 goods."
+    },
+    "tasks/T14": {
+      "title": "Duty and VAT calculation core",
+      "order": 14,
+      "status": "merged",
+      "goal": "Compute duty and import VAT for a declaration line from its tariff line, origin, and customs value.",
+      "approach": "Pure functions: Duty(line, value, origin, date) -> Money and ImportVAT(...). Handles ad valorem, specific (per kg, per 100 kg), and compound rates; rounding is half-up to the cent per line, then summed, matching how the gateway assesses. No preferential rates here, they come in T18.",
+      "touches": [
+        "services/duty/calc/duty.go",
+        "services/duty/calc/vat.go",
+        "services/duty/calc/rounding.go"
+      ],
+      "verify": "Table-driven tests from the authority's published worked examples; all 60 match to the cent.",
+      "depends_on": [
+        "T3",
+        "T8"
+      ],
+      "epics": [
+        "CUST-81"
+      ],
+      "pr": "P2",
+      "branch": "cust-81-duty-and-vat-calculation-core",
+      "outcome": "Done. Rounding per line instead of per declaration moved three of the 60 examples by 1 cent; per-line is what the examples do."
+    },
+    "tasks/T16": {
+      "title": "Portal declaration list and detail view",
+      "order": 16,
+      "status": "merged",
+      "goal": "Brokers can see each declaration, its lines, missing fields, and attached documents.",
+      "approach": "List with filters (lane, state, consignee) over `current_state`, and a detail page showing `missing_fields` as inline prompts. Editing writes through the same builder validation as T12, so the portal cannot create a declaration the backend would refuse.",
+      "touches": [
+        "portal/src/routes/declarations/DeclarationList.tsx",
+        "portal/src/routes/declarations/DeclarationDetail.tsx",
+        "portal/src/api/declarations.ts"
+      ],
+      "verify": "A broker can open a draft with two missing fields, fill them, and see it turn valid.",
+      "depends_on": [
+        "T6",
+        "T11"
+      ],
+      "epics": [
+        "CUST-85"
+      ],
+      "pr": "P2",
+      "branch": "cust-85-portal-declaration-list-and-detail-view",
+      "outcome": "Done."
+    },
+    "tasks/T17": {
+      "title": "Submission workflow state machine",
+      "order": 17,
+      "status": "merged",
+      "goal": "A declaration moves through draft -> validated -> submitted -> accepted/rejected, and every move is recorded.",
+      "approach": "Explicit transition table in `states.go`, one writer for `customs_declaration_event`, and a per-declaration advisory lock so two workers cannot submit the same one. withdrawn is reachable from any state before accepted.",
+      "touches": [
+        "services/bookings/internal/customs/workflow/states.go",
+        "services/bookings/internal/customs/workflow/submit.go"
+      ],
+      "verify": "Property test: no sequence of transitions reaches a state the table forbids.",
+      "depends_on": [
+        "T12"
+      ],
+      "epics": [
+        "CUST-77"
+      ],
+      "pr": "P2",
+      "branch": "cust-77-submission-workflow-state-machine",
+      "outcome": "Done. Added a submitting interim state so a crash mid-send is distinguishable from a declaration that was never sent."
+    },
+    "tasks/T19": {
+      "title": "Portal screen to review suggested classifications",
+      "order": 19,
+      "status": "merged",
+      "goal": "Clerks confirm or change low-confidence HS codes before a declaration is validated.",
+      "approach": "Side-by-side screen: goods description, the three candidates with scores and the tariff text, and the consignor's history. Confirming records the choice into `history.go`'s source table, so the ranker learns from it.",
+      "touches": [
+        "portal/src/routes/declarations/ClassificationReview.tsx",
+        "portal/src/components/TariffCandidateCard.tsx"
+      ],
+      "verify": "A line below the threshold cannot be validated until a clerk picks a code; the pick appears in the ranker's history.",
+      "depends_on": [
+        "T13",
+        "T16"
+      ],
+      "epics": [
+        "CUST-81",
+        "CUST-85"
+      ],
+      "pr": "P3",
+      "branch": "cust-81-portal-classification-review-screen",
+      "outcome": "Done. The tariff text pane truncates at 2,000 characters with an expander; some chapter notes run to 11,000."
+    },
+    "tasks/T24": {
+      "title": "Poll gateway responses and map statuses",
+      "order": 24,
+      "status": "merged",
+      "goal": "Learn what the gateway decided and reflect it on the declaration.",
+      "approach": "The gateway has no webhooks, so poll: every 30s for the first 10 minutes after submission, then every 5 minutes up to 6 hours, then hourly. Map its 14 status codes onto our states; unknown codes park the declaration in `needs_attention` with the raw payload.",
+      "touches": [
+        "services/bookings/internal/customs/poller/poller.go",
+        "services/bookings/internal/customs/poller/status_map.go"
+      ],
+      "verify": "Against the fake gateway: a declaration scripted to be accepted after 4 minutes is accepted on the 5th poll, and an unknown code parks it.",
+      "depends_on": [
+        "T17",
+        "T7"
+      ],
+      "epics": [
+        "CUST-77"
+      ],
+      "pr": "P3",
+      "branch": "cust-77-gateway-response-polling-and-status-mapping",
+      "outcome": "Done. The fake gateway needed a scripted-delay mode; that lives in `testing/fakegateway`."
+    },
+    "tasks/T18": {
+      "title": "Preferential origin and trade-agreement duty rates",
+      "order": 18,
+      "status": "blocked",
+      "goal": "Apply the reduced or zero rates a valid proof of origin entitles a line to.",
+      "approach": "Extend the calculator with an origin-proof input (EUR.1, origin declaration on invoice, or none) and the agreement table in `tariff_preference`. A preferential rate applies only when the proof is present, unexpired, and the rule-of-origin flag on the line is set; otherwise fall back to the general rate and record why.\n\nThis changes what customers pay, so it needs sign-off from compliance before it merges, not just code review.",
+      "touches": [
+        "services/duty/calc/preference.go",
+        "services/duty/calc/origin_proof.go",
+        "db/migrations/0151_tariff_preference.sql"
+      ],
+      "verify": "Worked examples for the three agreements Halcyon actually ships under; compliance signs the rule table.",
+      "depends_on": [
+        "T14",
+        "T13"
+      ],
+      "epics": [
+        "CUST-81"
+      ],
+      "pr": "P3",
+      "branch": "cust-81-preferential-origin-and-trade-agreement-rates"
+    },
+    "tasks/T22": {
+      "title": "Customs value: incoterm and freight apportionment",
+      "order": 22,
+      "status": "pending",
+      "goal": "Get the customs value right when the invoice price is not already the delivered price.",
+      "approach": "For FOB/FCA invoices, add freight and insurance to reach the declared value; for CIF/DAP, strip nothing. Apportion freight across lines by weight or by value according to Q7. Needs the booking's freight charge broken out per container.",
+      "touches": [
+        "services/duty/calc/customs_value.go",
+        "services/duty/calc/apportion.go"
+      ],
+      "verify": "The same consignment priced as FOB and CIF yields the same customs value.",
+      "depends_on": [
+        "T18",
+        "Q7"
+      ],
+      "epics": [
+        "CUST-81"
+      ],
+      "pr": "P3"
+    },
+    "tasks/T23": {
+      "title": "Broker amendment and resubmission",
+      "order": 23,
+      "status": "blocked",
+      "goal": "A broker can fix a rejected declaration and send it again without starting over.",
+      "approach": "Amend creates a new revision of the declaration (same id, revision + 1), re-runs validation, and submits under a fresh idempotency group. The previous payload stays attached to its revision. The UI shows a diff of the two revisions' lines before sending.",
+      "touches": [
+        "portal/src/routes/declarations/AmendDialog.tsx",
+        "services/bookings/internal/customs/workflow/amend.go",
+        "db/migrations/0150_declaration_revision.sql"
+      ],
+      "verify": "Reject a fixture declaration, amend one line, resubmit; both revisions are visible and only the second is live.",
+      "depends_on": [
+        "T17",
+        "T19"
+      ],
+      "epics": [
+        "CUST-85"
+      ],
+      "pr": "P3",
+      "branch": "cust-85-broker-amendment-and-resubmission-with-revision-diff"
+    },
+    "tasks/T26": {
+      "title": "Reconcile estimated duty with the gateway's assessment",
+      "order": 26,
+      "status": "pending",
+      "goal": "Find out when what we quoted differs from what the authority assessed, and by how much.",
+      "approach": "On acceptance, the gateway returns its assessed duty per line. Store it beside our estimate, flag differences over 0.5% or 5 EUR, and add a weekly report grouped by tariff chapter. Differences feed back to the tariff team, not the customer.",
+      "touches": [
+        "services/duty/reconcile/assessment.go",
+        "services/duty/reconcile/report.go"
+      ],
+      "verify": "Replay set of 40 accepted declarations: the report lists the known mismatches and nothing else.",
+      "depends_on": [
+        "T22",
+        "T24"
+      ],
+      "epics": [
+        "CUST-81"
+      ],
+      "pr": "P3"
+    },
+    "tasks/T27": {
+      "title": "Status timeline and consignee notifications",
+      "order": 27,
+      "status": "pending",
+      "goal": "Show brokers, and tell consignees, where a declaration stands.",
+      "approach": "Timeline component over `customs_declaration_event`. Notifications fire on accepted, rejected, and `needs_attention`; the channel and recipient rules come from Q8.",
+      "touches": [
+        "portal/src/routes/declarations/StatusTimeline.tsx",
+        "services/notifications/internal/customs/templates.go"
+      ],
+      "verify": "Each of the three events renders on the timeline and sends exactly one notification.",
+      "depends_on": [
+        "T23",
+        "T24",
+        "Q8"
+      ],
+      "epics": [
+        "CUST-85"
+      ],
+      "pr": "P3"
+    },
+    "tasks/T15": {
+      "title": "Reconcile Brightwater feed against gateway manifests",
+      "order": 15,
+      "status": "blocked",
+      "goal": "Compare what the carrier says it loaded with what we declared.",
+      "approach": "Waiting on Brightwater Maritime to switch on the production feed for our account; their change window is the first week of December. Until then there is no real data to reconcile and the sample week proves nothing about volume. Once live: match containers by ISO 6346 number, flag weight differences over 3%.",
+      "touches": [
+        "services/carrier-feeds/brightwater/reconcile.go"
+      ],
+      "verify": "A full week of production feed reconciles with fewer than 1% unmatched containers.",
+      "depends_on": [
+        "T9"
+      ],
+      "epics": [
+        "CUST-92"
+      ],
+      "pr": "P4"
+    },
+    "tasks/T20": {
+      "title": "Manifest generation from carrier feeds",
+      "order": 20,
+      "status": "pending",
+      "goal": "Produce the arrival manifest the gateway requires from carrier data.",
+      "approach": "Build the manifest from `carrier_shipment_fact` and the matching declarations. The structure follows the answer to Q6: one manifest per vessel voyage, or one per consignment.",
+      "touches": [
+        "services/carrier-feeds/manifest/builder.go",
+        "services/carrier-feeds/manifest/schema/manifest-v2.xsd"
+      ],
+      "verify": "Manifest for a sample voyage validates against the XSD and lists every declared container exactly once.",
+      "depends_on": [
+        "T12",
+        "T9",
+        "Q6"
+      ],
+      "epics": [
+        "CUST-77",
+        "CUST-92"
+      ],
+      "pr": "P4"
+    },
+    "tasks/T21": {
+      "title": "End-to-end submission against the gateway sandbox",
+      "order": 21,
+      "status": "blocked",
+      "goal": "Prove the whole path works against the real gateway's test environment, not just our fake.",
+      "approach": "Cannot start until the customs authority issues sandbox credentials and registers our test declarant number. That request is a web form a Halcyon officer must submit (Q5), and the authority quotes 5 to 10 working days after that. Then: run the 12 scripted scenarios from the authority's conformance pack.",
+      "touches": [
+        "testing/e2e/sandbox/conformance_test.go",
+        "testing/e2e/sandbox/scenarios/"
+      ],
+      "verify": "All 12 conformance scenarios pass against the sandbox with the production client build.",
+      "depends_on": [
+        "T17",
+        "Q5"
+      ],
+      "epics": [
+        "CUST-77"
+      ],
+      "pr": "P4"
+    },
+    "tasks/T25": {
+      "title": "Rejection codes and clerk guidance",
+      "order": 25,
+      "status": "pending",
+      "goal": "When the gateway rejects a declaration, tell the clerk what to fix in plain words.",
+      "approach": "Catalogue the rejection codes seen in sandbox testing, map each to a field and a message in English, Dutch and Polish, and route unknown codes to `needs_attention`. Built after T21 because the sandbox is the only reliable source of real codes.",
+      "touches": [
+        "services/bookings/internal/customs/rejections/catalogue.yaml",
+        "services/bookings/internal/customs/rejections/render.go"
+      ],
+      "verify": "Every code hit in the conformance pack has a message in all three languages.",
+      "depends_on": [
+        "T24",
+        "T21"
+      ],
+      "epics": [
+        "CUST-77"
+      ],
+      "pr": "P4"
+    },
+    "tasks/T28": {
+      "title": "Dual-write to the legacy EDI mailbox",
+      "order": 28,
+      "status": "dropped",
+      "goal": "Keep sending to the old EDI mailbox in parallel during the transition.",
+      "approach": "Dropped; see the journal. The authority retires the mailbox on 31 December, and customs counsel advised that filing the same consignment on two channels risks a duplicate declaration.",
+      "touches": [
+        "services/bookings/internal/customs/legacy/edi_mirror.go"
+      ],
+      "verify": "n/a",
+      "depends_on": [
+        "T17"
+      ],
+      "epics": [
+        "CUST-77"
+      ]
+    },
+    "tasks/T29": {
+      "title": "Staged enablement and cutover runbook",
+      "order": 29,
+      "status": "pending",
+      "goal": "Turn electronic filing on lane by lane, with a way back.",
+      "approach": "Runbook plus the flag changes: pilot on NL-ROT-GB for two weeks, then the next three lanes by volume. For each lane: a go/no-go checklist, the rollback (flag off, drafts remain), and who watches the first 20 declarations.",
+      "touches": [
+        "docs/runbooks/customs-efiling-cutover.md",
+        "config/flags/customs.yaml"
+      ],
+      "verify": "Dry-run of the runbook on staging, including the rollback, signed off by broker operations.",
+      "depends_on": [
+        "T20",
+        "T25",
+        "T26",
+        "T27"
+      ],
+      "epics": [
+        "CUST-77",
+        "CUST-85"
+      ],
+      "pr": "P5"
+    },
+    "prs/P1": {
+      "title": "Customs e-filing foundations",
+      "summary": "Schema, signed gateway client with retries and idempotency, tariff import and lookup, carrier envelope and the first normaliser, document attachment, flags.",
+      "order": 1,
+      "branch": "cust-77-efiling-foundations",
+      "base": "main",
+      "status": "merged",
+      "url": "https://code.halcyon-freight.example/platform/bookings/pull/1184"
+    },
+    "prs/P2": {
+      "title": "Declaration builder, workflow and duty core",
+      "summary": "Builds and validates the gateway payload, the submission state machine, duty and VAT calculation, classification suggestions, and the portal shell with list and detail.",
+      "order": 2,
+      "branch": "cust-77-declaration-builder-workflow-and-duty-core",
+      "base": "P1",
+      "status": "open",
+      "url": "https://code.halcyon-freight.example/platform/bookings/pull/1197"
+    },
+    "prs/P3": {
+      "title": "Duty rules, classification review and amendment",
+      "order": 3,
+      "branch": "cust-81-preference-rates-classification-review-and-amendment-flow",
+      "base": "P2",
+      "status": "draft",
+      "url": "https://code.halcyon-freight.example/platform/bookings/pull/1203"
+    },
+    "prs/P4": {
+      "title": "Carrier manifests and sandbox conformance",
+      "summary": "Manifest generation, Brightwater reconciliation, rejection guidance, and the E2E run against the gateway sandbox.",
+      "order": 4,
+      "branch": "cust-92-carrier-manifests-and-sandbox-conformance",
+      "base": "P3",
+      "status": "planned"
+    },
+    "prs/P5": {
+      "title": "Cutover runbook and lane enablement",
+      "order": 5,
+      "branch": "cust-77-cutover-runbook",
+      "base": "P4",
+      "status": "planned"
+    },
+    "questions/Q1": {
+      "title": "Who is the declarant on the filing?",
+      "context": "The gateway's declarant block can name Halcyon itself, or the licensed customs broker acting for the importer. Our contracts with customers vary: some give us power of representation, some do not. The choice changes who is liable for errors and which licence number goes in the XML.",
+      "status": "answered",
+      "asked_at": "2026-08-17T14:05:00Z",
+      "options": [
+        {
+          "label": "Halcyon as declarant, broker as indirect representative",
+          "cost": "Halcyon carries liability on every filing; needs our licence on all lanes."
+        },
+        {
+          "label": "Broker as declarant",
+          "cost": "Lower liability, but we cannot file without a broker's signature on each one."
+        },
+        {
+          "label": "Per-customer setting"
+        }
+      ],
+      "recommendation": "Halcyon as declarant, broker as indirect representative",
+      "blocks": "T12 (the declarant block)",
+      "task": "T12",
+      "answer": "Halcyon as declarant, broker as indirect representative. Counsel confirms our licence covers all lanes in scope.",
+      "answered_by": "u_tuan",
+      "answered_at": "2026-08-18T15:30:00Z"
+    },
+    "questions/Q2": {
+      "title": "Split the work into a stack of PRs?",
+      "context": "The default is one PR. Five foundation tasks have already merged into the run branch and the full change is on course to be several thousand lines, with compliance needing to look at only the duty rules. Splitting means five reviewable PRs in a stack, each based on the previous one.",
+      "status": "answered",
+      "asked_at": "2026-08-25T10:10:00Z",
+      "options": [
+        {
+          "label": "Yes, stack of five",
+          "cost": "More merge coordination; a late fix low in the stack means rebasing the rest."
+        },
+        {
+          "label": "Keep one PR",
+          "cost": "One very large review, and compliance has to find the duty rules inside it."
+        }
+      ],
+      "recommendation": "Yes, stack of five",
+      "blocks": "Nothing, but PR branch names are held until answered",
+      "answer": "Yes, stack of five. Dariusz will review P1 and P2.",
+      "answered_by": "u_ingrid",
+      "answered_at": "2026-08-25T11:02:00Z"
+    },
+    "questions/Q3": {
+      "title": "How long do we keep submitted documents?",
+      "context": "Attached invoices and packing lists are stored against each declaration. The authority can audit up to 5 years back; our own policy for customer documents is 7 years.",
+      "status": "answered",
+      "asked_at": "2026-08-26T09:15:00Z",
+      "options": [
+        {
+          "label": "5 years from filing"
+        },
+        {
+          "label": "7 years from filing",
+          "cost": "About 2 TB more storage over three years at current volumes."
+        }
+      ],
+      "blocks": "T10",
+      "task": "T10",
+      "answer": "7 years, matching the customer-documents policy.",
+      "answered_by": "u_amara",
+      "answered_at": "2026-08-26T13:40:00Z"
+    },
+    "questions/Q4": {
+      "title": "How confident must a suggested HS code be to apply automatically?",
+      "context": "Wrong classification means wrong duty and possible penalties, but sending every line to a clerk defeats the point. A backtest on 500 clerk-confirmed lines suggests agreement stays above 98% at 0.85 and drops below 95% under 0.75.",
+      "status": "answered",
+      "asked_at": "2026-08-31T12:20:00Z",
+      "options": [
+        {
+          "label": "0.85",
+          "cost": "About 40% of lines auto-applied."
+        },
+        {
+          "label": "0.75",
+          "cost": "About 58% auto-applied, with agreement below the 98% we want."
+        },
+        {
+          "label": "Never auto-apply"
+        }
+      ],
+      "recommendation": "0.85",
+      "blocks": "T13",
+      "task": "T13",
+      "answer": "0.85, and review any line over 5,000 EUR regardless of score.",
+      "answered_by": "u_zoe",
+      "answered_at": "2026-09-01T08:50:00Z"
+    },
+    "questions/Q5": {
+      "title": "Request the gateway sandbox credentials",
+      "context": "A Halcyon officer has to do this: sign in to the authority's developer portal at https://developers.kestrel-customs.example/register with the company account, submit the \"Sandbox access\" form with the test declarant number HFW-TEST-0231 and our server egress IP 203.0.113.44, and upload the signed data-processing annex. They quote 5 to 10 working days. Choose Done once the form is submitted, or Skip if someone else has already filed it.",
+      "status": "open",
+      "asked_at": "2026-09-17T15:45:00Z",
+      "options": [
+        {
+          "label": "Done"
+        },
+        {
+          "label": "Skip"
+        }
+      ],
+      "recommendation": "Done",
+      "blocks": "T21, and through it T25 and the cutover",
+      "task": "T21"
+    },
+    "questions/Q6": {
+      "title": "One manifest per voyage or per consignment?",
+      "context": "The gateway accepts either. A voyage manifest is one file listing all containers and matches how the carrier reports; a consignment manifest follows our own units and makes amendments simpler. Brightwater's feed groups by voyage, so the first costs less to build. Customs counsel has not said whether the authority treats them differently for audit.",
+      "status": "open",
+      "asked_at": "2026-09-30T14:10:00Z",
+      "options": [
+        {
+          "label": "Per voyage",
+          "cost": "One late consignment forces a revised manifest for the whole voyage."
+        },
+        {
+          "label": "Per consignment",
+          "cost": "Needs a mapping from container to consignment that the carrier feed does not give us directly."
+        }
+      ],
+      "recommendation": "Per voyage",
+      "blocks": "T20",
+      "task": "T20"
+    },
+    "questions/Q7": {
+      "title": "Spread freight over lines by weight or by value?",
+      "context": "For FOB and FCA invoices the customs value includes freight and insurance, which our booking records only once per container. Apportioning by value keeps cheap heavy goods cheaper on paper; by weight is what most brokers do by hand. The authority's guidance allows either if applied consistently.",
+      "status": "open",
+      "asked_at": "2026-10-05T10:30:00Z",
+      "options": [
+        {
+          "label": "By value"
+        },
+        {
+          "label": "By weight",
+          "cost": "High-value light goods are under-valued, which an audit may question."
+        },
+        {
+          "label": "Per customer"
+        }
+      ],
+      "blocks": "T22",
+      "task": "T22"
+    },
+    "questions/Q8": {
+      "title": "Who gets told when a declaration is accepted or rejected?",
+      "context": "Brokers see status in the portal. Consignees today get shipment emails from the bookings service. Telling them about customs outcomes is useful but a rejection email can alarm a customer over something a clerk would fix in an hour.",
+      "status": "open",
+      "asked_at": "2026-10-27T09:35:00Z",
+      "options": [
+        {
+          "label": "Broker only",
+          "cost": "Consignees ask us anyway."
+        },
+        {
+          "label": "Broker and consignee on acceptance; broker only on rejection"
+        },
+        {
+          "label": "Broker and consignee on both"
+        }
+      ],
+      "recommendation": "Broker and consignee on acceptance; broker only on rejection",
+      "blocks": "T27",
+      "task": "T27"
+    },
+    "journal/2026-08-17T09:12:00Z": {
+      "at": "2026-08-17T09:12:00Z",
+      "text": "Started from the spec. Read it and the existing `services/bookings` customs stubs, and created this plan page in planning.",
+      "by": "claude"
+    },
+    "journal/2026-08-17T11:40:00Z": {
+      "at": "2026-08-17T11:40:00Z",
+      "text": "Planned 29 tasks over four epics. Foundations (schema, signed client, tariff import, carrier envelope, flags) have no dependencies on each other, so they can run side by side. Duty and portal work hangs off the lookup service.",
+      "by": "claude"
+    },
+    "journal/2026-08-17T14:05:00Z": {
+      "at": "2026-08-17T14:05:00Z",
+      "text": "Asked Q1: the spec says \"the declarant\" without saying who that is, and the XML shape differs.",
+      "by": "claude"
+    },
+    "journal/2026-08-18T15:30:00Z": {
+      "at": "2026-08-18T15:30:00Z",
+      "text": "Halcyon files as declarant with the broker as indirect representative. Counsel has checked the licence scope.",
+      "by": "u_tuan",
+      "questions": [
+        "Q1"
+      ]
+    },
+    "journal/2026-08-19T09:00:00Z": {
+      "at": "2026-08-19T09:00:00Z",
+      "text": "Plan approved. Start on the foundations; keep everything behind flags.",
+      "by": "u_ingrid"
+    },
+    "journal/2026-08-19T09:20:00Z": {
+      "at": "2026-08-19T09:20:00Z",
+      "text": "Set status to running and took the driver slot. Confirmed with Ingrid that branch names follow the tracker key, lowercase.",
+      "by": "claude"
+    },
+    "journal/2026-08-20T16:30:00Z": {
+      "at": "2026-08-20T16:30:00Z",
+      "text": "T1 merged. Added a partial unique index so a booking cannot hold two live declarations on one lane; the plan had not covered that.",
+      "by": "claude"
+    },
+    "journal/2026-08-21T15:10:00Z": {
+      "at": "2026-08-21T15:10:00Z",
+      "text": "T2 and T3 merged. The gateway spec's signature example has a stray trailing newline; I followed the prose and left a note in the client README.",
+      "by": "claude"
+    },
+    "journal/2026-08-24T10:45:00Z": {
+      "at": "2026-08-24T10:45:00Z",
+      "text": "T4 and T5 merged. Added a `customs.efiling.dry_run` flag that T12 will need to build payloads without sending.",
+      "by": "claude"
+    },
+    "journal/2026-08-25T10:10:00Z": {
+      "at": "2026-08-25T10:10:00Z",
+      "text": "Five foundation tasks are merged and the combined change is already large. Proposed splitting into a stack (Q2) rather than opening one giant PR.",
+      "by": "claude"
+    },
+    "journal/2026-08-25T11:02:00Z": {
+      "at": "2026-08-25T11:02:00Z",
+      "text": "Stack of five is fine. Dariusz takes P1 and P2.",
+      "by": "u_ingrid",
+      "questions": [
+        "Q2"
+      ]
+    },
+    "journal/2026-08-26T09:15:00Z": {
+      "at": "2026-08-26T09:15:00Z",
+      "text": "T10 needs a retention period for stored documents. Asked rather than guessing: it is a legal number.",
+      "by": "claude"
+    },
+    "journal/2026-08-26T16:20:00Z": {
+      "at": "2026-08-26T16:20:00Z",
+      "text": "T7 merged. Beyond the 24-hour key window the client now returns `ErrKeyExpired`, because a retry would silently become a second declaration.",
+      "by": "claude"
+    },
+    "journal/2026-08-27T13:05:00Z": {
+      "at": "2026-08-27T13:05:00Z",
+      "text": "T6 and T8 merged. LCL consolidations map to one declaration per consignee, not per booking, which differs from the plan; updated T6's outcome.",
+      "by": "claude"
+    },
+    "journal/2026-08-28T15:00:00Z": {
+      "at": "2026-08-28T15:00:00Z",
+      "text": "T10 merged with a per-document `retain_until` computed from the seven-year answer.",
+      "by": "claude"
+    },
+    "journal/2026-08-31T17:25:00Z": {
+      "at": "2026-08-31T17:25:00Z",
+      "text": "T9 merged. The ISO 6346 check on the sample week flagged 14 containers with typos. I flag rather than reject them, so a clerk can correct instead of the whole feed failing.",
+      "by": "claude"
+    },
+    "journal/2026-08-31T12:20:00Z": {
+      "at": "2026-08-31T12:20:00Z",
+      "text": "Asked Q4 (auto-apply threshold) so T13 is not held when T8 lands, and proposed 0.85 from the backtest.",
+      "by": "claude"
+    },
+    "journal/2026-09-01T08:50:00Z": {
+      "at": "2026-09-01T08:50:00Z",
+      "text": "0.85, and anything over 5,000 EUR gets a human look regardless of score. Customers notice when we get the big ones wrong.",
+      "by": "u_zoe",
+      "questions": [
+        "Q4"
+      ]
+    },
+    "journal/2026-09-02T10:15:00Z": {
+      "at": "2026-09-02T10:15:00Z",
+      "text": "Merged P1 (#1184). Opened the stack: P2 now bases on main.",
+      "by": "u_dariusz"
+    },
+    "journal/2026-09-04T16:35:00Z": {
+      "at": "2026-09-04T16:35:00Z",
+      "text": "T11 and T12 merged. The review added three validation rules (gross >= net weight, packages > 0, ISO country codes), so there are nine rather than six.",
+      "by": "claude"
+    },
+    "journal/2026-09-07T14:00:00Z": {
+      "at": "2026-09-07T14:00:00Z",
+      "text": "T13 and T16 merged. Added a 0.15 margin rule after two near-ties on chapter 85 goods auto-applied the wrong code in the backtest.",
+      "by": "claude"
+    },
+    "journal/2026-09-08T09:30:00Z": {
+      "at": "2026-09-08T09:30:00Z",
+      "text": "Wrote the portal list view's empty state as \"No declarations yet\" instead of an error; brokers on the pilot lane will see it first.",
+      "by": "claude"
+    },
+    "journal/2026-09-09T11:20:00Z": {
+      "at": "2026-09-09T11:20:00Z",
+      "text": "Brightwater Maritime told the carrier-feeds team its production feed for our account will not be enabled before their December change window. T15 is blocked on that.",
+      "by": "claude"
+    },
+    "journal/2026-09-10T15:40:00Z": {
+      "at": "2026-09-10T15:40:00Z",
+      "text": "T14 merged. Rounding per line rather than per declaration moved three of the authority's 60 worked examples by one cent, and per line is what their examples do.",
+      "by": "claude"
+    },
+    "journal/2026-09-14T13:10:00Z": {
+      "at": "2026-09-14T13:10:00Z",
+      "text": "T17 merged with an extra submitting state so a crash mid-send is distinguishable from never sent. P2 is opened for review (#1197).",
+      "by": "claude"
+    },
+    "journal/2026-09-16T10:25:00Z": {
+      "at": "2026-09-16T10:25:00Z",
+      "text": "T19 merged. The tariff text pane truncates at 2,000 characters, because some chapter notes run past 11,000.",
+      "by": "claude"
+    },
+    "journal/2026-09-16T17:55:00Z": {
+      "at": "2026-09-16T17:55:00Z",
+      "text": "T24 merged. Needed a scripted-delay mode in the fake gateway to test the poll schedule; it lives in `testing/fakegateway`. P3 opened as a draft since two of its tasks have landed (#1203).",
+      "by": "claude"
+    },
+    "journal/2026-09-17T15:45:00Z": {
+      "at": "2026-09-17T15:45:00Z",
+      "text": "T21 cannot start without sandbox credentials, and requesting them is a form a Halcyon officer must fill in. Asked Q5. The authority quotes 5 to 10 working days, so this is the longest pole.",
+      "by": "claude"
+    },
+    "journal/2026-09-17T16:00:00Z": {
+      "at": "2026-09-17T16:00:00Z",
+      "text": "Marked T21 blocked. Note for the plan: T25 and the cutover now sit behind it.",
+      "by": "claude"
+    },
+    "journal/2026-09-22T11:45:00Z": {
+      "at": "2026-09-22T11:45:00Z",
+      "text": "Drop the EDI dual-write. Counsel's advice is that filing one consignment on two channels risks a duplicate declaration, and the mailbox closes on 31 December anyway.",
+      "by": "u_tuan"
+    },
+    "journal/2026-09-22T12:10:00Z": {
+      "at": "2026-09-22T12:10:00Z",
+      "text": "Dropped T28 (dual-write to the legacy mailbox). Nothing depended on it. The cutover runbook will describe the mailbox shutdown instead.",
+      "by": "claude"
+    },
+    "journal/2026-09-30T14:10:00Z": {
+      "at": "2026-09-30T14:10:00Z",
+      "text": "Asked Q6 on manifest shape. Per voyage is cheaper to build, but I do not know how the authority audits manifests, so I left the call to a person.",
+      "by": "claude"
+    },
+    "journal/2026-10-02T09:40:00Z": {
+      "at": "2026-10-02T09:40:00Z",
+      "text": "T18 is ready for review. Code is done, but it changes customer-visible duty, so I held the merge for compliance sign-off on the rule table, not just a code review.",
+      "by": "claude"
+    },
+    "journal/2026-10-05T10:30:00Z": {
+      "at": "2026-10-05T10:30:00Z",
+      "text": "Asked Q7: how to spread freight over lines. No recommendation from me; the authority permits both, and the answer is about audit risk more than code.",
+      "by": "claude"
+    },
+    "journal/2026-10-07T13:15:00Z": {
+      "at": "2026-10-07T13:15:00Z",
+      "text": "Reading the preference table now. Two of the agreements have rules of origin that depend on value-added percentages, which the table does not model. Will list what I find.",
+      "by": "u_tuan"
+    },
+    "journal/2026-10-09T16:05:00Z": {
+      "at": "2026-10-09T16:05:00Z",
+      "text": "Re-ran the duty comparison against the replay set while T18 waits: 1.8% off, all on preferential lanes. That is expected until T18 merges. Marked the done-check unmet with that note.",
+      "by": "claude"
+    },
+    "journal/2026-10-12T10:00:00Z": {
+      "at": "2026-10-12T10:00:00Z",
+      "text": "Sandbox form: Zoë is the licensed officer and is away until the 19th. Q5 stays open until then.",
+      "by": "u_ingrid"
+    },
+    "journal/2026-10-19T14:30:00Z": {
+      "at": "2026-10-19T14:30:00Z",
+      "text": "Back. I need the egress IP from platform before I can fill in the form; asked Dariusz.",
+      "by": "u_zoe"
+    },
+    "journal/2026-10-21T09:50:00Z": {
+      "at": "2026-10-21T09:50:00Z",
+      "text": "Egress IP for the sandbox allow-list is the staging NAT address. Sent to Zoë.",
+      "by": "u_dariusz"
+    },
+    "journal/2026-10-23T13:20:00Z": {
+      "at": "2026-10-23T13:20:00Z",
+      "text": "T23 is finished and tested. Opened it for review by Inês, who owns the portal.",
+      "by": "claude"
+    },
+    "journal/2026-10-26T15:45:00Z": {
+      "at": "2026-10-26T15:45:00Z",
+      "text": "Looked at the amend dialog. The revision diff is good but it needs to show unchanged lines collapsed, or the dialog is unreadable for 31-line consolidations. Marking as a request, not a blocker.",
+      "by": "u_inesv"
+    },
+    "journal/2026-10-26T16:30:00Z": {
+      "at": "2026-10-26T16:30:00Z",
+      "text": "Will fold Inês's collapse request into T23 in the same branch; it does not change the plan. T23 stays in review until she signs.",
+      "by": "claude"
+    },
+    "journal/2026-10-27T09:35:00Z": {
+      "at": "2026-10-27T09:35:00Z",
+      "text": "Asked Q8 on who gets notified. Recommended telling consignees on acceptance only, since a rejection is usually a clerk's quick fix.",
+      "by": "claude"
+    },
+    "journal/2026-10-28T11:05:00Z": {
+      "at": "2026-10-28T11:05:00Z",
+      "text": "Compliance read of T18: the value-added rule needs a field we do not capture. Sending Claude the two agreements affected; I do not think this blocks the other agreements.",
+      "by": "u_tuan"
+    },
+    "journal/2026-10-28T14:20:00Z": {
+      "at": "2026-10-28T14:20:00Z",
+      "text": "Nothing is ready: T21 waits on the form (Q5), T20, T22 and T27 wait on answers, T18 and T23 are with reviewers, T15 on the carrier. Set status to blocked and listed each in the banner.",
+      "by": "claude"
+    },
+    "journal/2026-10-28T16:40:00Z": {
+      "at": "2026-10-28T16:40:00Z",
+      "text": "Updated the risks: the sandbox's 5 to 10 working days now eat into the pilot window before 31 December.",
+      "by": "claude"
+    }
+  }
+}

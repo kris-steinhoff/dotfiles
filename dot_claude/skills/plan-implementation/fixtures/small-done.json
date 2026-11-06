@@ -1,0 +1,174 @@
+{
+  "about": "A short, finished plan that shows the sparse paths: handover without risks, one out-of-scope item, one answered question, one open PR.",
+  "now": "2026-09-16T20:10:00Z",
+  "viewer": "u_marisol",
+  "people": {
+    "u_marisol": "Marisol Quintanilla-Reyes",
+    "u_tuan": "Tuan Nguyễn"
+  },
+  "docs": {
+    "run/main": {
+      "title": "One-click opt-out link in appointment reminder texts",
+      "objective": "Patients of Harbor Lantern Clinic can stop appointment reminder texts by tapping a link in the text itself, without logging in or replying STOP. An opted-out number gets no further reminders.",
+      "source": "docs/specs/reminder-opt-out.md",
+      "status": "done",
+      "approach": "Add a reminder_opt_outs table keyed by phone number, and a signed, non-expiring token that names a patient's number so the link needs no login. A public GET /o/<token> shows a confirm page and POST /o/<token> records the opt-out. The nightly reminder job appends the link and skips numbers in the table.\n\nThe token is an HMAC over the number, not a row id, so links in already-sent texts keep working after the table is cleaned up.",
+      "delivery": "One PR, reminder-opt-out-link, against main. Clinic staff review; the user merges.",
+      "done_check": [
+        {
+          "text": "A reminder text sent by the nightly job ends with an opt-out link",
+          "state": "met",
+          "note": "Checked the rendered body in test_reminder_body_has_optout_link and a dry run against the staging queue."
+        },
+        {
+          "text": "Following the link and confirming adds the number to reminder_opt_outs, and the next nightly run sends it nothing",
+          "state": "met",
+          "note": "End-to-end test in tests/e2e/test_optout_flow.py passes; a second dry run skipped the test number."
+        },
+        {
+          "text": "A tampered or malformed token returns 404 and records nothing",
+          "state": "met",
+          "note": "Route tests for a flipped byte, a truncated token, and non-base64 input all return 404 with no row written."
+        }
+      ],
+      "out_of_scope": [
+        "A way for patients to opt back in from the link; front desk staff re-enable by hand for now"
+      ],
+      "started_at": "2026-09-14T14:05:00Z",
+      "updated_at": "2026-09-16T19:40:00Z",
+      "handover": {
+        "summary": "All three tasks are merged into reminder-opt-out-link and the PR is open. Reminder texts now end with Stop these texts: https://hlc.example/o/<token>; confirming on that page adds the number to reminder_opt_outs, and the nightly job skips those numbers. Opt-out covers appointment reminders only, per Marisol's answer to Q1.",
+        "branch": "reminder-opt-out-link",
+        "pr_url": "https://code.harborlantern.example/clinic/reminders/pull/58",
+        "look_first": [
+          "reminders/optout/tokens.py: the HMAC scheme and how the secret is read",
+          "The skip query in reminders/jobs/nightly.py"
+        ]
+      }
+    },
+    "tasks/T1": {
+      "title": "Opt-out table and signed tokens",
+      "order": 1,
+      "status": "merged",
+      "goal": "Store opt-outs and make links that name a number without exposing it.",
+      "approach": "Migration 0042_reminder_opt_outs.sql creates reminder_opt_outs(phone_e164 text primary key, opted_out_at timestamptz not null, source text not null).\n\ntokens.py builds the token as base64url(number) + \".\" + base64url(HMAC-SHA256 of the number with OPTOUT_SECRET). Verification uses a constant-time compare. The secret comes from the app config, never the repo.",
+      "touches": [
+        "db/migrations/0042_reminder_opt_outs.sql",
+        "reminders/optout/tokens.py",
+        "reminders/optout/store.py",
+        "tests/optout/test_tokens.py"
+      ],
+      "verify": "Tokens round-trip; a flipped byte fails verification; store.add is idempotent for the same number.",
+      "depends_on": [],
+      "branch": "reminder-opt-out-link-t1-table-and-tokens",
+      "pr": "P1",
+      "outcome": "Done as planned. Added store.is_opted_out too, since T3 needs it and it was three lines."
+    },
+    "tasks/T2": {
+      "title": "Public opt-out page: GET shows confirm, POST records it",
+      "order": 2,
+      "status": "merged",
+      "goal": "A patient taps the link and confirms in one more tap.",
+      "approach": "Routes GET /o/<token> and POST /o/<token> in reminders/web/optout.py. GET renders a plain page with one button, \"Stop appointment reminders\". POST records the opt-out with source = 'link' and renders a thanks page.\n\nBad tokens return 404 with no hint why. The confirm step stays because some phones prefetch links in texts, and a GET that opted people out would trigger on that.",
+      "touches": [
+        "reminders/web/optout.py",
+        "reminders/web/templates/optout_confirm.html",
+        "reminders/web/templates/optout_done.html",
+        "tests/web/test_optout_routes.py"
+      ],
+      "verify": "Route tests cover good token, bad token, repeat POST. GET never writes.",
+      "depends_on": ["T1"],
+      "branch": "reminder-opt-out-link-t2-public-page",
+      "pr": "P1",
+      "outcome": "As planned. The thanks page names what was stopped (appointment reminders only), following the answer to Q1."
+    },
+    "tasks/T3": {
+      "title": "Add the link to reminders and skip opted-out numbers",
+      "order": 3,
+      "status": "merged",
+      "goal": "Reminders carry the link, and opted-out numbers get nothing.",
+      "approach": "In reminders/jobs/nightly.py, filter the day's recipients against reminder_opt_outs in the query, not after, so skipped numbers never reach the SMS gateway client. reminders/messages.py appends the link built from tokens.make(number).\n\nAdd an end-to-end test that runs the job against a fake gateway.",
+      "touches": [
+        "reminders/jobs/nightly.py",
+        "reminders/messages.py",
+        "tests/e2e/test_optout_flow.py"
+      ],
+      "verify": "Body ends with the link; an opted-out number is absent from the fake gateway's sends.",
+      "depends_on": ["T1", "T2"],
+      "branch": "reminder-opt-out-link-t3-send-and-skip",
+      "pr": "P1",
+      "outcome": "Done. Message body went from 118 to 161 characters, which still fits two SMS segments."
+    },
+    "prs/P1": {
+      "title": "Add one-click opt-out link to appointment reminders",
+      "order": 1,
+      "branch": "reminder-opt-out-link",
+      "base": "main",
+      "status": "open",
+      "url": "https://code.harborlantern.example/clinic/reminders/pull/58"
+    },
+    "questions/Q1": {
+      "title": "Should the link stop only reminders, or all texts?",
+      "context": "The clinic also texts lab-result-ready notices and the occasional closure notice. The spec says \"opt out of reminders\" but a patient tapping \"Stop these texts\" may expect all of them to stop. Covering everything is a bigger change because result notices go through a different sender.",
+      "options": [
+        {
+          "label": "Reminders only",
+          "cost": "Small. The page must say clearly what is stopped."
+        },
+        {
+          "label": "All clinic texts",
+          "cost": "Touches the results sender and needs a clinical sign-off on stopping result notices."
+        }
+      ],
+      "recommendation": "Reminders only",
+      "blocks": "The wording of the link text and the thanks page in T2",
+      "task": "T2",
+      "status": "answered",
+      "asked_at": "2026-09-14T15:20:00Z",
+      "answered_at": "2026-09-14T17:45:00Z",
+      "answered_by": "u_marisol",
+      "answer": "Reminders only. Result notices need to keep working; say so on the page."
+    },
+    "journal/2026-09-14T14:05:00Z": {
+      "at": "2026-09-14T14:05:00Z",
+      "text": "Read the spec and the reminder job. Plan is three tasks on one PR; no reason to split.",
+      "by": "claude"
+    },
+    "journal/2026-09-14T15:20:00Z": {
+      "at": "2026-09-14T15:20:00Z",
+      "text": "Asked Q1 on opt-out scope. T2 waits on it for its page wording; T1 can start.",
+      "by": "claude"
+    },
+    "journal/2026-09-14T17:45:00Z": {
+      "at": "2026-09-14T17:45:00Z",
+      "text": "Reminders only. Updated T2 to say so on the confirm and thanks pages.",
+      "by": "u_marisol",
+      "questions": ["Q1"]
+    },
+    "journal/2026-09-14T19:30:00Z": {
+      "at": "2026-09-14T19:30:00Z",
+      "text": "T1 merged. Chose an HMAC over the phone number rather than a random id in the table, so old links survive a table cleanup.",
+      "by": "claude"
+    },
+    "journal/2026-09-15T13:50:00Z": {
+      "at": "2026-09-15T13:50:00Z",
+      "text": "T2 merged. Review caught that GET on a link prefetching phone could opt someone out, so GET only shows the page. That was already the plan; added a test pinning it.",
+      "by": "claude"
+    },
+    "journal/2026-09-15T16:15:00Z": {
+      "at": "2026-09-15T16:15:00Z",
+      "text": "Tuan: the secret should be rotatable later. Noted for follow-up; not in this PR.",
+      "by": "u_tuan"
+    },
+    "journal/2026-09-16T15:00:00Z": {
+      "at": "2026-09-16T15:00:00Z",
+      "text": "T3 merged. Filtering in the query keeps skipped numbers away from the gateway client entirely. Body is 161 characters, still two segments.",
+      "by": "claude"
+    },
+    "journal/2026-09-16T19:40:00Z": {
+      "at": "2026-09-16T19:40:00Z",
+      "text": "All three done-check conditions met. PR opened and marked ready, handover written. Over to the clinic team to review and merge.",
+      "by": "claude"
+    }
+  }
+}

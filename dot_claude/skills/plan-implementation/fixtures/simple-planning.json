@@ -1,0 +1,257 @@
+{
+  "about": "A seven-task straight line onto one default PR with no tracker, pending a go-ahead, with one open and one answered question and a missing task verify and missing out-of-scope list.",
+  "now": "2026-10-19T08:45:00Z",
+  "viewer": "u_odalys",
+  "people": {
+    "u_odalys": "Odalys Fenwright",
+    "u_tomasz": "Tomasz Wierzbicki",
+    "u_hanh": "Nguyễn Thị Hạnh"
+  },
+  "docs": {
+    "run/main": {
+      "title": "Store gift cards in the online checkout",
+      "objective": "Let shoppers buy Pinwheel gift cards on the online shop and pay with a card balance at checkout. Balances are tracked in an append-only ledger so that refunds, partial redemptions and support corrections can always be explained from the rows.",
+      "source": "docs/specs/gift-cards.md",
+      "status": "pending",
+      "approach": "Gift cards live in two new Postgres tables: gift_cards (one row per card, holding the code hash and currency) and gift_card_ledger (signed amounts, never updated or deleted). A balance is the sum of the ledger, not a stored column, so there is nothing to drift. The shop's cart service learns to subtract a card balance from the order total before the payment gateway call, and only the remainder is charged.\n\nCards are sold as a digital product. When the payment gateway reports the order captured, a worker issues the card and emails the code. Codes are never stored in clear text; we keep an HMAC of the code and the last four characters for support lookups.\n\nCheckout redemption reserves the amount in the ledger when the order is placed and settles it when payment captures, so an abandoned or failed payment releases the hold on its own after the cart's existing 30 minute expiry.",
+      "done_check": [
+        {
+          "text": "A shopper can buy a gift card and the recipient receives a working code by email",
+          "state": "unchecked"
+        },
+        {
+          "text": "A card can pay for an order in full or in part, with the remainder charged to the payment gateway",
+          "state": "unchecked",
+          "note": "Covered by the checkout integration tests in T5 and the end-to-end script in T7."
+        },
+        {
+          "text": "A failed or abandoned payment releases the reserved balance",
+          "state": "unchecked"
+        },
+        {
+          "text": "Staff can look up a card by its last four characters and void it",
+          "state": "unchecked"
+        },
+        {
+          "text": "make test and make lint pass on the PR branch",
+          "state": "unchecked"
+        }
+      ],
+      "risks": [
+        "Two checkouts racing on the same card could overspend it. The reservation insert takes a row lock on the card, and T3 has a concurrency test for exactly this.",
+        "Code guessing: 12 characters of a 32-symbol alphabet is 60 bits, but the redeem endpoint still needs the existing per-IP throttle or it becomes an oracle.",
+        "Whether balances may expire is not settled (Q1), and the answer changes the ledger design in T2."
+      ],
+      "started_at": "2026-10-12T14:05:00Z",
+      "updated_at": "2026-10-16T16:40:00Z"
+    },
+    "tasks/T1": {
+      "title": "Gift card tables migration",
+      "order": 1,
+      "goal": "Add the storage for cards and their ledger.",
+      "approach": "One Alembic migration creating gift_cards (id, code_hmac, last_four, currency, created_at, voided_at) and gift_card_ledger (id, card_id, order_id nullable, amount_cents signed, kind, created_at).\n\nkind is a Postgres enum: issue, hold, settle, release, refund, adjust, void. A check constraint keeps amount_cents <> 0, and a unique index on code_hmac backs the lookup. Revoke UPDATE and DELETE on the ledger from the app role in the same migration so \"append-only\" is enforced by the database, not by convention.",
+      "touches": [
+        "shop/db/migrations/versions/20261014_gift_cards.py",
+        "shop/db/models/gift_card.py",
+        "shop/db/roles.sql"
+      ],
+      "verify": "Migration applies and rolls back cleanly on a copy of staging data. An UPDATE on the ledger as the app role fails with a permission error.",
+      "status": "pending"
+    },
+    "tasks/T2": {
+      "title": "Code generation and the balance ledger service",
+      "order": 2,
+      "goal": "A small module that mints codes and records ledger entries, so nothing else touches the tables directly.",
+      "approach": "shop/giftcards/service.py exposes issue(amount, currency), balance(card_id), hold(card_id, order_id, amount), settle, release, and void. Codes follow the format agreed in Q2: 12 characters in groups of four, Crockford base32 so there is no 0/O or 1/I confusion when someone reads one over the phone.\n\nhold locks the card row with SELECT ... FOR UPDATE, computes the balance from the ledger and refuses if balance < amount. release is a no-op if the hold was already settled, so the expiry job can call it blindly.\n\nIf Q1 comes back as \"cards expire\", add an expires_at column here and have balance ignore ledger rows from an expired card. If not, nothing changes.",
+      "touches": [
+        "shop/giftcards/service.py",
+        "shop/giftcards/codes.py",
+        "tests/giftcards/test_service.py"
+      ],
+      "verify": "Unit tests cover issue, partial hold, over-hold refusal, release after settle, and void. A property test checks that the balance always equals the sum of its ledger rows.",
+      "status": "pending",
+      "depends_on": [
+        "T1",
+        "Q2"
+      ]
+    },
+    "tasks/T3": {
+      "title": "Apply a card balance to the cart total before payment",
+      "order": 3,
+      "goal": "Cart totals can be reduced by a gift card, with the rest sent on to the payment gateway.",
+      "approach": "Add POST /api/cart/gift-card taking a code and returning the new totals, and DELETE /api/cart/gift-card to remove it. The cart service stores the applied card id and the amount to use; that amount is min(balance, order_total).\n\nWhen the order is placed, call hold for that amount inside the same transaction that creates the order. If the remainder is zero, skip the gateway entirely and settle immediately. Reuse the existing per-IP throttle on the redeem route.",
+      "touches": [
+        "shop/api/cart/gift_card.py",
+        "shop/cart/totals.py",
+        "shop/checkout/place_order.py",
+        "tests/checkout/test_gift_card_concurrency.py"
+      ],
+      "verify": "A concurrency test runs two orders against one card with a balance for only one of them; exactly one succeeds. A fully covered order never calls the gateway stub.",
+      "status": "pending",
+      "depends_on": [
+        "T2",
+        "Q1"
+      ]
+    },
+    "tasks/T4": {
+      "title": "Settle or release the hold when payment captures or fails",
+      "order": 4,
+      "goal": "Close the loop on holds so a balance is never stuck.",
+      "approach": "Subscribe to the gateway's payment.captured and payment.failed webhooks, already handled in shop/payments/webhooks.py, and call settle or release. Add a job to the existing 5 minute scheduler that releases holds on orders past the cart expiry that never reached a terminal payment state.\n\nHandlers must be idempotent: the gateway redelivers webhooks, and settle on an already settled hold has to be a no-op rather than a second ledger row.",
+      "touches": [
+        "shop/payments/webhooks.py",
+        "shop/giftcards/expiry_job.py",
+        "tests/payments/test_webhook_gift_card.py"
+      ],
+      "verify": "Replaying the same captured webhook twice leaves one settle row. The expiry job releases a hold on a 31 minute old unpaid order and leaves a 29 minute old one alone.",
+      "status": "pending",
+      "depends_on": [
+        "T3"
+      ]
+    },
+    "tasks/T5": {
+      "title": "Gift card field in the checkout form",
+      "order": 5,
+      "goal": "Shoppers can enter a code and see the effect on the total.",
+      "approach": "A collapsed \"Have a gift card?\" row in PaymentStep.tsx, opening to a single input and an Apply button. On success show the card's last four characters, the amount used and the remaining total; if the remainder is $0.00, hide the card form and show \"Paid with gift card\" instead.\n\nErrors are deliberately vague for unknown, voided and empty cards (\"That code didn't work\") so the form can't be used to probe which codes exist.",
+      "touches": [
+        "web/src/checkout/PaymentStep.tsx",
+        "web/src/checkout/GiftCardRow.tsx",
+        "web/src/checkout/__tests__/GiftCardRow.test.tsx"
+      ],
+      "verify": "Component tests for apply, remove, partial cover and full cover. Checked by hand in the staging shop at 360px width, since the payment step is cramped on phones.",
+      "status": "pending",
+      "depends_on": [
+        "T4"
+      ]
+    },
+    "tasks/T6": {
+      "title": "Sell gift cards as a product and email the code",
+      "order": 6,
+      "goal": "Shoppers can buy a card for someone else and the recipient gets it.",
+      "approach": "Add a gift_card product type with fixed denominations ($25, $50, $100) and a recipient email and message at add-to-cart. On payment.captured for an order containing one, a worker calls issue and sends the code with the existing transactional mailer, using a new template gift_card_delivery.mjml.\n\nThe code is generated at issue time and put in the email only; the order page shows the last four characters. A purchased card cannot be paid for with another gift card.",
+      "touches": [
+        "shop/catalog/product_types.py",
+        "shop/giftcards/delivery_worker.py",
+        "shop/mail/templates/gift_card_delivery.mjml",
+        "web/src/product/GiftCardForm.tsx"
+      ],
+      "verify": "An order containing a $50 card, once captured in staging, produces one ledger issue row of 5000 and one email to the recipient address.",
+      "status": "pending",
+      "depends_on": [
+        "T5"
+      ]
+    },
+    "tasks/T7": {
+      "title": "Staff lookup and void in the admin console",
+      "order": 7,
+      "goal": "Support can find a card and void it.",
+      "approach": "A \"Gift cards\" page in the admin console with search by last four plus order number or recipient email, a ledger table for the card, and a Void button that requires a reason. Voiding writes a void entry for the full remaining balance. Admin routes check the existing support role.",
+      "touches": [
+        "admin/src/pages/GiftCards.tsx",
+        "shop/api/admin/gift_cards.py"
+      ],
+      "status": "pending",
+      "depends_on": [
+        "T6"
+      ]
+    },
+    "questions/Q1": {
+      "title": "Should gift card balances expire?",
+      "context": "Some shops expire cards after a few years, and some jurisdictions forbid it or require a minimum term. Pinwheel's stores are in two states, and neither the spec nor the in-store paper cards say anything about expiry. If cards expire, T2 adds an expires_at column and the product page has to say so; if not, the ledger stays as designed. Redemption (T3) can't be finished until this is settled because the balance query differs.",
+      "options": [
+        {
+          "label": "No expiry",
+          "cost": "Simplest, and unspent balances stay on the books as a liability indefinitely."
+        },
+        {
+          "label": "Expire after 5 years",
+          "cost": "Needs a legal check for both states, an expires_at column, and wording on the product page and in the email."
+        },
+        {
+          "label": "Expire after 2 years"
+        }
+      ],
+      "recommendation": "No expiry",
+      "blocks": "T3 (applying a balance at checkout), and the schema in T2 if the answer is yes.",
+      "task": "T3",
+      "status": "open",
+      "asked_at": "2026-10-14T10:20:00Z"
+    },
+    "questions/Q2": {
+      "title": "What should a gift card code look like?",
+      "context": "Codes are typed by shoppers from an email and read aloud by staff over the phone. Longer codes are harder to guess but harder to type.",
+      "options": [
+        {
+          "label": "12 characters, Crockford base32, grouped 4-4-4",
+          "cost": "60 bits; no ambiguous glyphs but a little long to type."
+        },
+        {
+          "label": "16 digits like a payment card",
+          "cost": "Looks familiar, and about 53 bits, but invites people to treat it like a card number and paste it into the wrong field."
+        }
+      ],
+      "recommendation": "12 characters, Crockford base32, grouped 4-4-4",
+      "blocks": "Code generation in T2.",
+      "task": "T2",
+      "status": "answered",
+      "asked_at": "2026-10-13T09:50:00Z",
+      "answered_at": "2026-10-13T15:12:00Z",
+      "answered_by": "u_tomasz",
+      "answer": "12 characters, Crockford base32, grouped 4-4-4. Staff already spell things out with the phonetic alphabet, so no 0/O is the thing that matters."
+    },
+    "journal/2026-10-12T14:05:00Z": {
+      "at": "2026-10-12T14:05:00Z",
+      "text": "Started planning from docs/specs/gift-cards.md. Read the cart service, the payment webhook handler and the existing mailer to see where a balance can plug in.",
+      "by": "claude"
+    },
+    "journal/2026-10-12T16:30:00Z": {
+      "at": "2026-10-12T16:30:00Z",
+      "text": "Decided on an append-only ledger with the balance computed from it instead of a balance_cents column on the card. A stored balance would need locking and a reconciliation job; the ledger needs only the lock at hold time.",
+      "by": "claude"
+    },
+    "journal/2026-10-13T09:50:00Z": {
+      "at": "2026-10-13T09:50:00Z",
+      "text": "Asked about the code format (Q2). It affects T2 only, so I'm drafting the rest meanwhile.",
+      "by": "claude"
+    },
+    "journal/2026-10-13T15:12:00Z": {
+      "at": "2026-10-13T15:12:00Z",
+      "text": "Tomasz picked the Crockford base32 format. T2 now states it and no longer waits on a choice.",
+      "by": "u_tomasz",
+      "questions": [
+        "Q2"
+      ]
+    },
+    "journal/2026-10-14T10:20:00Z": {
+      "at": "2026-10-14T10:20:00Z",
+      "text": "The spec is silent on expiry, and it changes T2 and T3. Asked as Q1 and recommended no expiry, mostly because it is the least to build and the least to get wrong legally.",
+      "by": "claude"
+    },
+    "journal/2026-10-14T13:05:00Z": {
+      "at": "2026-10-14T13:05:00Z",
+      "text": "Odalys: please keep gift card purchases out of the first release if it makes the PR big. Will revisit once the tasks are sized.",
+      "by": "u_odalys"
+    },
+    "journal/2026-10-14T15:40:00Z": {
+      "at": "2026-10-14T15:40:00Z",
+      "text": "Sized the tasks. Selling cards (T6) is about a day of work, comparable to the checkout UI, so one PR of seven tasks is still reviewable. Kept it in; the shop can't test redemption end to end without something to buy. Left the delivery at the default of one PR.",
+      "by": "claude"
+    },
+    "journal/2026-10-15T11:15:00Z": {
+      "at": "2026-10-15T11:15:00Z",
+      "text": "Found the webhook handler already de-duplicates on gateway event id, so T4's idempotence is a second line of defence rather than the only one. Kept the test; it's cheap.",
+      "by": "claude"
+    },
+    "journal/2026-10-15T17:25:00Z": {
+      "at": "2026-10-15T17:25:00Z",
+      "text": "Hạnh from support says staff will look cards up by what the customer remembers, which is usually the email address, not the code. Changed the T7 search to take the recipient email as well as the last four characters.",
+      "by": "u_hanh"
+    },
+    "journal/2026-10-16T16:40:00Z": {
+      "at": "2026-10-16T16:40:00Z",
+      "text": "Plan is written apart from the T7 verification and the out-of-scope list, which I want Odalys to weigh in on (in-store redemption is the obvious candidate). Waiting on a go-ahead and on Q1.",
+      "by": "claude"
+    }
+  }
+}

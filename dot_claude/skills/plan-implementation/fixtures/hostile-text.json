@@ -1,0 +1,185 @@
+{
+  "about": "Text that tries to break the page: HTML that would act if parsed, backticks that don't pair, paths for the page to find, and near misses for it to leave alone. Its titles and labels hold the same text, because the page has to show those as written.",
+  "now": "2026-05-04T12:00:00Z",
+  "viewer": "u_hostile",
+  "people": {
+    "u_hostile": "Hedda Ostrowski"
+  },
+  "docs": {
+    "run/main": {
+      "title": "Title with <img src=x onerror=\"window.__pwned=1\">, `backticks`, README.md, and <script>window.__pwned=1</script>",
+      "objective": "A plan whose text is hostile to the page: markup that would act if parsed, backticks that don't pair, and words that nearly look like paths.",
+      "source": "fixtures/README.md",
+      "status": "running",
+      "approach": "Bare <img src=x onerror=\"window.__pwned=1\"> and <script>window.__pwned=1</script>. Inside backticks `<img src=x onerror=\"window.__pwned=1\">` and `<script>window.__pwned=1</script>`.\n\nA single stray ` backtick. A pair split `across\na line` break. An empty `` pair. A pair `   ` holding only spaces. A line of three:\n```\nThe end.\n\nPaths to find: dot_claude/skills/x/SKILL.md, README.md, ~/.claude/settings.json, ../y/z.py, /usr/bin/python3, a/b.md:42, fixtures/, .chezmoiignore, and (fixtures/README.md) too.\n\nNear misses: and/or, read/write, CI/CD, T1/T2/T3, TCP/IP/UDP, 50/50, 24/7, 10/31/2026, n/a, j/k/m/b, e.g., v1.2, https://plan.example/a/b.md, and git@host.example:o/r.git.\n\nKnown wrong matches: before/after/during and Node.js.\n\nA long path: `dot_claude/segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_xx.md`.",
+      "delivery": "Bare <img src=x onerror=\"window.__pwned=1\"> and <script>window.__pwned=1</script>. Inside backticks `<img src=x onerror=\"window.__pwned=1\">` and `<script>window.__pwned=1</script>`.\n\nA single stray ` backtick. A pair split `across\na line` break. An empty `` pair. A pair `   ` holding only spaces. A line of three:\n```\nThe end.\n\nPaths to find: dot_claude/skills/x/SKILL.md, README.md, ~/.claude/settings.json, ../y/z.py, /usr/bin/python3, a/b.md:42, fixtures/, .chezmoiignore, and (fixtures/README.md) too.\n\nNear misses: and/or, read/write, CI/CD, T1/T2/T3, TCP/IP/UDP, 50/50, 24/7, 10/31/2026, n/a, j/k/m/b, e.g., v1.2, https://plan.example/a/b.md, and git@host.example:o/r.git.\n\nKnown wrong matches: before/after/during and Node.js.\n\nA long path: `dot_claude/segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_xx.md`.",
+      "done_check": [
+        {
+          "text": "Bare <img src=x onerror=\"window.__pwned=1\"> and <script>window.__pwned=1</script>. Inside backticks `<img src=x onerror=\"window.__pwned=1\">` and `<script>window.__pwned=1</script>`.\n\nA single stray ` backtick. A pair split `across\na line` break. An empty `` pair. A pair `   ` holding only spaces. A line of three:\n```\nThe end.\n\nPaths to find: dot_claude/skills/x/SKILL.md, README.md, ~/.claude/settings.json, ../y/z.py, /usr/bin/python3, a/b.md:42, fixtures/, .chezmoiignore, and (fixtures/README.md) too.\n\nNear misses: and/or, read/write, CI/CD, T1/T2/T3, TCP/IP/UDP, 50/50, 24/7, 10/31/2026, n/a, j/k/m/b, e.g., v1.2, https://plan.example/a/b.md, and git@host.example:o/r.git.\n\nKnown wrong matches: before/after/during and Node.js.\n\nA long path: `dot_claude/segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_xx.md`.",
+          "state": "unmet",
+          "note": "Bare <img src=x onerror=\"window.__pwned=1\"> and <script>window.__pwned=1</script>. Inside backticks `<img src=x onerror=\"window.__pwned=1\">` and `<script>window.__pwned=1</script>`.\n\nA single stray ` backtick. A pair split `across\na line` break. An empty `` pair. A pair `   ` holding only spaces. A line of three:\n```\nThe end.\n\nPaths to find: dot_claude/skills/x/SKILL.md, README.md, ~/.claude/settings.json, ../y/z.py, /usr/bin/python3, a/b.md:42, fixtures/, .chezmoiignore, and (fixtures/README.md) too.\n\nNear misses: and/or, read/write, CI/CD, T1/T2/T3, TCP/IP/UDP, 50/50, 24/7, 10/31/2026, n/a, j/k/m/b, e.g., v1.2, https://plan.example/a/b.md, and git@host.example:o/r.git.\n\nKnown wrong matches: before/after/during and Node.js.\n\nA long path: `dot_claude/segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_xx.md`."
+        },
+        {
+          "text": "Bare <img src=x onerror=\"window.__pwned=1\">, a stray ` backtick, and `a/b.md:42` beside fixtures/README.md.",
+          "state": "met",
+          "note": "Bare <img src=x onerror=\"window.__pwned=1\">, a stray ` backtick, and `a/b.md:42` beside fixtures/README.md."
+        },
+        {
+          "text": "Bare <img src=x onerror=\"window.__pwned=1\">, a stray ` backtick, and `a/b.md:42` beside fixtures/README.md.",
+          "state": "unchecked"
+        }
+      ],
+      "out_of_scope": [
+        "Bare <img src=x onerror=\"window.__pwned=1\"> and <script>window.__pwned=1</script>. Inside backticks `<img src=x onerror=\"window.__pwned=1\">` and `<script>window.__pwned=1</script>`.",
+        "A single stray ` backtick. A pair split `across\na line` break. An empty `` pair. A pair `   ` holding only spaces. A line of three:\n```\nThe end.",
+        "Paths to find: dot_claude/skills/x/SKILL.md, README.md, ~/.claude/settings.json, ../y/z.py, /usr/bin/python3, a/b.md:42, fixtures/, .chezmoiignore, and (fixtures/README.md) too.",
+        "Near misses: and/or, read/write, CI/CD, T1/T2/T3, TCP/IP/UDP, 50/50, 24/7, 10/31/2026, n/a, j/k/m/b, e.g., v1.2, https://plan.example/a/b.md, and git@host.example:o/r.git.",
+        "Known wrong matches: before/after/during and Node.js.",
+        "A long path: `dot_claude/segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_xx.md`."
+      ],
+      "risks": [
+        "Bare <img src=x onerror=\"window.__pwned=1\"> and <script>window.__pwned=1</script>. Inside backticks `<img src=x onerror=\"window.__pwned=1\">` and `<script>window.__pwned=1</script>`.",
+        "A single stray ` backtick. A pair split `across\na line` break. An empty `` pair. A pair `   ` holding only spaces. A line of three:\n```\nThe end.",
+        "Paths to find: dot_claude/skills/x/SKILL.md, README.md, ~/.claude/settings.json, ../y/z.py, /usr/bin/python3, a/b.md:42, fixtures/, .chezmoiignore, and (fixtures/README.md) too.",
+        "Near misses: and/or, read/write, CI/CD, T1/T2/T3, TCP/IP/UDP, 50/50, 24/7, 10/31/2026, n/a, j/k/m/b, e.g., v1.2, https://plan.example/a/b.md, and git@host.example:o/r.git.",
+        "Known wrong matches: before/after/during and Node.js.",
+        "A long path: `dot_claude/segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_xx.md`."
+      ],
+      "driver": {
+        "session": "hostile-session",
+        "since": "2026-05-04T09:00:00Z"
+      },
+      "handover": {
+        "summary": "Bare <img src=x onerror=\"window.__pwned=1\"> and <script>window.__pwned=1</script>. Inside backticks `<img src=x onerror=\"window.__pwned=1\">` and `<script>window.__pwned=1</script>`.\n\nA single stray ` backtick. A pair split `across\na line` break. An empty `` pair. A pair `   ` holding only spaces. A line of three:\n```\nThe end.\n\nPaths to find: dot_claude/skills/x/SKILL.md, README.md, ~/.claude/settings.json, ../y/z.py, /usr/bin/python3, a/b.md:42, fixtures/, .chezmoiignore, and (fixtures/README.md) too.\n\nNear misses: and/or, read/write, CI/CD, T1/T2/T3, TCP/IP/UDP, 50/50, 24/7, 10/31/2026, n/a, j/k/m/b, e.g., v1.2, https://plan.example/a/b.md, and git@host.example:o/r.git.\n\nKnown wrong matches: before/after/during and Node.js.\n\nA long path: `dot_claude/segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_xx.md`.",
+        "branch": "hostile/`branch`",
+        "pr_url": "https://plan.example/pr/1",
+        "look_first": [
+          "Bare <img src=x onerror=\"window.__pwned=1\"> and <script>window.__pwned=1</script>. Inside backticks `<img src=x onerror=\"window.__pwned=1\">` and `<script>window.__pwned=1</script>`.",
+          "A single stray ` backtick. A pair split `across\na line` break. An empty `` pair. A pair `   ` holding only spaces. A line of three:\n```\nThe end.",
+          "Paths to find: dot_claude/skills/x/SKILL.md, README.md, ~/.claude/settings.json, ../y/z.py, /usr/bin/python3, a/b.md:42, fixtures/, .chezmoiignore, and (fixtures/README.md) too.",
+          "Near misses: and/or, read/write, CI/CD, T1/T2/T3, TCP/IP/UDP, 50/50, 24/7, 10/31/2026, n/a, j/k/m/b, e.g., v1.2, https://plan.example/a/b.md, and git@host.example:o/r.git.",
+          "Known wrong matches: before/after/during and Node.js.",
+          "A long path: `dot_claude/segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_xx.md`."
+        ],
+        "risks": [
+          "Bare <img src=x onerror=\"window.__pwned=1\"> and <script>window.__pwned=1</script>. Inside backticks `<img src=x onerror=\"window.__pwned=1\">` and `<script>window.__pwned=1</script>`.",
+          "A single stray ` backtick. A pair split `across\na line` break. An empty `` pair. A pair `   ` holding only spaces. A line of three:\n```\nThe end.",
+          "Paths to find: dot_claude/skills/x/SKILL.md, README.md, ~/.claude/settings.json, ../y/z.py, /usr/bin/python3, a/b.md:42, fixtures/, .chezmoiignore, and (fixtures/README.md) too.",
+          "Near misses: and/or, read/write, CI/CD, T1/T2/T3, TCP/IP/UDP, 50/50, 24/7, 10/31/2026, n/a, j/k/m/b, e.g., v1.2, https://plan.example/a/b.md, and git@host.example:o/r.git.",
+          "Known wrong matches: before/after/during and Node.js.",
+          "A long path: `dot_claude/segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_xx.md`."
+        ]
+      },
+      "started_at": "2026-05-04T08:00:00Z",
+      "updated_at": "2026-05-04T11:00:00Z"
+    },
+    "tasks/T1": {
+      "title": "Title with <img src=x onerror=\"window.__pwned=1\">, `backticks`, README.md, and <script>window.__pwned=1</script>",
+      "goal": "Bare <img src=x onerror=\"window.__pwned=1\"> and <script>window.__pwned=1</script>. Inside backticks `<img src=x onerror=\"window.__pwned=1\">` and `<script>window.__pwned=1</script>`.\n\nA single stray ` backtick. A pair split `across\na line` break. An empty `` pair. A pair `   ` holding only spaces. A line of three:\n```\nThe end.\n\nPaths to find: dot_claude/skills/x/SKILL.md, README.md, ~/.claude/settings.json, ../y/z.py, /usr/bin/python3, a/b.md:42, fixtures/, .chezmoiignore, and (fixtures/README.md) too.\n\nNear misses: and/or, read/write, CI/CD, T1/T2/T3, TCP/IP/UDP, 50/50, 24/7, 10/31/2026, n/a, j/k/m/b, e.g., v1.2, https://plan.example/a/b.md, and git@host.example:o/r.git.\n\nKnown wrong matches: before/after/during and Node.js.\n\nA long path: `dot_claude/segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_xx.md`.",
+      "approach": "Bare <img src=x onerror=\"window.__pwned=1\"> and <script>window.__pwned=1</script>. Inside backticks `<img src=x onerror=\"window.__pwned=1\">` and `<script>window.__pwned=1</script>`.\n\nA single stray ` backtick. A pair split `across\na line` break. An empty `` pair. A pair `   ` holding only spaces. A line of three:\n```\nThe end.\n\nPaths to find: dot_claude/skills/x/SKILL.md, README.md, ~/.claude/settings.json, ../y/z.py, /usr/bin/python3, a/b.md:42, fixtures/, .chezmoiignore, and (fixtures/README.md) too.\n\nNear misses: and/or, read/write, CI/CD, T1/T2/T3, TCP/IP/UDP, 50/50, 24/7, 10/31/2026, n/a, j/k/m/b, e.g., v1.2, https://plan.example/a/b.md, and git@host.example:o/r.git.\n\nKnown wrong matches: before/after/during and Node.js.\n\nA long path: `dot_claude/segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_xx.md`.",
+      "touches": [
+        "dot_claude/skills/x/SKILL.md",
+        "odd`name`.md",
+        "dot_claude/segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_xx.md",
+        "<script>window.__pwned=1</script>",
+        "<img src=x onerror=\"window.__pwned=1\"> with spaces",
+        "the fixtures/README.md file and `the page`"
+      ],
+      "verify": "Bare <img src=x onerror=\"window.__pwned=1\"> and <script>window.__pwned=1</script>. Inside backticks `<img src=x onerror=\"window.__pwned=1\">` and `<script>window.__pwned=1</script>`.\n\nA single stray ` backtick. A pair split `across\na line` break. An empty `` pair. A pair `   ` holding only spaces. A line of three:\n```\nThe end.\n\nPaths to find: dot_claude/skills/x/SKILL.md, README.md, ~/.claude/settings.json, ../y/z.py, /usr/bin/python3, a/b.md:42, fixtures/, .chezmoiignore, and (fixtures/README.md) too.\n\nNear misses: and/or, read/write, CI/CD, T1/T2/T3, TCP/IP/UDP, 50/50, 24/7, 10/31/2026, n/a, j/k/m/b, e.g., v1.2, https://plan.example/a/b.md, and git@host.example:o/r.git.\n\nKnown wrong matches: before/after/during and Node.js.\n\nA long path: `dot_claude/segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_xx.md`.",
+      "status": "merged",
+      "depends_on": [],
+      "pr": "P1",
+      "branch": "hostile/`branch`",
+      "outcome": "Bare <img src=x onerror=\"window.__pwned=1\"> and <script>window.__pwned=1</script>. Inside backticks `<img src=x onerror=\"window.__pwned=1\">` and `<script>window.__pwned=1</script>`.\n\nA single stray ` backtick. A pair split `across\na line` break. An empty `` pair. A pair `   ` holding only spaces. A line of three:\n```\nThe end.\n\nPaths to find: dot_claude/skills/x/SKILL.md, README.md, ~/.claude/settings.json, ../y/z.py, /usr/bin/python3, a/b.md:42, fixtures/, .chezmoiignore, and (fixtures/README.md) too.\n\nNear misses: and/or, read/write, CI/CD, T1/T2/T3, TCP/IP/UDP, 50/50, 24/7, 10/31/2026, n/a, j/k/m/b, e.g., v1.2, https://plan.example/a/b.md, and git@host.example:o/r.git.\n\nKnown wrong matches: before/after/during and Node.js.\n\nA long path: `dot_claude/segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_xx.md`.",
+      "order": 1
+    },
+    "tasks/T2": {
+      "title": "Plain task held by the open question",
+      "goal": "Bare <img src=x onerror=\"window.__pwned=1\">, a stray ` backtick, and `a/b.md:42` beside fixtures/README.md.",
+      "approach": "Bare <img src=x onerror=\"window.__pwned=1\">, a stray ` backtick, and `a/b.md:42` beside fixtures/README.md.",
+      "touches": [
+        "fixtures/"
+      ],
+      "verify": "Bare <img src=x onerror=\"window.__pwned=1\">, a stray ` backtick, and `a/b.md:42` beside fixtures/README.md.",
+      "status": "pending",
+      "depends_on": [
+        "T1",
+        "Q2"
+      ],
+      "pr": "P1",
+      "order": 2
+    },
+    "prs/P1": {
+      "title": "Title with <img src=x onerror=\"window.__pwned=1\">, `backticks`, README.md, and <script>window.__pwned=1</script>",
+      "summary": "Bare <img src=x onerror=\"window.__pwned=1\"> and <script>window.__pwned=1</script>. Inside backticks `<img src=x onerror=\"window.__pwned=1\">` and `<script>window.__pwned=1</script>`.\n\nA single stray ` backtick. A pair split `across\na line` break. An empty `` pair. A pair `   ` holding only spaces. A line of three:\n```\nThe end.\n\nPaths to find: dot_claude/skills/x/SKILL.md, README.md, ~/.claude/settings.json, ../y/z.py, /usr/bin/python3, a/b.md:42, fixtures/, .chezmoiignore, and (fixtures/README.md) too.\n\nNear misses: and/or, read/write, CI/CD, T1/T2/T3, TCP/IP/UDP, 50/50, 24/7, 10/31/2026, n/a, j/k/m/b, e.g., v1.2, https://plan.example/a/b.md, and git@host.example:o/r.git.\n\nKnown wrong matches: before/after/during and Node.js.\n\nA long path: `dot_claude/segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_xx.md`.",
+      "order": 1,
+      "branch": "hostile/`branch`",
+      "base": "main",
+      "status": "draft",
+      "url": "https://plan.example/pr/1"
+    },
+    "questions/Q1": {
+      "title": "Title with <img src=x onerror=\"window.__pwned=1\">, `backticks`, README.md, and <script>window.__pwned=1</script>",
+      "context": "Bare <img src=x onerror=\"window.__pwned=1\"> and <script>window.__pwned=1</script>. Inside backticks `<img src=x onerror=\"window.__pwned=1\">` and `<script>window.__pwned=1</script>`.\n\nA single stray ` backtick. A pair split `across\na line` break. An empty `` pair. A pair `   ` holding only spaces. A line of three:\n```\nThe end.\n\nPaths to find: dot_claude/skills/x/SKILL.md, README.md, ~/.claude/settings.json, ../y/z.py, /usr/bin/python3, a/b.md:42, fixtures/, .chezmoiignore, and (fixtures/README.md) too.\n\nNear misses: and/or, read/write, CI/CD, T1/T2/T3, TCP/IP/UDP, 50/50, 24/7, 10/31/2026, n/a, j/k/m/b, e.g., v1.2, https://plan.example/a/b.md, and git@host.example:o/r.git.\n\nKnown wrong matches: before/after/during and Node.js.\n\nA long path: `dot_claude/segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_xx.md`.",
+      "options": [
+        {
+          "label": "Option with <img src=x onerror=\"window.__pwned=1\">, `backticks`, and README.md",
+          "cost": "Bare <img src=x onerror=\"window.__pwned=1\"> and <script>window.__pwned=1</script>. Inside backticks `<img src=x onerror=\"window.__pwned=1\">` and `<script>window.__pwned=1</script>`.\n\nA single stray ` backtick. A pair split `across\na line` break. An empty `` pair. A pair `   ` holding only spaces. A line of three:\n```\nThe end.\n\nPaths to find: dot_claude/skills/x/SKILL.md, README.md, ~/.claude/settings.json, ../y/z.py, /usr/bin/python3, a/b.md:42, fixtures/, .chezmoiignore, and (fixtures/README.md) too.\n\nNear misses: and/or, read/write, CI/CD, T1/T2/T3, TCP/IP/UDP, 50/50, 24/7, 10/31/2026, n/a, j/k/m/b, e.g., v1.2, https://plan.example/a/b.md, and git@host.example:o/r.git.\n\nKnown wrong matches: before/after/during and Node.js.\n\nA long path: `dot_claude/segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_xx.md`."
+        },
+        {
+          "label": "Plain option",
+          "cost": "Bare <img src=x onerror=\"window.__pwned=1\">, a stray ` backtick, and `a/b.md:42` beside fixtures/README.md."
+        }
+      ],
+      "recommendation": "Plain option",
+      "blocks": "Bare <img src=x onerror=\"window.__pwned=1\">, a stray ` backtick, and `a/b.md:42` beside fixtures/README.md.",
+      "task": "T1",
+      "status": "answered",
+      "asked_at": "2026-05-04T09:00:00Z",
+      "answered_at": "2026-05-04T09:30:00Z",
+      "answered_by": "u_hostile",
+      "answer": "Bare <img src=x onerror=\"window.__pwned=1\"> and <script>window.__pwned=1</script>. Inside backticks `<img src=x onerror=\"window.__pwned=1\">` and `<script>window.__pwned=1</script>`.\n\nA single stray ` backtick. A pair split `across\na line` break. An empty `` pair. A pair `   ` holding only spaces. A line of three:\n```\nThe end.\n\nPaths to find: dot_claude/skills/x/SKILL.md, README.md, ~/.claude/settings.json, ../y/z.py, /usr/bin/python3, a/b.md:42, fixtures/, .chezmoiignore, and (fixtures/README.md) too.\n\nNear misses: and/or, read/write, CI/CD, T1/T2/T3, TCP/IP/UDP, 50/50, 24/7, 10/31/2026, n/a, j/k/m/b, e.g., v1.2, https://plan.example/a/b.md, and git@host.example:o/r.git.\n\nKnown wrong matches: before/after/during and Node.js.\n\nA long path: `dot_claude/segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_xx.md`."
+    },
+    "questions/Q2": {
+      "title": "Title with <img src=x onerror=\"window.__pwned=1\">, `backticks`, README.md, and <script>window.__pwned=1</script>",
+      "context": "Bare <img src=x onerror=\"window.__pwned=1\"> and <script>window.__pwned=1</script>. Inside backticks `<img src=x onerror=\"window.__pwned=1\">` and `<script>window.__pwned=1</script>`.\n\nA single stray ` backtick. A pair split `across\na line` break. An empty `` pair. A pair `   ` holding only spaces. A line of three:\n```\nThe end.\n\nPaths to find: dot_claude/skills/x/SKILL.md, README.md, ~/.claude/settings.json, ../y/z.py, /usr/bin/python3, a/b.md:42, fixtures/, .chezmoiignore, and (fixtures/README.md) too.\n\nNear misses: and/or, read/write, CI/CD, T1/T2/T3, TCP/IP/UDP, 50/50, 24/7, 10/31/2026, n/a, j/k/m/b, e.g., v1.2, https://plan.example/a/b.md, and git@host.example:o/r.git.\n\nKnown wrong matches: before/after/during and Node.js.\n\nA long path: `dot_claude/segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_xx.md`.",
+      "options": [
+        {
+          "label": "Option with <img src=x onerror=\"window.__pwned=1\">, `backticks`, and README.md",
+          "cost": "Bare <img src=x onerror=\"window.__pwned=1\"> and <script>window.__pwned=1</script>. Inside backticks `<img src=x onerror=\"window.__pwned=1\">` and `<script>window.__pwned=1</script>`.\n\nA single stray ` backtick. A pair split `across\na line` break. An empty `` pair. A pair `   ` holding only spaces. A line of three:\n```\nThe end.\n\nPaths to find: dot_claude/skills/x/SKILL.md, README.md, ~/.claude/settings.json, ../y/z.py, /usr/bin/python3, a/b.md:42, fixtures/, .chezmoiignore, and (fixtures/README.md) too.\n\nNear misses: and/or, read/write, CI/CD, T1/T2/T3, TCP/IP/UDP, 50/50, 24/7, 10/31/2026, n/a, j/k/m/b, e.g., v1.2, https://plan.example/a/b.md, and git@host.example:o/r.git.\n\nKnown wrong matches: before/after/during and Node.js.\n\nA long path: `dot_claude/segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_xx.md`."
+        },
+        {
+          "label": "Plain option",
+          "cost": "Bare <img src=x onerror=\"window.__pwned=1\">, a stray ` backtick, and `a/b.md:42` beside fixtures/README.md."
+        }
+      ],
+      "recommendation": "Plain option",
+      "blocks": "Bare <img src=x onerror=\"window.__pwned=1\"> and <script>window.__pwned=1</script>. Inside backticks `<img src=x onerror=\"window.__pwned=1\">` and `<script>window.__pwned=1</script>`.\n\nA single stray ` backtick. A pair split `across\na line` break. An empty `` pair. A pair `   ` holding only spaces. A line of three:\n```\nThe end.\n\nPaths to find: dot_claude/skills/x/SKILL.md, README.md, ~/.claude/settings.json, ../y/z.py, /usr/bin/python3, a/b.md:42, fixtures/, .chezmoiignore, and (fixtures/README.md) too.\n\nNear misses: and/or, read/write, CI/CD, T1/T2/T3, TCP/IP/UDP, 50/50, 24/7, 10/31/2026, n/a, j/k/m/b, e.g., v1.2, https://plan.example/a/b.md, and git@host.example:o/r.git.\n\nKnown wrong matches: before/after/during and Node.js.\n\nA long path: `dot_claude/segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_xx.md`.",
+      "task": "T2",
+      "status": "open",
+      "asked_at": "2026-05-04T10:00:00Z"
+    },
+    "questions/Q3": {
+      "title": "A withdrawn `question` about README.md that no journal entry names",
+      "context": "Bare <img src=x onerror=\"window.__pwned=1\">, a stray ` backtick, and `a/b.md:42` beside fixtures/README.md.",
+      "status": "withdrawn",
+      "asked_at": "2026-05-04T10:00:00Z",
+      "answered_at": "2026-05-04T10:30:00Z",
+      "answered_by": "u_hostile",
+      "answer": "Bare <img src=x onerror=\"window.__pwned=1\">, a stray ` backtick, and `a/b.md:42` beside fixtures/README.md."
+    },
+    "journal/2026-05-04T08:00:00Z": {
+      "at": "2026-05-04T08:00:00Z",
+      "text": "Bare <img src=x onerror=\"window.__pwned=1\"> and <script>window.__pwned=1</script>. Inside backticks `<img src=x onerror=\"window.__pwned=1\">` and `<script>window.__pwned=1</script>`.\n\nA single stray ` backtick. A pair split `across\na line` break. An empty `` pair. A pair `   ` holding only spaces. A line of three:\n```\nThe end.\n\nPaths to find: dot_claude/skills/x/SKILL.md, README.md, ~/.claude/settings.json, ../y/z.py, /usr/bin/python3, a/b.md:42, fixtures/, .chezmoiignore, and (fixtures/README.md) too.\n\nNear misses: and/or, read/write, CI/CD, T1/T2/T3, TCP/IP/UDP, 50/50, 24/7, 10/31/2026, n/a, j/k/m/b, e.g., v1.2, https://plan.example/a/b.md, and git@host.example:o/r.git.\n\nKnown wrong matches: before/after/during and Node.js.\n\nA long path: `dot_claude/segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_xx.md`.",
+      "by": "claude"
+    },
+    "journal/2026-05-04T09:30:00Z": {
+      "at": "2026-05-04T09:30:00Z",
+      "text": "Bare <img src=x onerror=\"window.__pwned=1\"> and <script>window.__pwned=1</script>. Inside backticks `<img src=x onerror=\"window.__pwned=1\">` and `<script>window.__pwned=1</script>`.\n\nA single stray ` backtick. A pair split `across\na line` break. An empty `` pair. A pair `   ` holding only spaces. A line of three:\n```\nThe end.\n\nPaths to find: dot_claude/skills/x/SKILL.md, README.md, ~/.claude/settings.json, ../y/z.py, /usr/bin/python3, a/b.md:42, fixtures/, .chezmoiignore, and (fixtures/README.md) too.\n\nNear misses: and/or, read/write, CI/CD, T1/T2/T3, TCP/IP/UDP, 50/50, 24/7, 10/31/2026, n/a, j/k/m/b, e.g., v1.2, https://plan.example/a/b.md, and git@host.example:o/r.git.\n\nKnown wrong matches: before/after/during and Node.js.\n\nA long path: `dot_claude/segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_xx.md`.",
+      "by": "u_hostile",
+      "questions": [
+        "Q1"
+      ]
+    }
+  }
+}

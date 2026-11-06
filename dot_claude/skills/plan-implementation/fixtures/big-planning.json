@@ -1,0 +1,1243 @@
+{
+  "about": "A large, half-written planning-stage plan page: 45 tasks thinning from full plans to bare titles, many open questions, and wide dependency levels.",
+  "now": "2026-10-26T09:00:00Z",
+  "viewer": "u_marisol",
+  "people": {
+    "u_marisol": "Marisol Oyelaran-Quist",
+    "u_tobias": "Tobias Wennerström",
+    "u_hanh": "Nguyễn Thị Hạnh",
+    "u_zoe": "Zoë Aldercott",
+    "u_ilkka": "Ilkka Brandvold",
+    "u_ferran": "Ferran Okonkwo-Bale",
+    "u_gone": null
+  },
+  "docs": {
+    "run/main": {
+      "title": "Account-based ticketing for Northgale Transit",
+      "objective": "Replace stored-value cards with account-based ticketing across the fare engine, rider app, bus and gate validators, reconciliation and support tools. Riders keep their existing cards, linked to accounts, and are charged at the best fare through capping. The legacy card system is retired after a route-by-route cutover.",
+      "source": "FARE-205 and docs/specs/account-based-ticketing.md",
+      "status": "pending",
+      "approach": "The work splits into a shared foundation and a wide fan-out. The foundation is the ledger (T1), the fare catalog (T2) and the tap event contract (T3). Everything that prices, ingests or displays something depends on one of these, and they depend on each other not at all, so all three can be built in parallel.\n\nThe fare engine is a set of pure, replayable pieces: price a trip (T5), reconstruct journeys from taps (T13), and cap the result (T4, T12). Replay is the main design constraint. Taps arrive late and out of order because validators buffer offline for up to 48 hours, so every stage must give the same answer when fed the same taps twice, and only emit the difference against what the ledger already holds. That's why the engine never writes balances; it emits adjustments and the ledger applies them idempotently.\n\nThe validators are the slowest part to change. Bus firmware ships one depot per night; rail gate firmware rides the fare-gate team's train and freezes in November. So the plan front-loads the contract (T3) and the offline buffer (T9) and keeps firmware tasks (T14, T15) as small as the contract allows. Signing keys are a manual step that someone must do (Q13).\n\nThe rider app and the support tools both sit on the account API (T8), which is written spec-first so they can start before the service exists. Reconciliation (T21 to T23) reads the same journeys the engine produces and compares them to the bank settlement.\n\nCutover is route by route (T40), buses first if Q10 goes the way we recommend, with the legacy system running in parallel until each route's balances have migrated (T11). Residual balances on unlinked cards are the open policy problem (Q11).\n\nTasks beyond T15 are not yet fully planned. Their detail depends on answers to Q6, Q8, Q10 and Q11.",
+      "delivery": "Provisionally one PR per epic, stacked, but the validator firmware may need to land separately because of the freeze.",
+      "done_check": [
+        {
+          "text": "A rider can link an existing card to an account in the app and see the migrated balance.",
+          "state": "unchecked"
+        },
+        {
+          "text": "Taps from a bus validator and a gate produce the same priced journey as the spec's 12 capping examples.",
+          "state": "unchecked"
+        },
+        {
+          "text": "A tap made while the validator is offline for 48 hours is priced correctly once uploaded, with no duplicate charge.",
+          "state": "unchecked"
+        },
+        {
+          "text": "Daily reconciliation matches the ledger to the bank settlement to the cent on a pilot day.",
+          "state": "unchecked",
+          "note": "Pilot day not chosen."
+        },
+        {
+          "text": "Support can find an account, open a dispute and apply an approved adjustment without engineering help.",
+          "state": "unchecked"
+        },
+        {
+          "text": "Route 61 runs on accounts for two weeks with no more than 0.1% of taps in the exceptions queue.",
+          "state": "unchecked"
+        },
+        {
+          "text": "Peak load test passes at 3x the busiest observed morning.",
+          "state": "unchecked"
+        }
+      ],
+      "out_of_scope": [
+        "A staff interface for editing the fare catalog; fares are published from YAML for now.",
+        "Changing fare prices or zone boundaries; the launch catalog mirrors current paper fares.",
+        "Bike share, parking and ferry integration.",
+        "Replacing the vending machines at stations; they keep selling stored-value cards until the sunset.",
+        "A rider loyalty or rewards scheme.",
+        "Multi-currency or foreign-issued bank cards beyond what the acquirer already handles.",
+        "Real-time arrivals or journey planning.",
+        "Moving the legacy card system to new hardware."
+      ],
+      "risks": [
+        "Rail gate firmware freezes in November; missing the train means waiting until January.",
+        "Signing keys must be generated by the HSM operator (Q13); firmware cannot be tested end to end without them.",
+        "Duplicate legacy card_id values from the 2011 re-issue could attach a balance to the wrong account if linking is careless.",
+        "Late offline taps can land in a day already reconciled, and finance will find out from the numbers, not from us.",
+        "About 18% of cards hold a balance but may never be linked; the policy (Q11) is unsettled and legal has not yet looked.",
+        "The benefits register's API onboarding takes a week and its uptime is not ours to control.",
+        "A bus validator that boots into a bad firmware at a depot overnight cannot be fixed until the next night.",
+        "Capping logic is subtle and riders see the result in money; a wrong cap is a visible bug."
+      ],
+      "jira_browse_url": "https://tracker.northgale.example/browse/",
+      "epics": {
+        "FARE-210": "Fare engine and ledger",
+        "FARE-214": "Rider app and validators",
+        "FARE-219": "Reconciliation, support and cutover"
+      },
+      "started_at": "2026-09-14T08:50:00Z",
+      "updated_at": "2026-10-22T16:10:00Z"
+    },
+    "tasks/T1": {
+      "title": "Account ledger schema and migrations",
+      "order": 1,
+      "status": "pending",
+      "goal": "A Postgres ledger that holds every rider account's balance, products and movements as append-only entries, so nothing else has to keep its own running total.",
+      "approach": "Double-entry: every movement is a pair of rows in ledger_entries (debit account, credit account) written in one transaction, with accounts.balance_minor kept as a cached projection updated by a trigger and re-derivable from the entries. Money is integer minor units plus a currency code, never a float.\n\nTables: accounts, account_links (cards and tokens attached to an account), ledger_entries, ledger_batches (so a settlement run can be tied to the entries it covers), and idempotency_keys with a unique index on (source, key) because tap ingestion will replay.\n\nAccount ids are ULIDs (Q4). Migrations go in with golang-migrate, each with a down file; the one that adds the balance trigger is written separately from the table creation so it can be rolled back alone.",
+      "touches": [
+        "services/ledger/migrations/0001_accounts.up.sql",
+        "services/ledger/migrations/0002_ledger_entries.up.sql",
+        "services/ledger/migrations/0003_balance_projection_trigger.up.sql",
+        "services/ledger/internal/store/postgres/ledger_entry_repository.go",
+        "docs/adr/0007-ledger-in-postgres.md"
+      ],
+      "verify": "Migrations apply and roll back cleanly on an empty database and on a copy of staging. A property test posts 10,000 random entries from 8 goroutines and the cached balance equals the sum of entries for every account. A duplicate idempotency key is rejected with no second row.",
+      "epics": [
+        "FARE-210"
+      ]
+    },
+    "tasks/T2": {
+      "title": "Fare product and rule catalog schema",
+      "order": 2,
+      "status": "pending",
+      "goal": "A versioned catalog of fares, passes, caps and concessions that the engine reads and that operations staff will eventually edit.",
+      "approach": "Catalog rows are immutable once published; a change is a new version with an effective_from. Products: single trip, day cap, week cap, monthly pass, transfer window. Rules reference products by id and version, so a journey priced on 3 March can be re-priced exactly in a dispute in June.\n\nStore in Postgres next to the ledger but in its own schema (catalog) so the fare engine can be deployed against a read replica. Authoring format is YAML under fares/catalog/ for now, loaded by a catalogctl publish command; a staff UI is explicitly later.",
+      "touches": [
+        "services/fare-engine/catalog/schema.sql",
+        "services/fare-engine/cmd/catalogctl/publish.go",
+        "fares/catalog/2026-launch/products.yaml",
+        "fares/catalog/2026-launch/zones.yaml"
+      ],
+      "verify": "catalogctl publish --dry-run validates the launch catalog and rejects overlapping effective_from ranges for one product. Loading the same version twice is a no-op.",
+      "epics": [
+        "FARE-210"
+      ]
+    },
+    "tasks/T3": {
+      "title": "Tap event contract v2",
+      "order": 3,
+      "status": "pending",
+      "goal": "One versioned schema for a tap, whether it comes from a bus validator, a gate, the rider app or a bank card reader, so the ingestion service has a single thing to accept.",
+      "approach": "Protobuf message TapEvent with: device id, device-local monotonic sequence, wall-clock time as reported, a clock_confidence field, credential reference (token, never a card number), direction hint (in, out, unknown), location (stop or gate id), and a signature over the canonical bytes.\n\nDevices can be offline for up to 48 hours (Q3), so events arrive late and out of order; the contract says explicitly that received_at is the server's and the engine must use the device's time, bounded by the clock confidence.",
+      "touches": [
+        "api/proto/northgale/tap/v2/tap_event.proto",
+        "api/proto/northgale/tap/v2/README.md",
+        "services/tap-ingest/internal/contract/golden/tap_event_offline_batch.json"
+      ],
+      "verify": "buf lint and buf breaking pass against v1. Golden files round-trip in Go and in the C decoder used by the validators.",
+      "epics": [
+        "FARE-210",
+        "FARE-214"
+      ]
+    },
+    "tasks/T4": {
+      "title": "Fare capping engine core",
+      "order": 4,
+      "status": "pending",
+      "goal": "Given a rider's priced taps for a service day and week, work out what they actually owe so that they never pay more than the cap.",
+      "approach": "Pure function in internal/capping: Apply(history []PricedTrip, catalog Version, now) []Adjustment. No database access, so it can be fuzzed hard. Each trip is first priced at the standard fare; capping then emits a negative adjustment on the trip that crosses the cap, and zero-price later trips in the window.\n\nThe tricky case is a late-arriving trip that lands in the middle of an already-capped day. The engine recomputes the whole window and emits only the delta against what the ledger already holds, so replays are idempotent.\n\nWhether a gate may let a rider through at a negative balance (Q7) changes what the engine returns to the validator for the pre-authorization check, so that check is a separate method, Authorize, and is not written until Q7 is answered.",
+      "touches": [
+        "services/fare-engine/internal/capping/apply.go",
+        "services/fare-engine/internal/capping/apply_test.go",
+        "services/fare-engine/internal/capping/testdata/late_arrival_midday.json"
+      ],
+      "verify": "Table tests for the 12 scenarios in docs/specs/capping-examples.md; a fuzz test asserts that total charged never exceeds the cap and that Apply over the same history twice yields no second adjustment.",
+      "depends_on": [
+        "T1",
+        "T2",
+        "Q7"
+      ],
+      "epics": [
+        "FARE-210"
+      ]
+    },
+    "tasks/T5": {
+      "title": "Zone and transfer rules evaluator",
+      "order": 5,
+      "status": "pending",
+      "goal": "Decide the base price of a single trip from origin, destination and time, including free transfers within 90 minutes.",
+      "approach": "Zones as a graph of stop ids to zone ids; price is looked up by zone pair and time band. Transfers: a trip starting within the transfer window of the previous trip's tap-off, on a different route, is priced at the difference only. Same-route re-boarding is not a transfer.\n\nTime bands come from the catalog, not hard-coded; the evaluator takes the catalog version as input.",
+      "touches": [
+        "services/fare-engine/internal/pricing/zones.go",
+        "services/fare-engine/internal/pricing/transfer.go",
+        "services/fare-engine/internal/pricing/transfer_test.go"
+      ],
+      "verify": "Every row of the current paper fare table is a test case; results match to the cent.",
+      "depends_on": [
+        "T2"
+      ],
+      "epics": [
+        "FARE-210"
+      ]
+    },
+    "tasks/T6": {
+      "title": "Tap ingestion service",
+      "order": 6,
+      "status": "pending",
+      "goal": "Accept tap events from devices and the app, authenticate them, dedupe them, and put them on the stream in a durable order.",
+      "approach": "Go service tap-ingest behind the existing ingress. Verify the signature, check the device id against the device registry, write to a taps.raw Kafka topic keyed by credential reference, and write the idempotency key in the ledger database before acknowledging. Events older than 72 hours are accepted but flagged stale and routed to the exceptions topic rather than priced.\n\nBackpressure: if Kafka is down, return 503 with Retry-After and let devices buffer; do not spool to local disk on the service.",
+      "touches": [
+        "services/tap-ingest/cmd/tap-ingest/main.go",
+        "services/tap-ingest/internal/handler/post_tap_batch.go",
+        "services/tap-ingest/internal/auth/device_signature_verifier.go",
+        "deploy/kubernetes/tap-ingest/deployment.yaml"
+      ],
+      "verify": "Integration test with Kafka in a container: 1,000 events with 100 duplicates produce exactly 900 messages. A tampered signature returns 401 and writes nothing.",
+      "depends_on": [
+        "T3",
+        "T1"
+      ],
+      "epics": [
+        "FARE-210"
+      ]
+    },
+    "tasks/T7": {
+      "title": "Card-to-account linking service",
+      "order": 7,
+      "status": "pending",
+      "goal": "Attach an existing stored-value card to an account, once, safely.",
+      "approach": "Linking proves possession of the card: the rider enters the printed number plus the 6-digit code on the back, which the card issuing system already stores hashed. Three failed attempts lock that card for an hour. A card can belong to exactly one account; moving it is a support action (T25), not self-service.\n\nThe legacy card_id collisions found in the 2011 re-issue (journal, 24 September) mean the lookup keys on (card_id, issue_batch), not card_id alone.",
+      "touches": [
+        "services/account-api/internal/linking/link_card.go",
+        "services/account-api/internal/linking/attempt_limiter.go",
+        "services/ledger/migrations/0005_account_links_unique_card.up.sql"
+      ],
+      "verify": "Link, double-link, wrong code, and locked-out paths all covered by handler tests. A card from the duplicated 2011 batch links to the correct account.",
+      "depends_on": [
+        "T1"
+      ],
+      "epics": [
+        "FARE-210",
+        "FARE-214"
+      ]
+    },
+    "tasks/T8": {
+      "title": "Account API and OpenAPI spec",
+      "order": 8,
+      "status": "pending",
+      "goal": "The HTTP surface for creating accounts, reading balance and history, and managing linked cards, defined before the app and the support tools start building against it.",
+      "approach": "Spec-first: api/openapi/account-api.yaml is written and reviewed before handlers. Auth is the existing city identity provider via OIDC; the API sees an opaque subject claim and never an email. Pagination is cursor-based, with limit capped at 100. Errors use RFC 9457 problem details.\n\nGenerate Go server stubs and TypeScript client from the same file in CI so they cannot drift.",
+      "touches": [
+        "api/openapi/account-api.yaml",
+        "services/account-api/internal/http/generated/server.gen.go",
+        "apps/rider/src/api/generated/client.ts",
+        "ci/pipeline.yml"
+      ],
+      "verify": "Spec lints with the contract linter; a generated-code drift check in CI fails if someone edits the generated files.",
+      "depends_on": [
+        "T1"
+      ],
+      "epics": [
+        "FARE-210",
+        "FARE-214"
+      ]
+    },
+    "tasks/T9": {
+      "title": "Validator offline tap buffer format",
+      "order": 9,
+      "status": "pending",
+      "goal": "Define how a validator stores taps while it has no network and how it uploads them afterwards, so no tap is lost or counted twice.",
+      "approach": "Append-only ring file on the validator's flash, 4 MB, one record per tap framed with length and CRC32. Upload sends the records in sequence order with the last acknowledged sequence number; the server answers with the highest contiguous sequence it has, and the device deletes up to that point only.\n\nThe buffer holds roughly 40,000 taps, which at a busy interchange is about 11 hours; a full buffer stops accepting taps for new credentials and shows the reader's fault light rather than overwrite (decision in the journal).",
+      "touches": [
+        "firmware/common/offline_buffer/buffer.c",
+        "firmware/common/offline_buffer/buffer.h",
+        "firmware/common/offline_buffer/test/test_wraparound.c"
+      ],
+      "verify": "Host-side tests simulate power loss at every byte of a write and recover with no torn record. Replay of an upload after a lost acknowledgement creates no duplicates server-side.",
+      "depends_on": [
+        "T3"
+      ],
+      "epics": [
+        "FARE-214"
+      ]
+    },
+    "tasks/T10": {
+      "title": "Fare price query service",
+      "order": 10,
+      "status": "pending",
+      "goal": "A read-only endpoint that answers 'what would this trip cost right now?' for the app and for staff handhelds.",
+      "approach": "Thin HTTP wrapper over the pricing package from T5, with a 60-second response cache keyed by (origin, destination, catalog_version, time_band). Returns the standard fare and, when an account is supplied, the fare after capping so far today.\n\nNot on the tap path: validators never call this.",
+      "touches": [
+        "services/fare-engine/internal/http/price_handler.go",
+        "services/fare-engine/internal/http/price_handler_test.go"
+      ],
+      "verify": "Response for a sample of 200 origin and destination pairs equals the evaluator's output; cache hit ratio visible as a metric.",
+      "depends_on": [
+        "T2"
+      ],
+      "epics": [
+        "FARE-210",
+        "FARE-214"
+      ]
+    },
+    "tasks/T11": {
+      "title": "Legacy balance migration job",
+      "order": 11,
+      "status": "pending",
+      "goal": "Move every stored-value card balance into the ledger as an opening entry on the matching account, exactly once.",
+      "approach": "Run per issue batch, not all at once. For each linked card, read the balance from the card system's snapshot (never from the live table), write a single opening_balance entry with the snapshot's id as its idempotency key, and record the pair in migration_runs. Unlinked cards are not migrated: their balance stays on the card until the sunset (T41).\n\nA dry run writes to a scratch schema and produces the reconciliation report; only a clean report lets the real run start. The job is resumable by batch.",
+      "touches": [
+        "services/ledger/cmd/migrate-legacy-balances/main.go",
+        "services/ledger/internal/migration/opening_balance.go",
+        "services/ledger/internal/migration/dry_run_report.go"
+      ],
+      "verify": "Rehearsal on a production snapshot: sum of opening entries equals the sum of migrated card balances to the cent; a second run writes nothing.",
+      "depends_on": [
+        "T7"
+      ],
+      "epics": [
+        "FARE-219"
+      ]
+    },
+    "tasks/T12": {
+      "title": "Capping windows: service day and rolling week",
+      "order": 12,
+      "status": "pending",
+      "goal": "Implement the window definitions the capping engine uses, as decided in Q1.",
+      "approach": "A service day runs 03:30 to 03:29 the next morning local time, so a rider coming home from a late shift is capped with the evening they started. Weeks start on Monday 03:30. The window calculator takes a timestamp and returns the window's bounds, handling the two daylight-saving transitions explicitly; there are tests for both, including the repeated hour.",
+      "touches": [
+        "services/fare-engine/internal/capping/window.go",
+        "services/fare-engine/internal/capping/window_dst_test.go"
+      ],
+      "verify": "Property test: every timestamp in 2026 and 2027 falls in exactly one window; the DST weekends produce windows of 23 and 25 hours.",
+      "depends_on": [
+        "T4"
+      ],
+      "epics": [
+        "FARE-210"
+      ]
+    },
+    "tasks/T13": {
+      "title": "Journey reconstruction from taps",
+      "order": 13,
+      "status": "pending",
+      "goal": "Pair tap-ons with tap-offs into journeys, and decide what to charge when the pair is incomplete.",
+      "approach": "A stream processor over taps.raw that groups by credential and orders by device time. A tap-on with no tap-off within 4 hours becomes an 'incomplete journey' charged the default maximum fare for that origin; a later matching tap-off, up to 24 hours on, reverses the difference. Bus taps are tap-on only and priced flat, so they skip pairing.\n\nState is kept in a compacted topic, not in process memory, so a rebalance does not lose half-open journeys.",
+      "touches": [
+        "services/fare-engine/internal/journeys/pairer.go",
+        "services/fare-engine/internal/journeys/incomplete_journey_policy.go",
+        "services/fare-engine/internal/journeys/pairer_replay_test.go"
+      ],
+      "verify": "Replay a recorded day of pilot taps; journeys, incompletes and reversals match a hand-checked spreadsheet for 50 sampled riders.",
+      "depends_on": [
+        "T6",
+        "T5"
+      ],
+      "epics": [
+        "FARE-210"
+      ]
+    },
+    "tasks/T14": {
+      "title": "Bus validator firmware: account tap protocol",
+      "order": 14,
+      "status": "pending",
+      "goal": "The bus validators speak the tap contract, sign events, and keep working with no network.",
+      "approach": "Firmware change on the Series 4 validators: new tap module that builds TapEvent messages, signs with the device key held in the secure element, and writes through the offline buffer. The reader still has to respond within 300 ms of a tap, so signing happens after the green light, not before.\n\nRollout can only happen at depot overnight windows (journal, 14 September), which fixes the cadence: one depot per night.",
+      "touches": [
+        "firmware/bus-validator/src/tap_module.c",
+        "firmware/bus-validator/src/signing.c",
+        "firmware/bus-validator/test/test_tap_latency.c"
+      ],
+      "verify": "Bench rig: 500 taps, median time to green light under 200 ms, none over 300. Pull the network cable mid-run and all 500 arrive after reconnection.",
+      "depends_on": [
+        "T9",
+        "Q13"
+      ],
+      "epics": [
+        "FARE-214"
+      ]
+    },
+    "tasks/T15": {
+      "title": "Gate validator firmware: account tap protocol",
+      "order": 15,
+      "status": "pending",
+      "goal": "Rail gates tap on, tap off, and open or refuse using the same contract.",
+      "approach": "Gates differ from buses because they must decide at the gate: open or refuse. The gate holds a deny list of blocked credentials (pushed hourly) and does not call the server on the tap path. Fare checking happens afterwards, and a rider never gets locked in by a server outage.\n\nGate firmware is shared with the fare-gate team and follows their release train, with a freeze starting in November (journal, 18 September).",
+      "touches": [
+        "firmware/gate-validator/src/tap_module.c",
+        "firmware/gate-validator/src/denylist.c",
+        "firmware/gate-validator/test/test_denylist_refresh.c"
+      ],
+      "verify": "Gate test rig: a denied credential is refused in under 250 ms; unplugging the uplink leaves gates operating on the last deny list.",
+      "depends_on": [
+        "T9",
+        "Q13"
+      ],
+      "epics": [
+        "FARE-214"
+      ]
+    },
+    "tasks/T16": {
+      "title": "Rider app: account sign-up",
+      "order": 16,
+      "status": "pending",
+      "goal": "Let a rider create an account with the city identity provider and land on an empty wallet.",
+      "approach": "React Native screen flow; reuse the identity provider's hosted sign-in page rather than building our own form. Needs the minimum OS version decision (Q16) before the design is final.",
+      "depends_on": [
+        "T8"
+      ],
+      "epics": [
+        "FARE-214"
+      ]
+    },
+    "tasks/T17": {
+      "title": "Rider app: add a card",
+      "order": 17,
+      "status": "pending",
+      "goal": "Walk a rider through linking their existing card by number and security code, with a camera option for the number.",
+      "approach": "Calls the linking endpoint from T7. Camera scan is nice to have and may be cut.",
+      "depends_on": [
+        "T7",
+        "T8",
+        "T16"
+      ],
+      "epics": [
+        "FARE-214"
+      ]
+    },
+    "tasks/T18": {
+      "title": "Rider app: balance and activity",
+      "order": 18,
+      "status": "pending",
+      "goal": "Show current balance, products held, and today's capping progress.",
+      "depends_on": [
+        "T8",
+        "T12"
+      ],
+      "epics": [
+        "FARE-214"
+      ]
+    },
+    "tasks/T19": {
+      "title": "Fare adjustment and refund service",
+      "order": 19,
+      "status": "pending",
+      "goal": "Post corrections to the ledger with a reason code and an audit trail.",
+      "approach": "Adjustments are ledger entries, never edits. Reason codes come from a fixed list owned by customer support.",
+      "depends_on": [
+        "T4",
+        "T13"
+      ],
+      "epics": [
+        "FARE-210"
+      ]
+    },
+    "tasks/T20": {
+      "title": "Concession fares",
+      "order": 20,
+      "status": "pending",
+      "goal": "Student, senior and disability concessions as catalog products with an eligibility check.",
+      "depends_on": [
+        "T2",
+        "T4",
+        "Q6"
+      ],
+      "epics": [
+        "FARE-210"
+      ]
+    },
+    "tasks/T21": {
+      "title": "Reconciliation: daily settlement batch",
+      "order": 21,
+      "status": "pending",
+      "goal": "Total the day's priced journeys and compare to what the ledger and the bank settlement say.",
+      "depends_on": [
+        "T13"
+      ],
+      "epics": [
+        "FARE-219"
+      ]
+    },
+    "tasks/T22": {
+      "title": "Reconciliation: late offline uploads",
+      "order": 22,
+      "status": "pending",
+      "goal": "Handle taps that arrive after their day was reconciled.",
+      "depends_on": [
+        "T13",
+        "T14"
+      ],
+      "epics": [
+        "FARE-219"
+      ]
+    },
+    "tasks/T23": {
+      "title": "Reconciliation exceptions queue",
+      "order": 23,
+      "status": "pending",
+      "goal": "A screen for finance staff to work through mismatches.",
+      "depends_on": [
+        "T21"
+      ],
+      "epics": [
+        "FARE-219"
+      ]
+    },
+    "tasks/T24": {
+      "title": "Support tool: account lookup",
+      "order": 24,
+      "status": "pending",
+      "goal": "Find an account by name, card number, or journey, and see its balance and linked cards.",
+      "depends_on": [
+        "T8"
+      ],
+      "epics": [
+        "FARE-219"
+      ]
+    },
+    "tasks/T25": {
+      "title": "Support tool: journey dispute",
+      "order": 25,
+      "status": "pending",
+      "goal": "Open a dispute on a journey and see the taps and the price calculation.",
+      "depends_on": [
+        "T13",
+        "T19"
+      ],
+      "epics": [
+        "FARE-219"
+      ]
+    },
+    "tasks/T26": {
+      "title": "Support tool: manual adjustment with approval",
+      "order": 26,
+      "status": "pending",
+      "goal": "Let an agent propose a credit and a supervisor approve it above a threshold.",
+      "depends_on": [
+        "T19",
+        "Q12"
+      ],
+      "epics": [
+        "FARE-219"
+      ]
+    },
+    "tasks/T27": {
+      "title": "Rider app: journey history",
+      "order": 27,
+      "status": "pending",
+      "goal": "List journeys with price and any capping applied.",
+      "depends_on": [
+        "T8",
+        "T13"
+      ],
+      "epics": [
+        "FARE-214"
+      ]
+    },
+    "tasks/T28": {
+      "title": "Rider app: receipts",
+      "order": 28,
+      "status": "pending",
+      "goal": "Email or download a receipt for a period.",
+      "depends_on": [
+        "T27"
+      ],
+      "epics": [
+        "FARE-214"
+      ]
+    },
+    "tasks/T29": {
+      "title": "Capping push notifications",
+      "order": 29,
+      "status": "pending",
+      "goal": "Tell a rider when they have reached today's cap.",
+      "depends_on": [
+        "T12",
+        "T18"
+      ],
+      "epics": [
+        "FARE-214"
+      ]
+    },
+    "tasks/T30": {
+      "title": "Open-loop bank card acceptance",
+      "order": 30,
+      "status": "pending",
+      "goal": "Accept contactless bank cards at gates and on buses as anonymous accounts.",
+      "depends_on": [
+        "T6",
+        "T4",
+        "Q8"
+      ],
+      "epics": [
+        "FARE-210",
+        "FARE-214"
+      ]
+    },
+    "tasks/T31": {
+      "title": "Payment gateway top-up integration",
+      "order": 31,
+      "status": "pending",
+      "goal": "Take card payments for top-ups through the payment gateway.",
+      "depends_on": [
+        "T18"
+      ],
+      "epics": [
+        "FARE-214"
+      ]
+    },
+    "tasks/T32": {
+      "title": "Automatic top-up",
+      "order": 32,
+      "status": "pending",
+      "goal": "Top up when balance falls below a rider-chosen floor.",
+      "depends_on": [
+        "T31"
+      ],
+      "epics": [
+        "FARE-214"
+      ]
+    },
+    "tasks/T33": {
+      "title": "Tap fraud and velocity rules",
+      "order": 33,
+      "status": "pending",
+      "goal": "Flag impossible travel and shared credentials.",
+      "depends_on": [
+        "T6",
+        "Q14"
+      ],
+      "epics": [
+        "FARE-210"
+      ]
+    },
+    "tasks/T34": {
+      "title": "Data warehouse feed",
+      "order": 34,
+      "status": "pending",
+      "goal": "Stream priced journeys to the analytics warehouse.",
+      "depends_on": [
+        "T6",
+        "Q9"
+      ],
+      "epics": [
+        "FARE-219"
+      ]
+    },
+    "tasks/T35": {
+      "title": "Ridership dashboards",
+      "order": 35,
+      "status": "pending",
+      "goal": "Replace the monthly ridership spreadsheet.",
+      "depends_on": [
+        "T34"
+      ],
+      "epics": [
+        "FARE-219"
+      ]
+    },
+    "tasks/T36": {
+      "title": "Rider app accessibility audit",
+      "order": 36,
+      "status": "pending",
+      "goal": "Screen reader and large-text pass over all rider flows.",
+      "depends_on": [
+        "T16",
+        "T17",
+        "T18"
+      ],
+      "epics": [
+        "FARE-214"
+      ]
+    },
+    "tasks/T37": {
+      "title": "Retail agent top-up network",
+      "order": 37,
+      "status": "pending",
+      "goal": "Let corner shops add value to an account.",
+      "depends_on": [
+        "T31"
+      ],
+      "epics": [
+        "FARE-214"
+      ]
+    },
+    "tasks/T38": {
+      "title": "Single-ride QR tickets",
+      "order": 38,
+      "status": "pending",
+      "goal": "Keep an occasional-rider ticket for people with no account.",
+      "depends_on": [
+        "T10",
+        "T15",
+        "Q15"
+      ],
+      "epics": [
+        "FARE-210",
+        "FARE-214"
+      ]
+    },
+    "tasks/T39": {
+      "title": "Fare inspector handheld app",
+      "order": 39,
+      "status": "pending",
+      "goal": "Check a rider's credential on board.",
+      "depends_on": [
+        "T6",
+        "T38"
+      ],
+      "epics": [
+        "FARE-214"
+      ]
+    },
+    "tasks/T40": {
+      "title": "Phased cutover plan, route by route",
+      "order": 40,
+      "status": "pending",
+      "goal": "Sequence the switch from stored-value cards to accounts.",
+      "depends_on": [
+        "T11",
+        "T14",
+        "T15",
+        "Q10"
+      ],
+      "epics": [
+        "FARE-219"
+      ]
+    },
+    "tasks/T41": {
+      "title": "Legacy card sunset and residual balances",
+      "order": 41,
+      "status": "pending",
+      "goal": "Retire the old cards and return what is left on them.",
+      "depends_on": [
+        "T11",
+        "T40",
+        "Q11"
+      ],
+      "epics": [
+        "FARE-219"
+      ]
+    },
+    "tasks/T42": {
+      "title": "Peak load test",
+      "order": 42,
+      "status": "pending",
+      "goal": "Prove the tap path at 3x the busiest observed morning.",
+      "depends_on": [
+        "T6",
+        "T4"
+      ],
+      "epics": [
+        "FARE-210"
+      ]
+    },
+    "tasks/T43": {
+      "title": "Runbooks and on-call training",
+      "order": 43,
+      "status": "pending",
+      "goal": "Operational docs for the new services.",
+      "depends_on": [
+        "T40"
+      ],
+      "epics": [
+        "FARE-219"
+      ]
+    },
+    "tasks/T44": {
+      "title": "Public communications and station signage",
+      "order": 44,
+      "status": "pending",
+      "goal": "Tell riders what is changing and when.",
+      "depends_on": [
+        "T40"
+      ],
+      "epics": [
+        "FARE-219"
+      ]
+    },
+    "tasks/T45": {
+      "title": "Data retention and privacy review",
+      "order": 45,
+      "status": "pending",
+      "goal": "Decide what is kept, for how long, and who can see it.",
+      "depends_on": [
+        "T1",
+        "Q9"
+      ],
+      "epics": [
+        "FARE-219"
+      ]
+    },
+    "questions/Q1": {
+      "title": "What counts as 'a day' for the daily cap?",
+      "context": "The cap needs a window. A calendar day (midnight to midnight) is simplest, but night-shift riders cross midnight on one journey home and would be capped twice. The spec only says 'daily'.",
+      "status": "answered",
+      "asked_at": "2026-09-15T09:40:00Z",
+      "options": [
+        {
+          "label": "Calendar day",
+          "cost": "Simple to explain; penalises riders on late shifts."
+        },
+        {
+          "label": "Service day ending 03:30",
+          "cost": "Matches how the timetable is already published; the window logic has to handle daylight-saving edges."
+        },
+        {
+          "label": "Rolling 24 hours",
+          "cost": "Fairest in theory, but a rider cannot predict when the cap resets."
+        }
+      ],
+      "recommendation": "Service day ending 03:30",
+      "answer": "Service day ending 03:30. The night bus network already publishes its timetable that way, and riders know it.",
+      "answered_at": "2026-09-16T16:45:00Z",
+      "answered_by": "u_hanh"
+    },
+    "questions/Q2": {
+      "title": "Ledger storage: Postgres or an event store?",
+      "context": "An append-only ledger fits an event store well, but we run Postgres already, have no one on call for a second datastore, and need transactional idempotency keys alongside the entries.",
+      "status": "answered",
+      "asked_at": "2026-09-15T09:40:00Z",
+      "options": [
+        {
+          "label": "Postgres tables"
+        },
+        {
+          "label": "Dedicated event store",
+          "cost": "New datastore to run, back up and learn."
+        }
+      ],
+      "recommendation": "Postgres tables",
+      "answer": "Postgres. Write the reasoning down in an ADR so nobody reopens it.",
+      "answered_at": "2026-09-15T15:30:00Z",
+      "answered_by": "u_tobias"
+    },
+    "questions/Q3": {
+      "title": "How long may a validator stay offline before its taps are rejected?",
+      "context": "Bus validators lose coverage in two tunnels and on rural route 61. Longer tolerance means a bigger buffer and a larger fraud window; shorter means lost fares for riders who did nothing wrong.",
+      "status": "answered",
+      "asked_at": "2026-09-18T13:15:00Z",
+      "options": [
+        {
+          "label": "24 hours",
+          "cost": "Smaller buffer; a depot network outage over a weekend loses taps."
+        },
+        {
+          "label": "48 hours",
+          "cost": "Buffer holds about 11 busy hours of taps but the window covers a weekend outage."
+        },
+        {
+          "label": "7 days"
+        }
+      ],
+      "recommendation": "48 hours",
+      "answer": "48 hours, then flagged stale rather than discarded.",
+      "answered_at": "2026-09-21T10:05:00Z",
+      "answered_by": "u_ilkka"
+    },
+    "questions/Q4": {
+      "title": "Account id format",
+      "context": "Ids appear in support calls and URLs. Sequential integers are easy to read aloud but guessable. ULIDs are sortable and not guessable but long.",
+      "status": "answered",
+      "asked_at": "2026-09-18T13:20:00Z",
+      "options": [
+        {
+          "label": "ULID"
+        },
+        {
+          "label": "Sequential integer with check digit",
+          "cost": "Guessable; leaks account volume."
+        }
+      ],
+      "recommendation": "ULID",
+      "answer": "ULID. Support will use the last 6 characters plus the name to find an account.",
+      "answered_at": "2026-09-21T10:30:00Z",
+      "answered_by": "u_tobias"
+    },
+    "questions/Q5": {
+      "title": "Run old and new fare engines side by side before cutover?",
+      "context": "Shadow pricing would catch discrepancies early, but doubles the load on tap ingestion.",
+      "status": "withdrawn",
+      "asked_at": "2026-09-22T11:00:00Z",
+      "answer": "Withdrawn: the cutover plan (T40) already runs one route on the new engine first, which does the same job at less cost.",
+      "answered_at": "2026-10-01T09:15:00Z",
+      "answered_by": "owner"
+    },
+    "questions/Q6": {
+      "title": "Where does concession eligibility come from?",
+      "context": "Student and senior concessions need proof. We can ask the city's benefits register, accept a scanned document reviewed by staff, or reuse the existing concession cards' numbers. The register has an API but a 5-working-day onboarding.",
+      "status": "open",
+      "asked_at": "2026-09-29T14:20:00Z",
+      "options": [
+        {
+          "label": "Benefits register API",
+          "cost": "Automatic once onboarded; ties us to their uptime."
+        },
+        {
+          "label": "Staff-reviewed upload",
+          "cost": "Support workload of roughly 300 reviews a week at launch."
+        },
+        {
+          "label": "Reuse existing concession card numbers",
+          "cost": "Only covers current holders."
+        }
+      ],
+      "recommendation": "Benefits register API",
+      "blocks": "T20 concession fares and the concession part of the launch catalog",
+      "task": "T20"
+    },
+    "questions/Q7": {
+      "title": "May a gate let a rider through at a negative balance?",
+      "context": "Today a stored-value card cannot go below zero, so a rider with 40 cents left is stopped at the gate. With accounts, the fare is known only after tap-off, so a gate can't know the final price. Allowing a small overdraft avoids stranded riders but creates debt we have to collect.",
+      "status": "open",
+      "asked_at": "2026-09-24T10:00:00Z",
+      "options": [
+        {
+          "label": "Allow overdraft up to the maximum fare",
+          "cost": "Riders never get stranded; some bad debt."
+        },
+        {
+          "label": "Require balance >= maximum fare to enter",
+          "cost": "Matches today's behaviour; riders with a low balance are refused."
+        },
+        {
+          "label": "Overdraft only for registered accounts"
+        }
+      ],
+      "recommendation": "Allow overdraft up to the maximum fare",
+      "blocks": "The Authorize method in the capping engine, and gate behaviour in T15",
+      "task": "T4"
+    },
+    "questions/Q8": {
+      "title": "Do bank cards tap in at launch, or in a later phase?",
+      "context": "Open-loop acceptance doubles the credential types the gate must read and brings in the acquirer's certification. It also is the feature most visitors would use.",
+      "status": "open",
+      "asked_at": "2026-10-02T09:30:00Z",
+      "options": [
+        {
+          "label": "Launch phase"
+        },
+        {
+          "label": "Second phase",
+          "cost": "Visitors keep buying paper tickets for another six months or so."
+        }
+      ],
+      "recommendation": "Second phase",
+      "blocks": "T30 and the acquirer certification schedule",
+      "task": "T30"
+    },
+    "questions/Q9": {
+      "title": "How long do we keep individual tap records?",
+      "context": "Disputes need about 13 months. Planners would like years of origin and destination data. Privacy review has not yet said what is allowed for pseudonymous data.",
+      "status": "open",
+      "asked_at": "2026-10-05T16:45:00Z",
+      "options": [
+        {
+          "label": "13 months raw, then aggregate"
+        },
+        {
+          "label": "13 months raw, then pseudonymise and keep 5 years",
+          "cost": "Needs sign-off from the privacy officer."
+        },
+        {
+          "label": "Keep raw for 5 years",
+          "cost": "Largest breach exposure."
+        }
+      ],
+      "recommendation": "13 months raw, then aggregate",
+      "blocks": "Warehouse retention jobs in T34 and the privacy review in T45"
+    },
+    "questions/Q10": {
+      "title": "Which services switch first: buses or rail gates?",
+      "context": "Buses have more riders but only a tap-on, which is simpler. Gates carry the tap-off logic and the harder pricing. Starting with buses proves less; starting with gates is riskier.",
+      "status": "open",
+      "asked_at": "2026-10-08T11:10:00Z",
+      "options": [
+        {
+          "label": "Buses first, route 61 as pilot"
+        },
+        {
+          "label": "One rail line first"
+        },
+        {
+          "label": "Both on one route pair with a connecting station",
+          "cost": "Hardest to coordinate, but tests transfers."
+        }
+      ],
+      "recommendation": "Buses first, route 61 as pilot",
+      "blocks": "The sequence in T40 and what T41 can promise",
+      "task": "T40"
+    },
+    "questions/Q11": {
+      "title": "What happens to balances on cards that are never linked?",
+      "context": "About 18% of cards by count have a balance but no one has linked them. Refunds mean finding owners; expiry means keeping the money. Needs a legal view as well as a product one.",
+      "status": "open",
+      "asked_at": "2026-10-09T15:00:00Z",
+      "options": [
+        {
+          "label": "Refund on request for 5 years"
+        },
+        {
+          "label": "Expire after 24 months with notice"
+        },
+        {
+          "label": "Transfer to an unclaimed-funds account"
+        }
+      ],
+      "blocks": "T41, and the launch message in T44",
+      "task": "T41"
+    },
+    "questions/Q12": {
+      "title": "Who sets the approval threshold for manual adjustments?",
+      "context": "Support agents can propose credits; above some amount a supervisor must approve. The amount is policy, not engineering. We can build it as configuration either way.",
+      "status": "open",
+      "asked_at": "2026-10-12T10:15:00Z",
+      "blocks": "The default value shipped in T26",
+      "task": "T26"
+    },
+    "questions/Q13": {
+      "title": "Provision signing keys for the validators",
+      "context": "Manual step: in the device registry console, generate the signing key batch for Series 4 validators (batch name bus-s4-2026) and put the public half in deploy/keys/validator-signing.pub. The HSM operator has to do it; no code can.",
+      "status": "open",
+      "asked_at": "2026-10-14T09:00:00Z",
+      "options": [
+        {
+          "label": "Done"
+        },
+        {
+          "label": "Skip",
+          "cost": "Firmware cannot sign events until the keys exist."
+        }
+      ],
+      "recommendation": "Done",
+      "blocks": "T14 and T15 firmware signing"
+    },
+    "questions/Q14": {
+      "title": "Fraud rule thresholds",
+      "context": "Impossible-travel and shared-credential rules need numbers. Too tight flags commuters who lend a card to a partner; too loose misses organised misuse. Security has an opinion but has not written it down.",
+      "status": "open",
+      "asked_at": "2026-10-15T14:30:00Z",
+      "blocks": "T33",
+      "task": "T33"
+    },
+    "questions/Q15": {
+      "title": "Do we keep paper single-ride tickets?",
+      "context": "Occasional riders and tourists have no account. QR tickets would work on gates, but the gates' optical readers are an extra cost on older stock.",
+      "status": "open",
+      "asked_at": "2026-10-16T09:45:00Z",
+      "options": [
+        {
+          "label": "Keep, as QR on paper or phone"
+        },
+        {
+          "label": "Retire, with open-loop bank cards as the replacement",
+          "cost": "Depends on Q8 and leaves riders without bank cards behind."
+        }
+      ],
+      "recommendation": "Keep, as QR on paper or phone",
+      "blocks": "T38, T39",
+      "task": "T38"
+    },
+    "questions/Q16": {
+      "title": "Minimum phone OS version for the rider app",
+      "context": "Supporting older phones costs testing time. The reader hardware for NFC card reading needs a more recent OS than the rest of the app.",
+      "status": "open",
+      "asked_at": "2026-10-19T10:00:00Z",
+      "options": [
+        {
+          "label": "Last four years of releases"
+        },
+        {
+          "label": "Last six years of releases",
+          "cost": "Roughly 25% more test matrix."
+        }
+      ],
+      "recommendation": "Last four years of releases",
+      "blocks": "Design of the sign-up flow in T16",
+      "task": "T16"
+    },
+    "journal/2026-09-14T08:55:00Z": {
+      "at": "2026-09-14T08:55:00Z",
+      "text": "Started from tracker FARE-205 and docs/specs/account-based-ticketing.md. Nothing built; this plan page is for the plan only.",
+      "by": "claude"
+    },
+    "journal/2026-09-14T10:20:00Z": {
+      "at": "2026-09-14T10:20:00Z",
+      "text": "Read the repository layout. Fare logic is in services/fare-engine, validator firmware in firmware/, the rider app in apps/rider. There is no ledger service yet, which is why T1 is first.",
+      "by": "claude"
+    },
+    "journal/2026-09-14T14:05:00Z": {
+      "at": "2026-09-14T14:05:00Z",
+      "text": "Bus validators can only take firmware at depot overnight windows, one depot per night. Plan the rollout around that.",
+      "by": "owner"
+    },
+    "journal/2026-09-15T09:10:00Z": {
+      "at": "2026-09-15T09:10:00Z",
+      "text": "Decided the ledger is double-entry with a cached balance. A single balance column with updates in place would be simpler, but a dispute needs to see how a balance came to be.",
+      "by": "claude"
+    },
+    "journal/2026-09-15T09:40:00Z": {
+      "at": "2026-09-15T09:40:00Z",
+      "text": "Asked Q1 and Q2; both change work in the first four tasks.",
+      "by": "claude"
+    },
+    "journal/2026-09-15T15:30:00Z": {
+      "at": "2026-09-15T15:30:00Z",
+      "text": "Postgres, with an ADR.",
+      "by": "u_tobias",
+      "questions": [
+        "Q2"
+      ]
+    },
+    "journal/2026-09-16T11:00:00Z": {
+      "at": "2026-09-16T11:00:00Z",
+      "text": "Drafted T1 to T10, the foundation everything else hangs off. The catalog, tap contract and ledger have no dependencies on each other, so they can all start first.",
+      "by": "claude"
+    },
+    "journal/2026-09-16T16:45:00Z": {
+      "at": "2026-09-16T16:45:00Z",
+      "text": "Service day ending 03:30.",
+      "by": "u_hanh",
+      "questions": [
+        "Q1"
+      ]
+    },
+    "journal/2026-09-17T09:20:00Z": {
+      "at": "2026-09-17T09:20:00Z",
+      "text": "Rewrote T12 around the service day. DST is now explicit in its checks; the 25-hour autumn day was not in my first draft.",
+      "by": "claude"
+    },
+    "journal/2026-09-18T10:00:00Z": {
+      "at": "2026-09-18T10:00:00Z",
+      "text": "Rail gate firmware is shared with the fare-gate team and their release freeze starts in November. Anything for gates needs to be in their train before then or wait until January.",
+      "by": "u_zoe"
+    },
+    "journal/2026-09-18T13:25:00Z": {
+      "at": "2026-09-18T13:25:00Z",
+      "text": "Asked Q3 and Q4. Offline tolerance sets the buffer size in T9.",
+      "by": "claude"
+    },
+    "journal/2026-09-21T10:05:00Z": {
+      "at": "2026-09-21T10:05:00Z",
+      "text": "48 hours, flagged stale after that, not thrown away.",
+      "by": "u_ilkka",
+      "questions": [
+        "Q3"
+      ]
+    },
+    "journal/2026-09-21T11:40:00Z": {
+      "at": "2026-09-21T11:40:00Z",
+      "text": "Put 48 hours into T3 and T9. The buffer holds about 11 busy hours of taps, so a full buffer is a real case; decided it stops taking new credentials and lights the fault indicator rather than overwrite older taps, since an overwritten tap is a silent lost fare.",
+      "by": "claude"
+    },
+    "journal/2026-09-22T11:05:00Z": {
+      "at": "2026-09-22T11:05:00Z",
+      "text": "Asked Q5 about running both engines side by side.",
+      "by": "claude"
+    },
+    "journal/2026-09-23T09:50:00Z": {
+      "at": "2026-09-23T09:50:00Z",
+      "text": "Drafted T11 to T15 in detail. T14 and T15 need signing keys that don't exist; that will be a question for a person.",
+      "by": "claude"
+    },
+    "journal/2026-09-24T10:05:00Z": {
+      "at": "2026-09-24T10:05:00Z",
+      "text": "Asked Q7. The answer decides what the gate can do at a low balance and changes the engine's interface.",
+      "by": "claude"
+    },
+    "journal/2026-09-24T15:30:00Z": {
+      "at": "2026-09-24T15:30:00Z",
+      "text": "Surprise: the legacy card table has 14% duplicate card_id values, from the 2011 re-issue. T7 keys on (card_id, issue_batch) instead of the card id alone.",
+      "by": "claude"
+    },
+    "journal/2026-09-25T09:30:00Z": {
+      "at": "2026-09-25T09:30:00Z",
+      "text": "Confirmed that the duplicate ids are a known problem, and that they only affect cards issued before 2012. Customer support already handles them by hand.",
+      "by": "u_ferran"
+    },
+    "journal/2026-09-28T10:10:00Z": {
+      "at": "2026-09-28T10:10:00Z",
+      "text": "Sketched T16 to T30 as short entries, not full plans. I'll expand them once the open questions that sit in them are answered.",
+      "by": "claude"
+    },
+    "journal/2026-09-29T14:25:00Z": {
+      "at": "2026-09-29T14:25:00Z",
+      "text": "Asked Q6; the benefits register needs about a week to onboard, so the answer sets T20's timeline.",
+      "by": "claude"
+    },
+    "journal/2026-10-01T09:15:00Z": {
+      "at": "2026-10-01T09:15:00Z",
+      "text": "Withdraw Q5. Route-by-route cutover covers it.",
+      "by": "owner",
+      "questions": [
+        "Q5"
+      ]
+    },
+    "journal/2026-10-02T09:35:00Z": {
+      "at": "2026-10-02T09:35:00Z",
+      "text": "Asked Q8 about bank cards. Left T30 as a title and a goal until it is answered.",
+      "by": "claude"
+    },
+    "journal/2026-10-05T16:50:00Z": {
+      "at": "2026-10-05T16:50:00Z",
+      "text": "Asked Q9. Several tasks (T34, T45) depend on how long we keep tap records.",
+      "by": "claude"
+    },
+    "journal/2026-10-06T13:00:00Z": {
+      "at": "2026-10-06T13:00:00Z",
+      "text": "Privacy officer is back on the 12th and will want to see T45 before the warehouse feed goes anywhere.",
+      "by": "u_marisol"
+    },
+    "journal/2026-10-08T11:15:00Z": {
+      "at": "2026-10-08T11:15:00Z",
+      "text": "Asked Q10 on cutover order. T40 is still only a title and a goal.",
+      "by": "claude"
+    },
+    "journal/2026-10-09T15:05:00Z": {
+      "at": "2026-10-09T15:05:00Z",
+      "text": "Asked Q11 on unlinked card balances; counted them at 18% by number of cards. T41 stays thin.",
+      "by": "claude"
+    },
+    "journal/2026-10-12T10:20:00Z": {
+      "at": "2026-10-12T10:20:00Z",
+      "text": "Asked Q12. I'd normally pick a default and move on, but a number that decides how much support can credit isn't mine to set.",
+      "by": "claude"
+    },
+    "journal/2026-10-13T09:40:00Z": {
+      "at": "2026-10-13T09:40:00Z",
+      "text": "Added a done-check for the cutover, and risks for the November firmware freeze and the key provisioning.",
+      "by": "claude"
+    },
+    "journal/2026-10-14T09:05:00Z": {
+      "at": "2026-10-14T09:05:00Z",
+      "text": "Asked Q13, a manual step: generating the signing key batch. Both firmware tasks wait on it.",
+      "by": "claude"
+    },
+    "journal/2026-10-15T14:35:00Z": {
+      "at": "2026-10-15T14:35:00Z",
+      "text": "Asked Q14 about fraud thresholds. Security hasn't written their view down, so there is no recommendation.",
+      "by": "claude"
+    },
+    "journal/2026-10-16T09:50:00Z": {
+      "at": "2026-10-16T09:50:00Z",
+      "text": "Asked Q15 on paper tickets. It interacts with Q8: if bank cards come in a later phase, paper stays the fallback for visitors.",
+      "by": "claude"
+    },
+    "journal/2026-10-19T10:05:00Z": {
+      "at": "2026-10-19T10:05:00Z",
+      "text": "Asked Q16 on the minimum OS version.",
+      "by": "claude"
+    },
+    "journal/2026-10-20T11:30:00Z": {
+      "at": "2026-10-20T11:30:00Z",
+      "text": "The fare-gate team can fit one extra firmware drop in their train before the freeze if we have signed builds by 30 October. Unlikely, given Q13.",
+      "by": "u_zoe"
+    },
+    "journal/2026-10-21T15:00:00Z": {
+      "at": "2026-10-21T15:00:00Z",
+      "text": "Counted: 45 tasks, 11 open questions. T1 to T15 are detailed, T16 to T20 have an approach only, T21 and later are titles and goals. Not asking for approval yet.",
+      "by": "claude"
+    },
+    "journal/2026-10-22T09:30:00Z": {
+      "at": "2026-10-22T09:30:00Z",
+      "text": "Take the next few days on T21 to T30; the finance people will review them on Monday.",
+      "by": "owner"
+    },
+    "journal/2026-10-22T16:10:00Z": {
+      "at": "2026-10-22T16:10:00Z",
+      "text": "Expanded nothing yet; waiting on Q6, Q8 and Q10, which shape most of T21 to T30.",
+      "by": "claude"
+    }
+  }
+}
