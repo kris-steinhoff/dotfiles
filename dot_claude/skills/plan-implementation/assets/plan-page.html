@@ -141,6 +141,16 @@ a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outli
 .graph .edge.rel { stroke: var(--accent); stroke-width: 2; opacity: 1; }
 .graph .arrow-rel { fill: var(--accent); }
 .graph .node.sel rect { stroke-width: 3; fill: var(--attn-soft); }
+/* The task id in a node links to the task's card. */
+.graph .node a { cursor: pointer; }
+.graph .node a:hover .nid { fill: var(--accent); text-decoration: underline; }
+/* Clicking a node flashes its card briefly. */
+@keyframes card-flash {
+  from { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent); }
+  to { border-color: var(--line); box-shadow: 0 0 0 3px transparent; }
+}
+#tasks .card.flash { animation: card-flash 1.4s ease-out; }
+@media (prefers-reduced-motion: reduce) { #tasks .card.flash { animation: none; border-color: var(--accent); } }
 .graph .node.dropped rect { stroke-dasharray: 4 3; }
 .graph .node.dropped .ntitle { fill: var(--muted); text-decoration: line-through; }
 
@@ -294,10 +304,9 @@ details[open] > summary { margin-bottom: 10px; }
   </div>
 
   <div class="part">
-    <h2 class="part-title">Record</h2>
+    <h2 class="part-title">Journal</h2>
 
     <section>
-      <h2>Journal</h2>
       <ul class="journal" id="journal"><li><time></time><p class="muted">Nothing yet.</p></li></ul>
     </section>
 
@@ -412,19 +421,30 @@ details[open] > summary { margin-bottom: 10px; }
     for (const id of ["graph", "graph-side"]) renderGraph($(id), sortedTasks());
   }
 
-  // Clicking a task selects it; clicking it again, the graph's background, or pressing Escape clears it.
+  // Clicking a task selects it and flashes its card. Clicking the selected task again keeps it selected;
+  // clicking anywhere that isn't a task, or pressing Escape, clears it.
   let selected = null;
+  const wide = window.matchMedia("(min-width: 1024px)");
+  function flashCard(id) {
+    const card = $("t-" + id);
+    if (!card || !wide.matches) return;
+    card.classList.remove("flash");
+    void card.offsetWidth;
+    card.classList.add("flash");
+  }
   function select(id, hostId) {
-    selected = id && id !== selected ? id : null;
+    selected = id;
     drawGraphs();
     if (id && hostId) {
       const again = $(hostId).querySelector(`[data-id="${CSS.escape(id)}"]`);
       if (again) again.focus();
     }
+    if (id) flashCard(id);
   }
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && selected) select(null);
   });
+  document.addEventListener("click", () => { if (selected) select(null); });
   // The sticky graph column sits below the sticky header, whose height changes with the title and window width.
   const head = document.querySelector(".layout > .head");
   new ResizeObserver(() => {
@@ -559,7 +579,6 @@ details[open] > summary { margin-bottom: 10px; }
 
     const markerId = "arrow-" + host.id;
     const root = svg("svg", { width, height, viewBox: `0 0 ${width} ${height}`, role: "group", "aria-label": "Tasks and their dependencies, top to bottom. Select a task to highlight its chain.", class: sel ? "has-sel" : "" });
-    root.addEventListener("click", () => { if (selected) select(null); });
     const defs = svg("defs", {});
     for (const [id, cls] of [[markerId, "arrow"], [markerId + "-rel", "arrow-rel"]]) {
       const marker = svg("marker", { id, viewBox: "0 0 8 8", refX: "7", refY: "4", markerWidth: "7", markerHeight: "7", orient: "auto" });
@@ -592,7 +611,17 @@ details[open] > summary { margin-bottom: 10px; }
       g.appendChild(svg("title", {}, t.id + " · " + (t.title || "") + " · " + (TASK_STATUS[t.status] || [t.status])[0]));
       g.appendChild(svg("rect", { width: W, height: H, rx: 6 }));
       g.appendChild(svg("circle", { class: "dot", cx: 12, cy: 15, r: 3.5 }));
-      g.appendChild(svg("text", { class: "nid", x: 21, y: 19 }, t.id));
+      // The id links to the task's card, and following it selects the task too. Selecting redraws the graph, so the
+      // jump is made by hand rather than left to a link that is about to be replaced.
+      const link = svg("a", { href: "#t-" + t.id });
+      link.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        select(t.id, host.id);
+        location.hash = "t-" + t.id;
+      });
+      link.appendChild(svg("text", { class: "nid", x: 21, y: 19 }, t.id));
+      g.appendChild(link);
       wrapTitle(t.title, CHARS).forEach((line, i) => g.appendChild(svg("text", { class: "ntitle", x: 10, y: 36 + i * 15 }, line)));
       root.appendChild(g);
     }
