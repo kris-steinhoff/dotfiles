@@ -1,4 +1,6 @@
 AGENTS.md
+# No root CLAUDE.md is tracked, but bd init or /init can create one; without
+# this it would deploy to ~/CLAUDE.md and load in every session under $HOME.
 CLAUDE.md
 README.md
 
