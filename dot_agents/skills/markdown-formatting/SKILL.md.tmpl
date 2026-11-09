@@ -1,6 +1,6 @@
 ---
 name: markdown-formatting
-description: Use when writing, editing, or creating markdown (.md) content. Prose is soft-wrapped one line per paragraph, with `-` bullets, ATX headings, `_emphasis_`, and aligned tables. To find out whether an existing file is hard-wrapped, use the markdown-wrapping skill instead.
+description: Use when writing or editing markdown (.md). Prose is soft-wrapped one line per paragraph, with `-` bullets, ATX headings, and aligned tables. Its scripts check whether an existing file is hard-wrapped before an edit, and that every `[[wiki-link]]` still resolves after deleting or renaming files.
 {{- with get . "custom" }}
 {{ . }}
 {{- end }}
@@ -20,7 +20,7 @@ This matters more than the rest of this file, and it is the one convention an ag
 - Hard wraps make diffs noisy: editing one word in the middle of a paragraph reflows every following line, hiding the real change.
 - Tools like prose linters, grep, and LLM context windows treat a paragraph as one logical unit. Hard wraps split it across lines and complicate that.
 
-Editing a file that is already hard-wrapped throughout is the exception: preserve its wrapping rather than reflowing a whole file as a side effect of an unrelated edit. Use the **markdown-wrapping** skill to find out which case you are in, rather than guessing from a glance.
+Editing a file that is already hard-wrapped throughout is the exception: preserve its wrapping rather than reflowing a whole file as a side effect of an unrelated edit. Check which case you are in, as [Before editing an existing file](#before-editing-an-existing-file) describes, rather than guessing from a glance.
 
 ## The rest
 
@@ -45,3 +45,41 @@ Front matter and code blocks follow their own rules. Don't reflow either.
 Don't reformat by running a formatter yourself as part of an edit, and never join lines by hand. Reflowing a paragraph means re-emitting its text, and re-emitted prose drifts a word at a time.
 
 Write it correctly the first time. Where that isn't enough, the fix belongs in the project rather than in an agent's habits: a `PostToolUse` hook formats every markdown write automatically, and a prettier pre-commit hook catches whatever arrives another way. [README.md](README.md) has both, and it is worth suggesting to the user when a project has neither.
+
+## Before editing an existing file
+
+Find out whether the file is hard-wrapped, because reflowing a hard-wrapped file as a side effect of an unrelated edit buries the real change in a whole-file diff. That is a question about what is on disk, so answer it by looking:
+
+```bash
+scripts/check-wrapping path/to/docs
+```
+
+It takes files or directories, defaulting to the current directory, and only reads. A prettier config that sets `proseWrap` settles it outright; otherwise it counts how the paragraphs are laid out, skipping code, tables, headings, and front matter, and prints the per-file counts beside each verdict.
+
+| Verdict                                | What to do                                    |
+| -------------------------------------- | --------------------------------------------- |
+| `hard-wrapped throughout, so match it` | Match the surrounding wrap width in your edit |
+| `hard-wrapped by declaration`          | Same, and the project has said so explicitly  |
+| `soft-wrapped` anything                | One line per paragraph                        |
+| `mixed`                                | No style to match, so soft wrap               |
+| `no evidence either way`               | Soft wrap                                     |
+
+Hard wrapping needs a positive verdict. Absence of evidence is not it.
+
+## After deleting or renaming files
+
+In a tree linked with `[[wiki-links]]` or shortcut references, check that every link still resolves:
+
+```bash
+scripts/check-links [ROOT]
+```
+
+It exits 0 when clean, 1 with one finding per line on stderr, and 2 if the root isn't a directory; `ROOT` defaults to the working directory. Findings are unresolved links (with ranked near matches), ambiguous bare links (with the shortest unique qualification), and shortcut references like `[NXC-156]` with no definition in the file. It models marksman's own resolution rules, where a bare `[[rate limits]]` is matched loosely and a path-qualified `[[decisions/rate-limits]]` literally, so unlike a general link checker it doesn't report correct links as broken.
+
+The script only detects; deciding what a broken link meant is yours.
+
+- **Unresolved.** When the target is genuinely gone, the fix is often to rewrite the sentence rather than repoint the link, since a reference to something deleted is usually prose that expired with it.
+- **Ambiguous.** Apply the printed qualification as-is, or rename one file when the name collision is itself the mistake.
+- **Never defined.** Add `[KEY]: <url>` at the foot of the file, or drop the brackets if it was never meant to be a link.
+
+It doesn't check `#anchors` or inline URLs.

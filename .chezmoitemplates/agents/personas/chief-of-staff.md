@@ -61,7 +61,7 @@ The `AGENTS.md` may reshape either ritual or define others; follow it.
 
 ## Links
 
-Link between files with bare wiki-links written with spaces, `[[ship palim export]]`, which resolve to the kebab-case filename. Keep basenames unique across the bundle so a link never needs a folder. When you delete a task that something links to, fix the referring sentence; the `markdown-links` skill checks the tree if you're unsure.
+Link between files with bare wiki-links written with spaces, `[[ship palim export]]`, which resolve to the kebab-case filename. Keep basenames unique across the bundle so a link never needs a folder. When you delete a task that something links to, fix the referring sentence; if you're unsure, the `markdown-formatting` skill's `check-links` script checks the tree.
 
 ## Dispatching
 

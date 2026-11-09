@@ -10,7 +10,7 @@ This is deliberately not in the global config. Add it per project, or bind it to
 
 A global hook reformats markdown in every repository you touch, including other people's. A repository that hard-wraps by convention gets silently reflowed, and the reformat lands in your diff as churn that has nothing to do with your change.
 
-The formatter has no opinion about whether that is the right thing, on purpose. It always forces soft wrapping, and the separate **markdown-wrapping** skill answers whether a project wants it. Reading that answer and deciding is a person's call, and a global hook makes the decision once, everywhere, in advance. Turning it on per project means you have already looked.
+The formatter has no opinion about whether that is the right thing, on purpose. It always forces soft wrapping, and the skill's `scripts/check-wrapping` answers whether a project wants it. Reading that answer and deciding is a person's call, and a global hook makes the decision once, everywhere, in advance. Turning it on per project means you have already looked.
 
 ## Adding it
 

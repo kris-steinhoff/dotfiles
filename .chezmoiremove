@@ -6,9 +6,6 @@
 .claude/skills/where-to-remember
 .gemini/config/plugins/kris-steinhoff/skills/where-to-remember
 .gemini/config/plugins/kris-steinhoff-pulsar
-# check-wrapping moved to its own markdown-wrapping skill; without this it
-# lingers in the old skill on machines that already applied it.
-.agents/skills/markdown-formatting/scripts/check-wrapping
 # herdr-pr-worktree was generalized and renamed to herdr-worktree; without
 # these it lingers under the old name on machines that already applied it.
 .agents/skills/herdr-pr-worktree
@@ -182,3 +179,11 @@
 .claude/skills/testing-coverage
 .agents/skills/cli-json
 .claude/skills/cli-json
+
+# markdown-wrapping and markdown-links were folded back into markdown-formatting,
+# whose scripts/ now holds check-wrapping and check-links. Without these the
+# retired skills linger on machines that already applied them.
+.agents/skills/markdown-wrapping
+.claude/skills/markdown-wrapping
+.agents/skills/markdown-links
+.claude/skills/markdown-links

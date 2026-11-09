@@ -13,8 +13,8 @@ rewrite a .ts or .json file just as happily as a .md one, and in a hook the path
 is whatever the agent last wrote, so anything that is not markdown has to be a
 no-op rather than a reformat.
 
-Whether a project wants hard wraps is the markdown-wrapping skill's question,
-not this script's. This one always forces soft wrapping. Keeping the judgment in
+Whether a project wants hard wraps is check-wrapping's question, not this
+script's. This one always forces soft wrapping. Keeping the judgment in
 one place is why it is not also implemented here.
 
 Globs are the shell's job, so pass expanded paths (zsh does `docs/**/*.md`).
