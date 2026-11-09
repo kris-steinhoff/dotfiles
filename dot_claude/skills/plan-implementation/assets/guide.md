@@ -26,7 +26,7 @@ Text is plain text, shown exactly as written, with line breaks kept. The page do
 
 `tasks/T<n>`, numbered in build order, with `order` equal to `n`:
 
-- `title`, `goal`, `approach`, `touches` (a list of files, modules, or areas), and `verify`, which is the task's definition of done.
+- `title`, `goal`, `approach`, `touches`, and `verify`, which is the task's definition of done. `touches` is a list of files, modules, or areas where the planner expects the change to land. It is advisory: it helps judge which tasks can run side by side, and an implementer may change other things the work needs.
 - `status`: `pending`, `in_progress`, `blocked`, `merged`, or `dropped`. `blocked` means it waits on something outside the repository, which its `approach` names.
 - `depends_on`: ids of tasks, which the page draws in the graph, and of questions, which it lists on the task.
 - `epics` (a list of keys), and `pr`, the id of the pull request the task lands in.

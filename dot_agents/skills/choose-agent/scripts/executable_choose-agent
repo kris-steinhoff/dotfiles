@@ -7,8 +7,7 @@
 A Herdr dispatch primitive. Candidates are declared per machine in
 ~/.config/choose-agent/candidates.toml, since only the machine knows which
 agents it has and whether any run on local models; without that file the
-candidates are Claude and Codex at 40/60, the split drive-implementation used
-before this existed. A candidate whose CLI is not on PATH drops out.
+candidates are Claude and Codex at 40/60. A candidate whose CLI is not on PATH drops out.
 
 Usage only weighs on candidates with a subscription quota. `ai-usage --json
 windows` reports each quota's windows, and a candidate signed out of its quota

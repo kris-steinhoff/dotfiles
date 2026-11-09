@@ -160,3 +160,9 @@
 .agents/skills/github-pr/tests/test-dispatch-advance
 .agents/skills/github-pr/tests/test-dispatch-cleanup
 .claude/skills/plan-implementation/assets/board.html
+# drive was folded into plan-implementation's plan page, and drive-implementation
+# became a Claude-only skill that drives that page; without these the retired
+# copies linger on machines that already applied them.
+.claude/skills/drive
+.agents/skills/drive-implementation
+.gemini/config/plugins/kris-steinhoff/skills/drive-implementation
