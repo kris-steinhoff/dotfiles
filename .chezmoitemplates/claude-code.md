@@ -17,3 +17,7 @@ Commands in `sandbox.excludedCommands` (`xcodebuild`, `xcrun xcresulttool`, `xcr
 ### JSON from command-line tools
 
 Filter or reshape a CLI's JSON (`gh`, `aws`, `kubectl`) with `jq`, not an inline `python -c` or `node -e`.
+
+### Report-back
+
+A claude agent started with a name can report back by SendMessage to your session's name.
