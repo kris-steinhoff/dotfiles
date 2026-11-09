@@ -166,3 +166,8 @@
 .claude/skills/drive
 .agents/skills/drive-implementation
 .gemini/config/plugins/kris-steinhoff/skills/drive-implementation
+# Gemini is no longer a supported surface, so its instruction file and the
+# plugin that carried every skill went from the source; without these they
+# linger on machines that already applied them.
+.gemini/GEMINI.md
+.gemini/config/plugins/kris-steinhoff

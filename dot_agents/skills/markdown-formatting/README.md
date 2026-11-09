@@ -58,7 +58,7 @@ cat /tmp/hook-check.md
 
 ## The other two layers
 
-The hook covers Claude Code only, and it is the only layer that acts while a file is being written. Codex does have a hook system, and a profile or agent role file can carry one inline, but its `apply_patch` payload names the edit in patch text under `tool_input.command` rather than a `file_path`, so `--hook` reads nothing it recognizes; wiring it there means parsing an envelope Codex owns and does not document, which would fail silently — the way everything in `--hook` fails — the day it changed. OpenCode and Gemini have no equivalent at all. On all three, the conventions in SKILL.md are what there is.
+The hook covers Claude Code only, and it is the only layer that acts while a file is being written. Codex does have a hook system, and a profile or agent role file can carry one inline, but its `apply_patch` payload names the edit in patch text under `tool_input.command` rather than a `file_path`, so `--hook` reads nothing it recognizes; wiring it there means parsing an envelope Codex owns and does not document, which would fail silently — the way everything in `--hook` fails — the day it changed. OpenCode has no equivalent at all. On both, the conventions in SKILL.md are what there is.
 
 Neither catches a file that arrives some other way. For that, format on commit. This repository does, in `.pre-commit-config.yaml`:
 
