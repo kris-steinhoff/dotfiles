@@ -192,3 +192,12 @@
 # Without these the skill lingers on machines that already applied it.
 .agents/skills/choose-agent
 .claude/skills/choose-agent
+
+# signal-user was retired: Herdr marks an agent waiting in AskUserQuestion as
+# blocked on its own. Its Herdr plugin and the prefix+u and prefix+U key scripts
+# went with it. Without these they linger on machines that already applied them.
+.agents/skills/signal-user
+.claude/skills/signal-user
+.config/herdr/local-plugins/signal-user
+.config/herdr/dismiss-signal.sh
+.config/herdr/toggle-flag.sh
