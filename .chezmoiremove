@@ -171,3 +171,14 @@
 # linger on machines that already applied them.
 .gemini/GEMINI.md
 .gemini/config/plugins/kris-steinhoff
+
+# wrap-up, testing-coverage, and cli-json added little beyond what the model
+# already does (wrap-up repeated Claude Code's own memory instructions); the
+# jq rule from cli-json lives on in the Claude global instructions. Without these
+# they linger on machines that already applied them.
+.agents/skills/wrap-up
+.claude/skills/wrap-up
+.agents/skills/testing-coverage
+.claude/skills/testing-coverage
+.agents/skills/cli-json
+.claude/skills/cli-json
