@@ -10,7 +10,13 @@ description: The clone-per-stream worktree layout — a plain project folder hol
 
 A way to lay out one project's checkouts so every branch gets its own worktree, a sandboxed agent in any of them can commit, and Herdr's sidebar groups the work the way you think about it. This skill holds the rules, and its script does the setup.
 
-A project opts in with a line in its own `AGENTS.md` saying it uses this layout and to load this skill before touching worktrees there. The same file carries what this skill can't know about the project: where the primary was cloned from and its remote, how it names branches and work streams, and any setup a new clone or worktree needs, such as installing dependencies or hooks. Codex starts `AGENTS.md` discovery at the Git/project root, so it does not automatically load a file in the plain parent folder from `repo/` or a linked worktree. When launching Codex, pass that parent file through `dispatch agent launch --developer-instructions-file <path>`.
+A project opts in with a line in its own `AGENTS.md` saying it uses this layout and to load this skill before touching worktrees there. The same file carries what this skill can't know about the project: where the primary was cloned from and its remote, how it names branches and work streams, and any setup a new clone or worktree needs, such as installing dependencies or hooks. Codex starts `AGENTS.md` discovery at the Git/project root, so it does not automatically load a file in the plain parent folder from `repo/` or a linked worktree. When launching Codex, pass that parent file's text through its `developer_instructions` override. Codex parses a `-c` value as TOML, and Python's JSON encoding with `ensure_ascii=False` is a valid TOML basic string (the default `ensure_ascii=True` is not, because it writes an emoji as escaped surrogates, which TOML rejects):
+
+```bash
+codex -c "developer_instructions=$(python3 -c 'import json, sys; print(json.dumps(open(sys.argv[1]).read(), ensure_ascii=False))' <path>)"
+```
+
+This replaces a persona profile's own `developer_instructions`, so don't combine it with `--profile coordinator` or `--profile chief-of-staff`.
 
 ## Shape
 
@@ -64,7 +70,7 @@ Re-running converges, and finishes a build that failed partway. Every step but t
 With the clone's config set as above, ordinary Git work is available to both Claude and Codex, but their sandboxes reach the clone's Git metadata differently:
 
 - Claude can commit, fetch, merge, create branches, manage worktrees, and push from inside its sandbox. `git branch -D` succeeds with a warning about the config lock.
-- Codex's `workspace-write` sandbox protects both a checkout's `.git` entry and the resolved Git directory as read-only. It requests scoped escalation for Git commands that write metadata, and the managed `approval_policy = "on-request"` plus `approvals_reviewer = "auto_review"` config routes eligible requests through automatic review. `dispatch agent launch` does not override that policy with `--approve-for-me`. Keep file edits and routine tests inside `workspace-write`; `danger-full-access` is not needed just to make Git work.
+- Codex's `workspace-write` sandbox protects both a checkout's `.git` entry and the resolved Git directory as read-only. It requests scoped escalation for Git commands that write metadata, and the managed `approval_policy = "on-request"` plus `approvals_reviewer = "auto_review"` config routes eligible requests through automatic review. Launch Codex without overriding that approval policy. Keep file edits and routine tests inside `workspace-write`; `danger-full-access` is not needed just to make Git work.
 
 Neither kind changes clone config from a session. Never add `--set-upstream` or `-u` to a push; when something truly needs a config change, it is the user's to make outside the sandbox.
 
@@ -75,7 +81,7 @@ Herdr's sidebar has one kind of object, the **workspace**. A **parent workspace*
 - Open each clone, primary or work stream, as its parent workspace.
 - Create worktrees from the parent workspace, with an explicit path in the clone's `.worktrees/` (`<clone>/.worktrees/<branch>`). Herdr refuses to create one from a linked-worktree workspace.
 - A newly opened parent workspace has no repo metadata until its first worktree action. That's normal.
-- Herdr lists a repo's worktrees in the order their workspaces opened. The `herdr-reorder-worktrees` skill re-sorts them without closing anything.
+- Herdr lists a repo's worktrees in the order their workspaces opened.
 - A worktree made with plain `git worktree add` has no workspace until one is opened on its path.
 
 ## Sandbox

@@ -5,9 +5,6 @@ README.md
 # Guidance for working on this skill, not for sessions running it.
 .claude/skills/plan-implementation/CLAUDE.md
 
-# Template input for SKILL.md.tmpl, not a file of its own.
-.agents/skills/herdr/herdr.md
-
 {{- if ne .chezmoi.os "darwin" }}
 Library/**
 {{- end }}

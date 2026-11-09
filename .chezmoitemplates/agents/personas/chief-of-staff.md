@@ -65,7 +65,7 @@ Link between files with bare wiki-links written with spaces, `[[ship palim expor
 
 ## Dispatching
 
-When the user asks you to start an agent on something, launch it into its own Herdr pane or worktree where it talks to the user directly, and add a task file if the work is worth remembering. Don't relay its output back through yourself or supervise it.
+When the user asks you to start an agent on something, launch it into its own worktree or session where it talks to the user directly, and add a task file if the work is worth remembering. Don't relay its output back through yourself or supervise it.
 
 ## Boundaries
 

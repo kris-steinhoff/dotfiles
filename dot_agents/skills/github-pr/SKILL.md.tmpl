@@ -1,6 +1,6 @@
 ---
 name: github-pr
-description: Works GitHub pull requests from either side, posting only what the user confirms. `review <n>` reviews a PR — prior review context, the shared review policy without Nits, a stance on other reviewers' open comments, triage of each finding and reply with the user, the approved review posted, and threads of verified fixes resolved on re-review. `review ready` idempotently works every open non-draft PR awaiting my or my team's review, grouping related PRs such as a stack to be reviewed in order; background subagents review them while this session triages each with the user, hands the approved review to a posting subagent, and shows progress on a board, and where the harness has no subagents it dispatches interactive reviewers into tabs under Herdr or Orca. Suitable for repeated `/loop` invocation. `respond <n>` replies as the PR's author to unanswered review comments, each reply drafted for the user to approve. Use for any comment, reply, or review posted to a GitHub PR on the user's behalf.
+description: Works GitHub pull requests from either side, posting only what the user confirms. `review <n>` reviews a PR — prior review context, the shared review policy without Nits, a stance on other reviewers' open comments, triage of each finding and reply with the user, the approved review posted, and threads of verified fixes resolved on re-review. `review ready` idempotently works every open non-draft PR awaiting my or my team's review, grouping related PRs such as a stack to be reviewed in order; background subagents review them while this session triages each with the user, hands the approved review to a posting subagent, and shows progress on a board. Suitable for repeated `/loop` invocation. `respond <n>` replies as the PR's author to unanswered review comments, each reply drafted for the user to approve. Use for any comment, reply, or review posted to a GitHub PR on the user's behalf.
 {{- with get . "custom" }}
 {{ . }}
 {{- end }}
@@ -10,7 +10,7 @@ description: Works GitHub pull requests from either side, posting only what the 
 
 Own every GitHub PR conversation posted on the user's behalf, from either side. The modes:
 
-- `review ready` discovers review requests and groups related ones. Subagents review them in the background while this session triages each PR with the user and hands the approved review to a posting subagent. Where the harness can't run subagents, it dispatches an interactive reviewer per group into a tab instead.
+- `review ready` discovers review requests and groups related ones. Subagents review them in the background while this session triages each PR with the user and hands the approved review to a posting subagent.
 - `review <n>` conducts one review where it is invoked, from the PR's diff with no checkout, triages findings with the user, and posts only after confirmation.
 - `respond <n>` drafts the author's replies to the PR's unanswered review comments, walks the user through each, and posts only after confirmation.
 
@@ -22,34 +22,18 @@ This skill may be invoked directly, by any agent, or repeatedly with `/loop 5m /
 
 The PR's summary is how the user tells which PR is in front of them, so every review and response opens with it:
 
-- A tab reviewer that `review ready` dispatched gets it before the review starts: the dispatcher sends `/summarize-github-pr <n>` as the session's first prompt, so don't run it again.
-- A `review ready` session working with subagents opens each PR's triage with its board instead, and shows the summary's table in the confirmation, as [references/queue.md](references/queue.md) describes.
-- A `respond <n>` session, and a `review <n>` the user started by hand, opens with the summary itself: before reading anything else about the PR, run the `summarize-github-pr` skill and send its output, every line as markdown, as your first message.
+- A `review ready` session opens each PR's triage with its board instead, and shows the summary's table in the confirmation, as [references/queue.md](references/queue.md) describes.
+- A `respond <n>` or `review <n>` session opens with the summary itself: before reading anything else about the PR, run the `summarize-github-pr` skill and send its output, every line as markdown, as your first message.
 
 ## `review ready`: work the queue
 
 Read [references/queue.md](references/queue.md), then run the queue flow there. Do not ask the user to confirm the discovered set: `review ready` is explicit authorization to review the requested queue, including when a loop invoked it.
 
-It runs one of two ways, chosen by what the harness can do:
-
-- **Subagents**, whenever the harness can start subagents that run in the background while you keep working, such as Claude Code's Agent tool or Codex's `spawn_agent`. Subagents review the PRs, and this session holds every triage: as each review lands, it triages that PR with the user, hands the confirmed review to a posting subagent, and moves to the next PR while that one posts. A board shows where each PR stands.
-- **Tabs**, only when the harness has no such subagents. This needs a workspace tool the `dispatch` skill supports, Herdr or Orca. Each tab's reviewer triages and posts with the user itself, and this session only launches, advances, and closes them.
-
-With neither, say so and stop. Either way, look across the queue for PRs that belong together before reviewing, such as a stack or two halves of one change, and give each group one reviewer that takes its PRs in order; say how you grouped them and why.
+It needs subagents that run in the background while you keep working, such as Claude Code's Agent tool or Codex's `spawn_agent`; without them, say so and stop. Subagents review the PRs, and this session holds every triage: as each review lands, it triages that PR with the user, hands the confirmed review to a posting subagent, and moves to the next PR while that one posts. A board shows where each PR stands. Before reviewing, look across the queue for PRs that belong together, such as a stack or two halves of one change, and give each group one reviewer that takes its PRs in order; say how you grouped them and why.
 
 ## `review <n>`: conduct the review
 
-Run this inline, in the session that invokes it. First claim the PR, so a `review ready` queue leaves it alone while you work:
-
-```bash
-scripts/dispatch.py claim --pr-number <n> [--reviewer <name>]
-```
-
-Pass `--reviewer` with the name the prompt gave you when `review ready` sent you this PR in a tab. Started any other way, pass none, and keep the `holder` the result returns, a token that marks the claim as this session's. A needs-judgment result means another reviewer or session has the PR in progress: tell the user which, and go on only if they say so.
-
-Then [review the PR](#review-the-pr). While the reviewer runs, tell the user in a line or two that it is running and what you asked it to focus on; the summary that opened the session already describes the PR. When it returns, [triage with the user](#triage-with-the-user), [post](#post), and [record the pass](#record-the-pass).
-
-When `review ready` sent you this PR in a tab as part of a group, its prompt names the other PRs and why they belong together. Use the earlier ones as context, and don't raise again a finding already posted on one of them. If that prompt named a session to tell when the pass is complete, send it the message the prompt gives once the pass is recorded. Then stop: in a group, the next PR arrives as a new prompt, so don't start it yourself.
+Run this inline, in the session that invokes it. [Review the PR](#review-the-pr). While the reviewer runs, tell the user in a line or two that it is running and what you asked it to focus on; the summary that opened the session already describes the PR. When it returns, [triage with the user](#triage-with-the-user) and [post](#post).
 
 ## Review the PR
 
@@ -102,7 +86,7 @@ In triage, each Agree or Dispute is an item like a finding. An included Agree co
 The author may push while the review is open, and a review formed against older code can't post. So check the head when the review starts, before triage's first question, and before the final confirmation:
 
 ```bash
-scripts/dispatch.py fetch --pr-number <n>
+scripts/queue.py fetch --pr-number <n>
 ```
 
 Run it from any checkout of the repository; under a sandbox that proxies network access, it reaches `api.github.com` and `github.com`. It fetches the PR's current head to a private ref and its base branch to `origin/<base>`, and changes nothing in the working tree. It returns `moved: true`, with `previous_head` and `rewritten`, when the head differs from the last fetch.
@@ -111,7 +95,7 @@ At the start, review whatever head it returns. When it moves later, tell the use
 
 ## `respond <n>`: reply as the author
 
-Run this inline, in the session that invokes it; it dispatches nothing. Answers rest on the code as it stands: read it from a checkout of the PR's head when one exists, or else from git after `scripts/dispatch.py fetch --pr-number <n>`, with `git show <head_sha>:<path>`. If the authenticated user is not the PR's author, say so and ask before going on.
+Run this inline, in the session that invokes it; it starts no subagents. Answers rest on the code as it stands: read it from a checkout of the PR's head when one exists, or else from git after `scripts/queue.py fetch --pr-number <n>`, with `git show <head_sha>:<path>`. If the authenticated user is not the PR's author, say so and ask before going on.
 
 Run `scripts/feedback.py <n>` and take every `unanswered` inline thread, whoever started it, and every review summary body and conversation comment that is not my own. Whether a summary or comment was already answered is a judgment the API can't make: list those after `my_latest` as needing replies, and the older ones separately as possibly answered, so triage settles them rather than a timestamp. Bot reviewers are included; say which items are a bot's, so the user can skip them quickly.
 
@@ -161,20 +145,9 @@ Set `head_sha` to the head the content was formed against. Run `scripts/post.py 
 
 A posting subagent from a `review ready` queue follows the same steps with the content it was handed, and changes none of it. Any fix a check asks for, such as moving a finding whose anchor won't post into the body, changes what the user confirmed, so it posts nothing and reports the problem back instead.
 
-## Record the pass
-
-When a review reaches a terminal decision (successfully posted, or the user explicitly decides to finish without posting), record the pass complete:
-
-```bash
-scripts/dispatch.py complete --pr-number <n> --head-sha <head_sha> [--reviewer <name> | --holder <token>]
-```
-
-with the same `--reviewer` or `--holder` the PR was claimed with. Don't record completion if posting failed or the user has not finished triage, so the queue never treats an unfinished review as done.
-
 ## Boundaries
 
 - Do not edit the PR's source in any mode.
 - Do not request or report Nits.
-- Do not run more than one reviewer for the same PR.
-- Do not close a reviewer's tab except through `review ready`'s cleanup step, or when the user separately asks.
+- Do not run more than one reviewer for the same PR in a session.
 - Resolve only threads I started, and only in a review.

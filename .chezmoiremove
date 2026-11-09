@@ -156,6 +156,10 @@
 # worktree helper went with it; without this they linger and fail if run.
 .agents/skills/github-pr/tests/test-dispatch-advance
 .agents/skills/github-pr/tests/test-dispatch-cleanup
+# github-pr's queue helper became queue.py when it dropped its state file and
+# tab reviewers; without these the old helper and its test linger and fail.
+.agents/skills/github-pr/scripts/dispatch.py
+.agents/skills/github-pr/tests/test-dispatch
 .claude/skills/plan-implementation/assets/board.html
 # drive was folded into plan-implementation's plan page, and drive-implementation
 # became a Claude-only skill that drives that page; without these the retired
@@ -214,3 +218,15 @@
 .claude/skills/learn-speed-run
 .agents/skills/learn-the-hard-way
 .claude/skills/learn-the-hard-way
+
+# dispatch, herdr, herdr-reorder-worktrees, and cleanup-worktrees were retired
+# with Herdr and Orca delegation; the Herdr app itself stays. Without these they
+# linger on machines that already applied them.
+.agents/skills/dispatch
+.claude/skills/dispatch
+.agents/skills/herdr
+.claude/skills/herdr
+.agents/skills/herdr-reorder-worktrees
+.claude/skills/herdr-reorder-worktrees
+.agents/skills/cleanup-worktrees
+.claude/skills/cleanup-worktrees

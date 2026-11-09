@@ -39,7 +39,7 @@ exists with anything else in it is needs-judgment.
 Claude Code's sandbox write-protects .git/config and .git/hooks in every
 clone, so this runs outside it: the user runs it, not a sandboxed session.
 
-Exit codes (shared across the dispatch primitives):
+Exit codes:
   0  success. The JSON result object is printed to stdout.
   2  needs judgment: <path> is occupied by something else or is a file,
      --from is not a git repo, or --beads names no beads database. stdout is {"status": "needs_judgment", "reason": ...}.

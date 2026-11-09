@@ -2,12 +2,10 @@
   "agentPushNotifEnabled": true,
   "autoMode": {
     "allow": [
-      "$defaults",
-      "GitHub PR Review Cleanup: Running the github-pr skill's own `dispatch.py` (at `skills/github-pr/scripts/dispatch.py` under the home directory's `~/.claude/` or `~/.agents/`) as `dispatch.py cleanup --apply`, optionally with `--repo <path>` and no other arguments, as its own command with nothing chained before or after it, is not Interfere With Workloads, Irreversible Local Destruction, or Irreversible Deletion. It closes only the terminal tabs of reviewer agents that the github-pr skill launched and recorded, and only once every PR it gave that reviewer is finished, so the agent it ends is idle with its work posted; it also deletes the skill's own private git refs under `refs/github-pr-review/`. This does not apply if that script or the queue's state file under `~/.local/state/github-pr/reviews/` was written or edited this session other than by the skill's own `dispatch.py`, and it does not cover `dispatch terminal close`, `herdr pane close`, or `orca terminal close` called directly."
+      "$defaults"
     ],
     "environment": [
-      "$defaults",
-      "Reviewer tabs recorded in `~/.local/state/github-pr/reviews/<owner>/<repo>.json` are created by the github-pr skill's `review ready` pass, each running one interactive Claude reviewer that idles in its tab once its reviews are posted. Herdr and Orca are terminal workspace tools running on this machine, so their tabs and agents are local. `dispatch.py cleanup --apply` closes such a tab only when every PR its reviewer was given is finished; reviews read PRs from git without a checkout, so closing a tab loses no local work, and it never touches remote branches or GitHub."
+      "$defaults"
     ]
   },
   "enabledPlugins": {
@@ -91,7 +89,6 @@
       "allowWrite": [
         "~/.cache/pre-commit",
         "~/.cache/uv",
-        "~/.local/state/github-pr",
         "~/.local/share/uv/tools",
         "~/.npm/_cacache",
         "~/.npm/_npx",
@@ -123,9 +120,6 @@
         "com.apple.CoreSimulator.CoreSimulatorService"
       ],
       "allowUnixSockets": [
-        "~/.config/herdr/herdr.sock",
-        "~/.config/herdr/herdr-client.sock",
-        "~/Library/Application Support/orca",
         "~/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock"
       ],
       "allowedDomains": [
