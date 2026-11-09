@@ -207,3 +207,10 @@
 # already applied it.
 .agents/skills/investigate
 .claude/skills/investigate
+
+# The learn-speed-run and learn-the-hard-way skills were deleted; without these
+# they linger on machines that already applied them.
+.agents/skills/learn-speed-run
+.claude/skills/learn-speed-run
+.agents/skills/learn-the-hard-way
+.claude/skills/learn-the-hard-way
