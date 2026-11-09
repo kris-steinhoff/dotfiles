@@ -6,6 +6,12 @@ README.md
 .agents/skills/**/AGENTS.md
 .claude/skills/**/AGENTS.md
 
+# Notes for sessions working on these configs, beside the config they describe.
+.claude/AGENTS.md
+.codex/README.md
+.config/herdr-app/AGENTS.md
+.local/bin/AGENTS.md
+
 {{- if ne .chezmoi.os "darwin" }}
 Library/**
 {{- end }}

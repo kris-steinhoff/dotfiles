@@ -33,3 +33,11 @@ repos:
           sh -c 'for f in "$@"; do out=$(chezmoi execute-template <"$f") && [ "$out" = "$(printf "%s\n" "$out" | jq -S .)" ] || { echo "$f: keys not in jq -S order"; exit 1; }; done' --
         language: system
         files: ^\.chezmoitemplates/claude-settings\.json\.tmpl$
+      - id: chezmoi-templates-parse
+        name: check every .chezmoitemplates file parses as a template
+        # chezmoi parses every file there on every render, so one stray
+        # delimiter, even in a markdown note, breaks every template.
+        entry: chezmoi --source . execute-template ''
+        language: system
+        pass_filenames: false
+        files: ^\.chezmoitemplates/

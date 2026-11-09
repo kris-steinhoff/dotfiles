@@ -1,0 +1,5 @@
+# Herdr app settings
+
+This file covers which of the Herdr desktop app's files these dotfiles manage and why; load it before changing anything in this directory.
+
+The Herdr desktop app (`herdr-app`) keeps its whole interface as files in `~/.config/herdr-app/`, and its Settings screen writes `settings.json` itself (zoom, appearance, contrast, telemetry). So that file's source is a chezmoi modify-template, `modify_settings.json`, which reads the live file and sets only the keys we manage, as the `modify_` scripts for Claude's and Codex's settings do; it needs no interpreter because chezmoi's own `fromJson` and `setValueAtPath` are enough. The app ships no Tokyo Night, so `themes/tokyo-night.json` is ours; the app leaves theme files it didn't write alone. Keys stay on the app's defaults, and the shipped layouts and mods are left unmanaged, because Herdr replaces them on every start and personal changes to them go through clones. The older terminal Herdr's `~/.config/herdr/config.toml` is a separate program's config and stays as it is.
