@@ -1,6 +1,6 @@
 ---
 name: summarize-jira-ticket
-description: Shows one Jira issue's metadata in the same shape every time, so a person can tell at a glance which issue it is and where it stands — type, key, summary, assignee, and URL; for an epic, its status and a progress bar of its children by status; for any other issue, its status, parent, linked pull requests, blockers, and subtasks. Read-only, and it doesn't describe the work. Pass the issue key; print what it returns to the user verbatim.
+description: Shows one Jira issue's metadata in a fixed shape (type, key, summary, assignee, status, and an epic's progress or an issue's parent, PRs, and blockers) so a person can tell which issue it is and where it stands. Read-only, and doesn't describe the work. Pass the issue key; print it verbatim.
 {{- with get . "custom" }}
 {{ . }}
 {{- end }}

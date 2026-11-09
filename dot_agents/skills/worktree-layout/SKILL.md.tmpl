@@ -1,6 +1,6 @@
 ---
 name: worktree-layout
-description: The clone-per-stream worktree layout — a plain project folder holding a primary clone (`repo/`) and optional work stream clones (one per body of work spanning several branches, such as an epic), each an ordinary clone with its worktrees nested in its own `.worktrees/`, plus the naming, Herdr, and sandbox rules that make it work. Use only inside a project laid out this way, or when asked to set one up. Not for ordinary clones, or for worktrees in any other arrangement.
+description: Rules and setup for the clone-per-stream worktree layout, a project folder holding a primary clone (`repo/`) and work stream clones, each with its worktrees in its own `.worktrees/`. Use only inside a project laid out this way or to set one up, not for other worktrees.
 {{- with get . "custom" }}
 {{ . }}
 {{- end }}

@@ -1,6 +1,6 @@
 ---
 name: jira
-description: Works Jira issues on the user's behalf through the Atlassian MCP server — reads issues, comments, and JQL searches, and makes changes (comments, transitions, field edits, assignment, links, new issues) only with the user's confirmation or the project's standing authorization. Use for every Jira read or write, including tracker moves another workflow calls for. Project-specific setup (site, project keys, workflow, custom fields) comes from the project's own instructions, not from this skill.
+description: Reads and changes Jira through the Atlassian MCP server, by issue key (such as ABC-123) or JQL search. Use for every Jira read or write, including tracker moves another workflow calls for. Changes need the user's confirmation or the project's standing authorization.
 {{- with get . "custom" }}
 {{ . }}
 {{- end }}

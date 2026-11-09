@@ -1,6 +1,6 @@
 ---
 name: plan-implementation
-description: "Write a detailed implementation plan on a shared claude.ai artifact, the plan page, for work too large or too shared for plan mode. Reads the source and the code, writes the approach, tasks, dependencies, done-check, scope, and risks onto the plan page as they take shape, and puts the decisions that belong to people there as questions they answer on the page. Makes no code changes. A session given the finished plan page's link can work it from the guide stored on it. Invoke as `/plan-implementation <spec file, tracker key, or brief>` to start, or with a plan page's URL to resume."
+description: "Write a detailed implementation plan on a shared claude.ai artifact, the plan page, for work too large or too shared for plan mode. Makes no code changes. Invoke with a spec file, tracker key, or brief to start, or with a plan page's URL to resume."
 argument-hint: "<spec file, tracker key, brief, or plan page URL>"
 ---
 

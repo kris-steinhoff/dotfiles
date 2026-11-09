@@ -1,6 +1,6 @@
 ---
 name: markdown-formatting
-description: Use when writing or editing markdown (.md). Prose is soft-wrapped one line per paragraph, with `-` bullets, ATX headings, and aligned tables. Its scripts check whether an existing file is hard-wrapped before an edit, and that every `[[wiki-link]]` still resolves after deleting or renaming files.
+description: Use when writing or editing markdown (.md). Prose is soft-wrapped one line per paragraph, with `-` bullets, ATX headings, and aligned tables. Its scripts check whether a file is hard-wrapped before an edit, and verify a tree's links (`[[wiki-links]]`) after deleting or renaming files.
 {{- with get . "custom" }}
 {{ . }}
 {{- end }}

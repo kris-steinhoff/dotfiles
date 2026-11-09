@@ -1,6 +1,6 @@
 ---
 name: watch-pr
-description: Deterministic PR primitive that blocks until a GitHub pull request reaches the state being waited for — its CI finishes, someone reviews or comments, its head moves, or it merges or closes — then exits with one JSON line. Run it as a background task so its exit wakes the session instead of polling on a timer. Invoke whenever an agent needs to wait on a PR's CI, review, push, or merge. Not for listing or reviewing PRs.
+description: Blocks until a GitHub PR's CI finishes, someone reviews or comments, its head moves, or it merges or closes, then exits with one JSON line. Run it in the background so its exit wakes the session. Use whenever an agent waits on a PR; not for listing or reviewing PRs.
 {{- with get . "custom" }}
 {{ . }}
 {{- end }}

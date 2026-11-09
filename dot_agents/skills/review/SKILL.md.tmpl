@@ -1,6 +1,6 @@
 ---
 name: review
-description: Routes review of a proposed implementation through one suitable available reviewer and normalizes its findings as Blocker, Follow-up, or Nit without editing code. Use for local implementations or other proposed code changes. When subagents are available and the review is substantial enough to benefit from isolation, callers should run this skill in a subagent that starts without the caller's conversation, with a self-contained brief containing the intent and change scope.
+description: Routes review of a proposed local code change through one reviewer and reports findings as Blocker, Follow-up, or Nit, without editing code. Not for reviewing or posting on a GitHub PR (use github-pr). Callers should run a substantial review in a fresh subagent with the intent and change scope.
 {{- with get . "custom" }}
 {{ . }}
 {{- end }}

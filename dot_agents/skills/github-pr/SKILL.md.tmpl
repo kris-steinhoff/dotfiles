@@ -1,6 +1,6 @@
 ---
 name: github-pr
-description: Works GitHub pull requests from either side, posting only what the user confirms. `review <n>` reviews a PR — prior review context, the shared review policy without Nits, a stance on other reviewers' open comments, triage of each finding and reply with the user, the approved review posted, and threads of verified fixes resolved on re-review. `review ready` idempotently works every open non-draft PR awaiting my or my team's review, grouping related PRs such as a stack to be reviewed in order; background subagents review them while this session triages each with the user, hands the approved review to a posting subagent, and shows progress on a board. Suitable for repeated `/loop` invocation. `respond <n>` replies as the PR's author to unanswered review comments, each reply drafted for the user to approve. Use for any comment, reply, or review posted to a GitHub PR on the user's behalf.
+description: Works GitHub PRs from either side, posting only what the user confirms. `review <n>` reviews one PR, `review ready` works every non-draft PR awaiting my or my team's review (fit for `/loop`), and `respond <n>` drafts the author's replies. Use for anything posted to a PR on the user's behalf.
 {{- with get . "custom" }}
 {{ . }}
 {{- end }}

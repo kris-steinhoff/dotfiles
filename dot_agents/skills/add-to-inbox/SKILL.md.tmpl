@@ -1,6 +1,6 @@
 ---
 name: add-to-inbox
-description: Drop a note, task, reminder, or piece of context into the chief-of-staff persona's inbox for later triage. Invoke only when the user explicitly asks to add or drop something to the inbox or to the chief of staff, including the shorthand "COS" (e.g. "tell COS", "let CoS know", "send this to cos") — not on your own judgment that something is worth tracking. This only adds new items to the inbox, never reads or triages.
+description: Drop a note, task, or reminder into the chief-of-staff persona's inbox for later triage. Use only when the user explicitly asks to add something to the inbox or to tell the chief of staff ("COS", "tell CoS"), never on your own judgment. It only adds, never reads.
 {{- with get . "custom" }}
 {{ . }}
 {{- end }}

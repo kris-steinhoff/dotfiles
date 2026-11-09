@@ -1,6 +1,6 @@
 ---
 name: summarize-github-pr
-description: Shows one GitHub pull request's metadata in the same shape every time, so a person can tell at a glance which PR it is — number, title, URL, and author; when it was marked ready and the PR it is stacked on; each review so far with its type and comment count; and the PR's size and its base and head branches. Read-only, and it doesn't describe what the PR changes. Pass the PR number; print what it returns to the user verbatim.
+description: Shows one GitHub PR's metadata in a fixed shape (number, title, author, URL, when ready, what it stacks on, reviews so far, size, branches) so a person can tell at a glance which PR it is. Read-only, and doesn't describe the changes. Pass the PR number; print it verbatim.
 {{- with get . "custom" }}
 {{ . }}
 {{- end }}
