@@ -47,7 +47,7 @@ Otherwise publish a new plan page before you plan, so the plan takes shape where
 
 ## Planning
 
-1. Read the source, the repository's instructions, and as much of the code as you need. A bounded read can go to the `investigate` skill in a subagent, which keeps its noise out of your context.
+1. Read the source, the repository's instructions, and as much of the code as you need. A bounded read can go to a subagent, which keeps its noise out of your context.
 2. Write the plan onto the plan page as you work it out, rather than all at once at the end: the approach first, then delivery, the tasks, the done-check, what's out of scope, and the risks.
 3. Ask as you go. Don't hold questions for the end, since an early answer can reshape everything after it.
 

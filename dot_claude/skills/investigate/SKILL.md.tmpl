@@ -1,6 +1,0 @@
-{{- $custom := `context: fork
-agent: general-purpose
-background: false
-argument-hint: "<question to investigate>"
-model: sonnet` -}}
-{{- includeTemplate "dot_agents/skills/investigate/SKILL.md.tmpl" (merge (dict "custom" $custom) .) -}}

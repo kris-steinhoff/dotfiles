@@ -201,3 +201,9 @@
 .config/herdr/local-plugins/signal-user
 .config/herdr/dismiss-signal.sh
 .config/herdr/toggle-flag.sh
+
+# investigate was retired; Claude Code's Explore agent and plain subagents do
+# the same read-only work. Without these the skill lingers on machines that
+# already applied it.
+.agents/skills/investigate
+.claude/skills/investigate
