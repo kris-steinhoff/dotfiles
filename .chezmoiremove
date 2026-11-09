@@ -187,3 +187,8 @@
 .claude/skills/markdown-wrapping
 .agents/skills/markdown-links
 .claude/skills/markdown-links
+
+# choose-agent was retired; ai-usage, which it read, stays as its own tool.
+# Without these the skill lingers on machines that already applied it.
+.agents/skills/choose-agent
+.claude/skills/choose-agent

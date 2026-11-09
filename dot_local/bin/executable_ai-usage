@@ -13,7 +13,7 @@ account reports.
 On a terminal it refreshes in place until interrupted. `--once` prints a
 single snapshot and exits. `--json` prints each provider's raw payload, and
 `--json windows` prints every service's windows in one normalized shape for
-programs that compare the two, such as choose-agent.
+a script that compares them.
 
 Every fetch goes through a shared cache in ~/.local/state/ai-usage/, so any
 number of callers can run as often as they like: a caller fetches only when
