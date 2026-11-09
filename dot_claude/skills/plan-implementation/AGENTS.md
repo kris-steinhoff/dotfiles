@@ -1,10 +1,28 @@
-# Testing plan-implementation
+# plan-implementation
+
+`/plan-implementation <source>` writes a detailed implementation plan on a claude.ai artifact, the plan page, for work too large or too shared for plan mode. This file is for sessions working on the skill; chezmoi leaves it out of the deployed copy, so sessions running the skill never see it.
+
+## Design
+
+The plan page is the pattern for handing a plan over: the page is a generic viewer, the plan lives in the artifact's database, and a guide stored on the plan page as `meta/guide` lets an agent work it knowing only the URL. So the skill stays thin. Its `assets/` holds `plan-page.html` and `guide.md`, the guide owns the schema and the working rules, and `SKILL.md` covers only what is particular to planning: publishing the plan page, how detailed a task's plan must be, waiting, and a check by a fresh subagent before the plan is marked ready. `/drive-implementation` reads a plan page, which is why the guide already covers building.
+
+Plan mode is not the container, because it ends in one yes in the session and then edits in that same session, while a plan page has to outlive its session and reach people who aren't in it. A `CLAUDE.md` rule pointing plan mode at a template would load in every session, fire on every small plan, and compete with plan mode's own instructions. The skill takes a name other than `/plan` so the built-in stays for small work.
+
+It is Claude-only, because comment watches and artifact databases are Claude Code features. There is no state file, since the plan page's URL is all a resume needs.
+
+When only people's answers can move the plan, the session ends its turn instead of asking through AskUserQuestion, an exception to the global rule, because a session sitting at that prompt can't be woken by an answer on the page. Herdr therefore shows such a session as idle, and an open question on the plan page is the signal.
+
+People who can edit answer questions on the page itself, which is the one place the page writes: `comments: {}` lets it send Claude a comment so the watching session wakes, and `user` names who answered in the journal.
+
+`fixtures/` holds twelve invented plans, one for each of four shapes at three stages, for judging the layout: `executable_view <shape>-<stage>` serves one against a stand-in for the artifact runtime, inside the wrapper the Artifact tool publishes pages in, and `executable_check` holds them to the guide. The wrapper matters because the page relies on its `[hidden]` rule; without it, hidden elements such as the progress bar show.
+
+## Testing
 
 This skill is instructions an agent follows plus a page a runtime serves, so it fails in two separate ways, and each needs its own test. Fixtures show whether the page handles a plan. Only a real run shows whether the skill produces one. Passing the first says nothing about the second.
 
 The orchestrating session stays out of the work: it starts the fresh sessions, reads what they leave behind, and judges. An agent that planned the work can't test it, because it fills gaps from its own context.
 
-## The page, against fixtures
+### The page, against fixtures
 
 Run this after any change to `assets/plan-page.html` or `assets/guide.md`. `fixtures/README.md` covers the tools.
 
@@ -14,7 +32,7 @@ Run this after any change to `assets/plan-page.html` or `assets/guide.md`. `fixt
 4. Look at the pages as well. Measurements only catch what you thought to measure, and a broken subtitle once passed all of them.
 5. When a measurement is new or changed, break the page on purpose and confirm it fails. The width check passes on a blank page, for one, which is why `measure.js` reports whether the page rendered.
 
-### Driving the fixtures
+#### Driving the fixtures
 
 A person runs `fixtures/executable_view`, which opens a browser at the list, and uses dev tools for widths. An agent does this instead:
 
@@ -29,7 +47,7 @@ A hidden Browser pane runs scripts but doesn't paint, so anything that depends o
 
 The stand-in only approximates claude.ai. Before fixing a problem found here, check it isn't the viewer's own. `executable_view` serves the page inside the wrapper the Artifact tool publishes it in, because the page depends on that wrapper's `[hidden]` rule, and without it the page shows two problems that don't exist on claude.ai.
 
-## The skill, in a real run
+### The skill, in a real run
 
 Run this after any change to `SKILL.md` or `assets/guide.md`, and after a change to how the page writes data.
 
@@ -53,6 +71,6 @@ Judge from what the run left, not from what its session reports:
 | Handover         | The second session could say what to build first from the URL alone. Anything it had to ask is a gap in the plan or the guide.         |
 | Boundaries       | `git status` in the planned repository shows nothing changed.                                                                          |
 
-## After a test
+### After a test
 
 Report what was exercised and what couldn't be, and say so plainly when a step was skipped. When something fails, fix the skill rather than the test, and when a page problem took a particular plan to show up, add a fixture for it, so the fixtures keep what each failure taught. A capture of a real plan can hold real names, so read one before committing it.

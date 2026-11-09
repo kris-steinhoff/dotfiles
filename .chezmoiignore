@@ -2,8 +2,9 @@ AGENTS.md
 CLAUDE.md
 README.md
 
-# Guidance for working on this skill, not for sessions running it.
-.claude/skills/plan-implementation/CLAUDE.md
+# Skill design notes, for sessions working on skills, not for sessions running them.
+.agents/skills/**/AGENTS.md
+.claude/skills/**/AGENTS.md
 
 {{- if ne .chezmoi.os "darwin" }}
 Library/**
