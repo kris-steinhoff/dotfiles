@@ -43,6 +43,28 @@
         ],
         "matcher": "user_settings"
       }
+    ],
+    "WorktreeCreate": [
+      {
+        "hooks": [
+          {
+            "command": "sh ~/.claude/hooks/wt-worktree-create.sh",
+            "timeout": 120,
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "WorktreeRemove": [
+      {
+        "hooks": [
+          {
+            "command": "sh ~/.claude/hooks/wt-worktree-remove.sh",
+            "timeout": 60,
+            "type": "command"
+          }
+        ]
+      }
     ]
   },
   "model": "opus",
