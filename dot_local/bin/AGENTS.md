@@ -28,4 +28,6 @@ Every mode reads through a shared per-service cache in `~/.local/state/ai-usage/
   	path = ~/.config/git/acme.gitconfig
   ```
 
+- **Sandboxes.** A Claude session in a linked worktree can write its main repo's `.git` (commits, refs, the index), but `.git/config` and `.git/hooks` stay read-only, which is why `wt` never writes config. Codex protects a checkout's `.git` and a linked worktree's resolved git dir, so there `wt add` and `wt remove` go through Codex's scoped escalation like any git write. `wt` replaced the `worktree-layout` skill, whose clone-per-stream layout needed an unsandboxed setup step.
+- **Moving a worktree breaks builds.** Anything a worktree built, such as a virtualenv, keeps absolute paths, so rebuild it after a `git worktree move`.
 - **A uv script, not zsh functions.** As a `uv run --script` typer program, agents and other shells can call it the same way people do. The first run on a machine needs network to fetch typer.
