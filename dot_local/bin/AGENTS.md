@@ -1,6 +1,6 @@
 # Scripts in ~/.local/bin
 
-This file covers the reasons behind the scripts deployed to `~/.local/bin`; so far only `ai-usage` has notes, so load it before changing that script.
+This file covers the reasons behind the scripts deployed to `~/.local/bin` that have notes, `ai-usage` and `wt`, so load it before changing either one. Usage lives in each script's docstring and `--help`; this file holds why.
 
 ## ai-usage
 
@@ -9,3 +9,23 @@ This file covers the reasons behind the scripts deployed to `~/.local/bin`; so f
 OpenRouter is prepaid credits rather than a subscription, so its panel shows the account's balance, a bar per budget enforced on the key, and the key's spend today, this week, and this month. Its keys come from the environment, set machine-locally: `OPENROUTER_API_KEY` for the key's spend and budgets, and `OPENROUTER_MANAGEMENT_KEY` for the balance, because OpenRouter's balance endpoint accepts only a management key, which can also create and delete keys. Either one alone is enough, and a machine with neither hides the panel. Because sign-in can differ between callers when it comes from the environment, a missing credential is never written to the shared cache, so a caller without the keys can't hide OpenRouter from one that has them.
 
 Every mode reads through a shared per-service cache in `~/.local/state/ai-usage/`, so any number of callers (a status line, several live views) can run as often as they like without drawing 429s: a caller fetches only when the last attempt is older than its `--interval` (default 300), and a file lock makes concurrent stale callers wait for one fetch rather than each making their own. Failed attempts are cached too, so callers back off from an error together; a 429's Retry-After binds even Ctrl-R, since forcing through it only draws another 429. The cache holds the payload and the Claude plan name, never tokens. Run inside the Claude sandbox, it needs to reach `api.anthropic.com`, `chatgpt.com`, and `openrouter.ai` and to write that cache; `settings.json` grants all of them.
+
+## wt
+
+`executable_wt` creates, lists, and removes git worktrees, so people, agents, and skills share one behavior. `wt add` makes a worktree for a branch (creating the branch if needed) under `.worktrees/` in the repo's main checkout, `wt list` shows the main checkout and those worktrees, and `wt remove` removes one and deletes its branch when merged. The zsh wrappers `wta`, `wtr`, and `wtl` in `dot_config/kris-steinhoff/zshrc` call it.
+
+- **One place for worktrees.** Every worktree lives in `<main checkout>/.worktrees/`, hidden from `git status` by a line in the common dir's `info/exclude`, so manual and agent-made worktrees sit together inside the folder a Claude session started in the repo can already write. `list` and `remove` deliberately ignore worktrees elsewhere, such as those other tools make.
+- **Finding the main checkout.** It is `core.worktree` from the common dir's config when set, else the first `git worktree list` entry, because in a submodule that first entry is the git folder under the parent's `.git/modules`.
+- **No upstreams.** No branch `wt` creates records an upstream (`--no-track`), because recording one writes `.git/config`, which Claude's sandbox blocks. `push.default=current` in the shared gitconfig keeps a plain `git push` working without one. By default a new branch starts from a freshly fetched `origin/<default>`, or from `origin/<branch>` when the remote already has that branch, and `--base` overrides both; a failed fetch warns and continues from the last fetched state, so it works offline.
+- **Its own merged check.** `remove` deletes a branch only if it is an ancestor of the main checkout's `HEAD` or of `origin/<default>` as last fetched. Plain `git branch -d` compares a branch with no upstream only against the main checkout's `HEAD`, so it refused even untouched branches whenever local main was behind. Squash merges still count as unmerged.
+- **Never forces.** A dirty worktree or unmerged branch is kept: `wt` prints the exact force command (`--force --force` for a locked worktree) and exits 2, so losing work always takes a separate, deliberate step.
+- **Output shaped for the wrappers and agents.** In human mode, `add` prints only the new path on stdout, because `wta` cds to it; everything else goes to stderr. `wta` and `wtr` exist only because a script can't change its caller's directory. Exit codes are 0 success, 1 error, 2 refused; usage errors, which typer exits 2 for, are mapped to 1 so 2 always means refused. `--json` prints exactly one object per line, even on error, for agents to parse; the exception is a usage error, which exits 1 with typer's message on stderr and no JSON.
+- **No hangs, no odd branches.** Git runs with `GIT_TERMINAL_PROMPT=0` so an agent never waits on a credential prompt. `wt add origin/foo` (any configured remote's name as a prefix) is rejected when no local branch has that name, because it would create a local branch literally named `origin/foo`.
+- **Per-repo setup through git config.** The command to run in a new worktree (installing dependencies, say) is `git config wt.setup`, so it can be set per clone, or for many repos at once from the shared gitconfig with a conditional include. It runs with `sh -c` in the new worktree, and a failure only warns and keeps the worktree. For example, with `[wt] setup = npm ci` in `~/.config/git/acme.gitconfig`:
+
+  ```gitconfig
+  [includeIf "hasconfig:remote.*.url:git@github.com:acme/**"]
+  	path = ~/.config/git/acme.gitconfig
+  ```
+
+- **A uv script, not zsh functions.** As a `uv run --script` typer program, agents and other shells can call it the same way people do. The first run on a machine needs network to fetch typer.
