@@ -44,7 +44,7 @@ Shared configs live under `dot_config/kris-steinhoff/` (deployed to `~/.config/k
 - **Shell**: zsh with starship, zsh-autosuggestions, zsh-syntax-highlighting, direnv
 - **Terminal**: Ghostty (ligatures disabled)
 - **Prompt**: Starship without Nerd Font glyphs, kubernetes module enabled
-- **Git**: pull.rebase, rebase.updateRefs, rebase.autoSquash
+- **Git**: push.default=current, pull.rebase, rebase.updateRefs, rebase.autoSquash
 - **AWS**: `aws-profile-login` / `aws-profile-logout` are zsh functions in `dot_config/kris-steinhoff/zshrc`, not scripts, because they set `AWS_PROFILE` in the interactive shell
 
 ## Area notes
