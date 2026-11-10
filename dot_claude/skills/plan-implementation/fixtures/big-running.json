@@ -972,7 +972,7 @@
       "source": "docs/specs/wms-rewrite-v2.md in warehouse/inventory-service, tracker epics WMS-401, WMS-402, WMS-403",
       "status": "running",
       "approach": "Everything goes through one ledger. Receiving, putaway, picking, counts, replenishment, and transfers each post signed movements with a reason, and nothing else is allowed to change a balance. That lets the nightly verify job prove the books and gives recalls a single place to look.\n\nWork lands in five PRs by area, in the order the warehouse will adopt it: foundation and receiving, slotting and putaway, picking and counts, replenishment and transfers, then the handheld app. Picking is stacked on slotting because it reuses the capacity and recommender code.\n\nThe handheld app is last on purpose, so it is written against final APIs, but its sync contract and scan abstraction are planned early because they depend on outside parties (the DBA team and the scanner vendor).",
-      "delivery": "Five PRs by area, each reviewed and merged by people in order. P3 is stacked on P2; the rest are based on main. A PR is opened as a draft when its first task merges and marked ready when all its tasks are merged and checks pass. The cutover and decommissioning of the legacy system are a separate plan.",
+      "delivery": "Five PRs by area, each reviewed and merged by people in order. Picking is stacked on slotting; the rest are based on main. A PR is opened as a draft when its first task merges and marked ready when all its tasks are merged and checks pass. The cutover and decommissioning of the legacy system are a separate plan.",
       "done_check": [
         {
           "text": "A vendor ASN and blind receipt post balanced ledger movements end to end, and ledger verify reports zero drift.",
@@ -1008,7 +1008,7 @@
         }
       ],
       "out_of_scope": [
-        "Automatic substitution on short picks (Q10)",
+        "Automatic substitution on short picks",
         "Mandatory dock appointments",
         "Rendering pallet labels inside the service",
         "Decommissioning the legacy system and the cutover weekend itself",
@@ -1020,7 +1020,7 @@
         "The stores' contractor has not provided a sandbox for the transfer manifest, so that integration is unvalidated.",
         "The sync API's staging database role needs a DBA to create it.",
         "Velocity classes depend on legacy pick history, which had a nine-day gap in July (since repaired).",
-        "Review on P3 is expected to be heavy: allocation concurrency is the hardest correctness problem in the plan."
+        "Review of the picking PR is expected to be heavy: allocation under concurrency is the hardest correctness problem in the plan."
       ],
       "jira_browse_url": "https://tracker.fennimore.example/browse/",
       "epics": {
@@ -1148,6 +1148,7 @@
       "title": "Scan engine abstraction for the rugged scanner SDK",
       "order": 14,
       "status": "blocked",
+      "blocked_on": "The scanner vendor's SDK licence, which the co-op's procurement office has yet to countersign.",
       "goal": "One interface for barcode input on the handheld, so screens never talk to the vendor SDK directly.",
       "approach": "Blocked on outside work: the scanner vendor's Android SDK licence for the 2026 device fleet has not been countersigned by the co-op's procurement office, and the SDK binaries are not available until it is. Work resumes once the AAR is in the artifact repository. Meanwhile screens can use a camera-based stub behind the same interface.",
       "touches": [
@@ -1919,6 +1920,7 @@
       "title": "Seasonal forecast feed for min/max",
       "order": 47,
       "status": "blocked",
+      "blocked_on": "The co-op's data team agreeing where its weekly forecast export will be delivered, and fixing its format.",
       "goal": "Raise or lower the min/max ahead of known seasonal swings, such as the autumn squash peak.",
       "approach": "Blocked on outside work: the co-op's data team has promised a weekly forecast export (CSV, SKU x week) but has not yet agreed where it will be delivered. We build only after the file format is frozen. The importer is a small job; the wait is on Tavita's team.",
       "touches": [
@@ -2061,6 +2063,7 @@
       "title": "Transfer manifest export to the stores' ordering system",
       "order": 53,
       "status": "blocked",
+      "blocked_on": "The stores' IT contractor publishing the manifest endpoint spec and issuing test credentials.",
       "goal": "Stores' own ordering software receives a manifest for each transfer en route.",
       "approach": "Blocked on outside work: the stores' IT contractor has not published the manifest endpoint spec or issued test credentials. We have a draft payload and cannot validate it without their sandbox. Nothing here is started.",
       "touches": [

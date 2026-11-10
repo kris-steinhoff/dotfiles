@@ -391,7 +391,7 @@
     },
     "tasks/T19": {
       "title": "Search indexer worker",
-      "goal": "Keep search_docs current as records change.",
+      "goal": "Keep the search index current as records change.",
       "approach": "Worker consumes search_dirty rows, rebuilds the document (including heading variants), and updates in batches of 500. Full rebuild path for mapping changes.",
       "touches": [
         "cmd/worker/indexer.go",
@@ -2216,8 +2216,8 @@
       "objective": "Move all forty Oakhollow Library Consortium branches from their separate legacy systems to one shared catalogue platform: bibliographic records, patron accounts, holds and transfers, overdue fines, the public search site, and the staff circulation desks, cut over in three waves.",
       "source": "CAT-88, CAT-112 and docs/migration/brief.md",
       "status": "done",
-      "approach": "Build one modular Go service on Postgres, in six stacked PRs, each reviewable alone.\n\nRecords and patrons are imported by repeatable chunked jobs that resume after failure, so the rehearsals can be run as many times as needed. Search uses Postgres full text with a trigram index (Q1). Circulation rules are data, resolved by one function, so branches override only where the consortium agreement allows.\n\nCutover is rehearsed with tooling, in three waves of branches, with the legacy system switched read-only at each wave.",
-      "delivery": "Six stacked PRs. P1 to P4 are reviewed and merged by Ibrahim Kessel-Dahl or Marguerite; P5 and P6 are open for review. Only people merge. Branch names use the oakhollow/ prefix.",
+      "approach": "Build one modular Go service on Postgres, in six stacked PRs, each reviewable alone.\n\nRecords and patrons are imported by repeatable chunked jobs that resume after failure, so the rehearsals can be run as many times as needed. Search uses the database's own full-text search, as the team chose. Circulation rules are data, resolved in one place, so branches override only where the consortium agreement allows.\n\nCutover is rehearsed with tooling, in three waves of branches, with the legacy system switched read-only at each wave.",
+      "delivery": "Six stacked PRs. The first four are reviewed and merged by Ibrahim Kessel-Dahl or Marguerite; the last two are open for review. Only people merge. Branch names use the oakhollow/ prefix.",
       "done_check": [
         {
           "text": "Every one of the 40 branches' reference data (locations, hours, loan periods) loads from config and validates",

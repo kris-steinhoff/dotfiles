@@ -13,7 +13,7 @@
       "objective": "Let shoppers buy Pinwheel gift cards on the online shop and pay with a card balance at checkout. Balances are tracked in an append-only ledger so that refunds, partial redemptions and support corrections can always be explained from the rows.",
       "source": "docs/specs/gift-cards.md",
       "status": "pending",
-      "approach": "Gift cards live in two new Postgres tables: gift_cards (one row per card, holding the code hash and currency) and gift_card_ledger (signed amounts, never updated or deleted). A balance is the sum of the ledger, not a stored column, so there is nothing to drift. The shop's cart service learns to subtract a card balance from the order total before the payment gateway call, and only the remainder is charged.\n\nCards are sold as a digital product. When the payment gateway reports the order captured, a worker issues the card and emails the code. Codes are never stored in clear text; we keep an HMAC of the code and the last four characters for support lookups.\n\nCheckout redemption reserves the amount in the ledger when the order is placed and settles it when payment captures, so an abandoned or failed payment releases the hold on its own after the cart's existing 30 minute expiry.",
+      "approach": "Gift cards get two new tables: one row per card, and a ledger of signed amounts that is never updated or deleted. A card's balance is the sum of its ledger rather than a stored number, so there is nothing to drift. At checkout the card balance comes off the order total, and only the rest goes to the payment gateway.\n\nCards are sold as a digital product. Once payment for one is confirmed, a worker issues the card and emails the code. Codes are never stored in clear text.\n\nRedeeming a card reserves the amount when the order is placed and settles it when payment goes through, so an abandoned payment releases the hold by itself when the cart expires.",
       "done_check": [
         {
           "text": "A shopper can buy a gift card and the recipient receives a working code by email",
@@ -38,9 +38,9 @@
         }
       ],
       "risks": [
-        "Two checkouts racing on the same card could overspend it. The reservation insert takes a row lock on the card, and T3 has a concurrency test for exactly this.",
+        "Two checkouts racing on the same card could overspend it. Reserving takes a lock on the card, and the redemption work has a concurrency test for exactly this.",
         "Code guessing: 12 characters of a 32-symbol alphabet is 60 bits, but the redeem endpoint still needs the existing per-IP throttle or it becomes an oracle.",
-        "Whether balances may expire is not settled (Q1), and the answer changes the ledger design in T2."
+        "Whether balances may expire is not settled yet, and the answer changes the ledger design."
       ],
       "started_at": "2026-10-12T14:05:00Z",
       "updated_at": "2026-10-16T16:40:00Z"

@@ -175,6 +175,22 @@ a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outli
 .fields ul, .bullets { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 2px; }
 .fields ul.links { list-style: none; padding-left: 0; gap: 4px; }
 
+/* Task cards start collapsed to what a person follows: title, status, goal, and what holds the task up.
+   Opening one shows the implementer's brief. A details element, so find in page opens a card it matches in. */
+#tasks .card.task { display: block; padding: 0; }
+#tasks .task > summary { list-style: none; color: inherit; font-size: inherit; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; border-radius: 8px; }
+#tasks .task > summary::-webkit-details-marker { display: none; }
+#tasks .task[open] > summary { margin-bottom: 0; }
+#tasks .task > summary:hover .twisty { border-color: var(--ink); }
+.twisty { flex: none; align-self: center; width: 7px; height: 7px; margin: 0 3px 0 1px; border: solid var(--muted); border-width: 0 2px 2px 0; transform: rotate(-45deg); transition: transform 0.15s ease; }
+.task[open] .twisty { transform: rotate(45deg); }
+@media (prefers-reduced-motion: reduce) { .twisty { transition: none; } }
+.task-goal { max-width: 68ch; }
+.waits { display: flex; flex-direction: column; gap: 2px; font-size: 13.5px; }
+.waits .label { color: var(--attn); }
+.waits ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.task-body { display: flex; flex-direction: column; gap: 10px; margin: 0 16px; padding: 14px 0 16px; border-top: 1px solid var(--line); }
+
 /* Handover */
 .handover { border-color: var(--ok); }
 
@@ -947,6 +963,31 @@ details[open] > summary { margin-bottom: 10px; }
     dl.appendChild(dd);
   }
 
+  // What holds a task up, for its collapsed card: what a blocked task waits on outside the repository, and its open questions.
+  function waitsLine(t) {
+    const qs = new Map(state.questions.map((q) => [q.id, q]));
+    const items = [];
+    if (t.status === "blocked" && t.blocked_on) items.push(el("li", null, t.blocked_on));
+    for (const id of arr(t.depends_on)) {
+      const q = qs.get(id);
+      if (!q || q.status !== "open") continue;
+      const li = el("li");
+      const a = el("a", null, id + " · " + (q.title || ""));
+      a.href = "#q-" + id;
+      li.appendChild(a);
+      items.push(li);
+    }
+    if (!items.length) return null;
+    const wrap = el("div", "waits");
+    wrap.appendChild(el("span", "label", "Waiting on"));
+    const ul = el("ul");
+    ul.append(...items);
+    wrap.appendChild(ul);
+    return wrap;
+  }
+
+  // Cards are rebuilt on every change, so which ones a reader opened is kept here.
+  const openTasks = new Set();
   function renderTasks() {
     const tasks = sortedTasks();
     $("task-count").textContent = tasks.length ? String(tasks.length) : "";
@@ -954,27 +995,39 @@ details[open] > summary { margin-bottom: 10px; }
     const wrap = $("tasks");
     wrap.replaceChildren();
     for (const t of tasks) {
-      const card = el("article", "card");
+      const card = el("details", "card task");
       card.id = "t-" + t.id;
       card.setAttribute("data-comment-target", "");
+      card.open = openTasks.has(t.id);
+      card.addEventListener("toggle", () => { if (card.open) openTasks.add(t.id); else openTasks.delete(t.id); });
+      const sum = el("summary");
       const top = el("div", "card-top");
       const left = el("div", "left");
+      const twisty = el("span", "twisty");
+      twisty.setAttribute("aria-hidden", "true");
+      left.appendChild(twisty);
       left.appendChild(el("span", "mono muted", t.id));
       left.appendChild(el("h3", null, t.title || ""));
       top.appendChild(left);
       top.appendChild(chip(TASK_STATUS, t.status));
-      card.appendChild(top);
+      sum.appendChild(top);
+      if (t.goal) sum.appendChild(el("p", "prose task-goal", t.goal));
+      const waits = waitsLine(t);
+      if (waits) sum.appendChild(waits);
+      card.appendChild(sum);
+      const body = el("div", "task-body");
       const dl = el("dl", "fields");
       epicsField(dl, arr(t.epics));
-      field(dl, "Goal", t.goal);
       field(dl, "Approach", t.approach);
       field(dl, "Likely touches", arr(t.touches));
       field(dl, "Verified by", t.verify);
       afterField(dl, arr(t.depends_on));
       prField(dl, t.pr);
       field(dl, "Outcome", t.outcome);
-      if (dl.childElementCount) card.appendChild(dl);
-      if (t.branch) card.appendChild(el("p", "mono muted", t.branch));
+      if (dl.childElementCount) body.appendChild(dl);
+      if (t.branch) body.appendChild(el("p", "mono muted", t.branch));
+      if (!body.childElementCount) body.appendChild(el("p", "muted", "Not planned in detail yet."));
+      card.appendChild(body);
       wrap.appendChild(card);
     }
   }

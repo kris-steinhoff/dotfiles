@@ -17,8 +17,8 @@
       "objective": "Let Halcyon Freightways file import declarations electronically with the national customs gateway straight from a confirmed booking, with tariff classification, duty estimates, broker review, and carrier manifests all in the same flow. The legacy EDI mailbox closes on 31 December, so cutover has to be staged lane by lane and finished before then.",
       "source": "docs/specs/customs-efiling-2026.md (CUST-77 and its sibling epics)",
       "status": "running",
-      "approach": "Build bottom-up in four stacked pull requests so each can be reviewed on its own. Foundations first (schema, signed gateway client with safe retries, tariff import, carrier envelope, flags), then the declaration builder, state machine, duty core and portal shell, then the duty rules, classification review and amendment flow, and finally the carrier manifests, sandbox conformance and cutover.\n\nEvery path that can reach the gateway sits behind `customs.efiling.*` flags that default off, and a dry-run mode builds and validates without sending. Work that does not need the real gateway is finished against a fake gateway that can script delays and rejections.\n\nDuty calculation is kept as pure functions over effective-dated tariff rows, so any declaration can be recomputed against the schedule in force when it was filed.",
-      "delivery": "Five stacked PRs, each based on the one before. Only people merge. P1 and P2 hold what must be in place before anyone can file; P3 is the duty, classification and portal work; P4 is carrier manifests and the sandbox run; P5 is the cutover runbook. Branches are cut off the PR branch they land in, and the base moves up the stack as each one merges.",
+      "approach": "Build bottom-up in stacked pull requests, so each can be reviewed on its own. Foundations come first: the schema, a gateway client that retries safely, the tariff import and feature flags. Then the declaration builder, duty and the broker portal; then duty rules, classification review and amendments; and last, carrier manifests, the sandbox run and cutover.\n\nEverything that can reach the customs gateway stays behind flags that default off, and a dry run checks a declaration without sending it. Work that doesn't need the real gateway is finished against a fake one.\n\nDuty is calculated from dated tariff rows, so any declaration can be recomputed against the schedule in force when it was filed.",
+      "delivery": "Five stacked PRs, each based on the one before. Only people merge. The first two hold what must be in place before anyone can file, the third is the duty, classification and portal work, the fourth is carrier manifests and the sandbox run, and the fifth is the cutover runbook. Branches are cut from the PR branch they land in.",
       "done_check": [
         {
           "text": "A confirmed booking turns into a validated declaration with its documents attached, with no re-keying",
@@ -465,6 +465,7 @@
       "title": "Preferential origin and trade-agreement duty rates",
       "order": 18,
       "status": "blocked",
+      "blocked_on": "Sign-off from compliance, which this needs before it merges because it changes what customers pay.",
       "goal": "Apply the reduced or zero rates a valid proof of origin entitles a line to.",
       "approach": "Extend the calculator with an origin-proof input (EUR.1, origin declaration on invoice, or none) and the agreement table in `tariff_preference`. A preferential rate applies only when the proof is present, unexpired, and the rule-of-origin flag on the line is set; otherwise fall back to the general rate and record why.\n\nThis changes what customers pay, so it needs sign-off from compliance before it merges, not just code review.",
       "touches": [
@@ -507,6 +508,7 @@
       "title": "Broker amendment and resubmission",
       "order": 23,
       "status": "blocked",
+      "blocked_on": "Inês, who owns the broker portal, signing off on the review.",
       "goal": "A broker can fix a rejected declaration and send it again without starting over.",
       "approach": "Amend creates a new revision of the declaration (same id, revision + 1), re-runs validation, and submits under a fresh idempotency group. The previous payload stays attached to its revision. The UI shows a diff of the two revisions' lines before sending.",
       "touches": [
@@ -570,6 +572,7 @@
       "title": "Reconcile Brightwater feed against gateway manifests",
       "order": 15,
       "status": "blocked",
+      "blocked_on": "Brightwater Maritime switching on the production feed for our account, in their change window in the first week of December.",
       "goal": "Compare what the carrier says it loaded with what we declared.",
       "approach": "Waiting on Brightwater Maritime to switch on the production feed for our account; their change window is the first week of December. Until then there is no real data to reconcile and the sample week proves nothing about volume. Once live: match containers by ISO 6346 number, flag weight differences over 3%.",
       "touches": [
@@ -610,6 +613,7 @@
       "title": "End-to-end submission against the gateway sandbox",
       "order": 21,
       "status": "blocked",
+      "blocked_on": "The customs authority issuing sandbox credentials, 5 to 10 working days after a Halcyon officer submits the request.",
       "goal": "Prove the whole path works against the real gateway's test environment, not just our fake.",
       "approach": "Cannot start until the customs authority issues sandbox credentials and registers our test declarant number. That request is a web form a Halcyon officer must submit (Q5), and the authority quotes 5 to 10 working days after that. Then: run the 12 scripted scenarios from the authority's conformance pack.",
       "touches": [

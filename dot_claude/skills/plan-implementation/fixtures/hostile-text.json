@@ -101,7 +101,8 @@
         "fixtures/"
       ],
       "verify": "Bare <img src=x onerror=\"window.__pwned=1\">, a stray ` backtick, and `a/b.md:42` beside fixtures/README.md.",
-      "status": "pending",
+      "status": "blocked",
+      "blocked_on": "Bare <img src=x onerror=\"window.__pwned=1\">, a stray ` backtick, and `a/b.md:42` beside fixtures/README.md.",
       "depends_on": [
         "T1",
         "Q2"

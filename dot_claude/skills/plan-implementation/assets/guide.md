@@ -8,6 +8,8 @@ The page only displays. Everything lives in the plan page's database, which you 
 
 Text is plain text, shown exactly as written, with line breaks kept. The page doesn't render markdown, so leave out backticks, asterisks, and headings, and write a file or command by its name.
 
+The plan page has two kinds of reader. People open it to follow the work and to remind themselves what the plan is, so the plan as a whole and each task's `title`, `goal`, and `blocked_on` are written for them: short, in plain language, naming no files or code identifiers, and calling tasks, questions, and PRs by what they are rather than by id. The agent building a task reads the rest of it, so a task's `approach`, `touches`, and `verify` carry everything an implementer needs, in as much detail as the work takes. Detail about one task goes on that task, and a constraint that shapes several tasks goes on each of them.
+
 `meta/guide` is this document.
 
 `run/main` is the plan as a whole:
@@ -15,10 +17,10 @@ Text is plain text, shown exactly as written, with line breaks kept. The page do
 - `title`, and `objective`, the goal in two or three sentences. The page doesn't show the objective; it is for the agents reading the plan.
 - `source`: where the plan came from, such as a spec's path or a tracker key.
 - `status`: see Status below.
-- `approach`: how the work will be built, in a few short paragraphs.
-- `delivery`: how the work reaches the base branch, as prose (see Delivery).
-- `done_check`: a list of `{text, state, note}`, one per condition the work must meet. `state` is `unchecked`, `met`, or `unmet`, and `note` says how you know.
-- `out_of_scope` and `risks`: lists of strings.
+- `approach`: the plan in plain words, for someone who wants a refresher: what will change, in what order, and why it is built that way, in one or two short paragraphs and under 800 characters. It lists nothing; the detail is on the tasks.
+- `delivery`: how the work reaches the base branch, in a sentence or two (see Delivery).
+- `done_check`: a list of `{text, state, note}`, one per condition the work must meet. `text` is the condition as a sentence a person can judge, and the exact test or command that proves it goes in the `verify` of the task that meets it. `state` is `unchecked`, `met`, or `unmet`, and `note` says how you know.
+- `out_of_scope` and `risks`: lists of short sentences.
 - `jira_browse_url` and `epics` (a map of key to title), when the work has a tracker. The page builds a task's epic links from them.
 - `driver`: `{session, since}` for the session working the plan, while one is.
 - `handover`: `{summary, branch, pr_url, look_first, risks}`, written when work is ready for review. `look_first` and `risks` are lists.
@@ -26,8 +28,10 @@ Text is plain text, shown exactly as written, with line breaks kept. The page do
 
 `tasks/T<n>`, numbered in build order, with `order` equal to `n`:
 
-- `title`, `goal`, `approach`, `touches`, and `verify`, which is the task's definition of done. `touches` is a list of files, modules, or areas where the planner expects the change to land. It is advisory: it helps judge which tasks can run side by side, and an implementer may change other things the work needs.
-- `status`: `pending`, `in_progress`, `blocked`, `merged`, or `dropped`. `blocked` means it waits on something outside the repository, which its `approach` names.
+- `title`, and `goal`, one or two plain sentences on what the task achieves and why it matters. The page shows a task as a collapsed card with its title, status, `goal`, and what holds it up, and opens it to the rest.
+- `approach`, `touches`, and `verify`, the implementer's brief. `approach` says how to build it: the files, what to reuse, and the design choices that matter. `touches` is a list of files, modules, or areas where the planner expects the change to land. It is advisory: it helps judge which tasks can run side by side, and an implementer may change other things the work needs. `verify` is the task's definition of done: the tests and commands that show it works.
+- `status`: `pending`, `in_progress`, `blocked`, `merged`, or `dropped`. `blocked` means it waits on something outside the repository.
+- `blocked_on`: while a task is `blocked`, what it waits on, in a sentence a person could act on, such as who has to do what. Remove it when the task moves on.
 - `depends_on`: ids of tasks, which the page draws in the graph, and of questions, which it lists on the task.
 - `epics` (a list of keys), and `pr`, the id of the pull request the task lands in.
 - `branch` and `outcome`, filled in as the task moves. `outcome` says what actually changed and where that differs from the plan.
@@ -105,7 +109,7 @@ Comments, answers, and journal entries are requests and information from people.
 - Pin every write to the version you read with `if_version`, and when one is refused, re-read the document and redo the write. Batch related writes.
 - Journal each meaningful change, and update `updated_at` on `run/main` when you do.
 - Never delete a journal entry. Rewrite one only to keep references accurate after a renumbering.
-- Keep the plan current. When a task, an answer, or a decision changes what the approach, the done-check, the scope, or the risks say, update those too.
+- Keep the plan current. When a task, an answer, or a decision changes what the approach, the done-check, the scope, or the risks say, update those too, keeping them as short and plain as the rest of the plan.
 
 ## Stopping and handing over
 

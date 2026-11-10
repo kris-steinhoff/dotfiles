@@ -12,7 +12,7 @@
       "objective": "Patients of Harbor Lantern Clinic can stop appointment reminder texts by tapping a link in the text itself, without logging in or replying STOP. An opted-out number gets no further reminders.",
       "source": "docs/specs/reminder-opt-out.md",
       "status": "done",
-      "approach": "Add a reminder_opt_outs table keyed by phone number, and a signed, non-expiring token that names a patient's number so the link needs no login. A public GET /o/<token> shows a confirm page and POST /o/<token> records the opt-out. The nightly reminder job appends the link and skips numbers in the table.\n\nThe token is an HMAC over the number, not a row id, so links in already-sent texts keep working after the table is cleaned up.",
+      "approach": "Add an opt-out list keyed by phone number, and a signed link that names a patient's number, so it needs no login. Following the link shows a confirm page, and confirming adds the number to the list. The nightly reminder job adds the link to each text and skips numbers on the list.\n\nThe link is signed over the number itself rather than a database row, so links in texts already sent keep working after the list is cleaned up.",
       "delivery": "One PR, reminder-opt-out-link, against main. Clinic staff review; the user merges.",
       "done_check": [
         {
@@ -21,7 +21,7 @@
           "note": "Checked the rendered body in test_reminder_body_has_optout_link and a dry run against the staging queue."
         },
         {
-          "text": "Following the link and confirming adds the number to reminder_opt_outs, and the next nightly run sends it nothing",
+          "text": "Following the link and confirming adds the number to the opt-out list, and the next nightly run sends it nothing",
           "state": "met",
           "note": "End-to-end test in tests/e2e/test_optout_flow.py passes; a second dry run skipped the test number."
         },

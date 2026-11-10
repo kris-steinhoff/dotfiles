@@ -13,7 +13,7 @@
       "objective": "Add a CSV export of print-on-demand orders to the order-tracking app so the warehouse stops retyping them into the label printer software. Warehouse staff pick a date range and download one file.",
       "source": "specs/pod-order-csv-export.md",
       "status": "running",
-      "approach": "Serialize in a small module, orders/export/csv_writer.py, that streams rows from a single query, so a month of orders never sits in memory. The endpoint and the button both sit on top of it. The whole feature is behind the order_csv_export flag until the warehouse has tried it.",
+      "approach": "Write the CSV in one small module that streams rows from a single query, so a month of orders never sits in memory. The download endpoint and the button both sit on top of it. The whole feature stays behind a feature flag until the warehouse has tried it.",
       "delivery": "One PR, feature/pod-order-csv-export, into main. The owner merges.",
       "done_check": [
         {
@@ -64,7 +64,7 @@
     },
     "tasks/T2": {
       "title": "Feature flag",
-      "goal": "Add the order_csv_export flag, off by default.",
+      "goal": "Add a feature flag for the export, off by default.",
       "verify": "Flag read in tests and in the template helper.",
       "status": "merged",
       "order": 2,
@@ -131,6 +131,7 @@
       "goal": "Write yesterday's file to the warehouse's SFTP folder each night.",
       "verify": "A scheduled job writes a file that the warehouse can see.",
       "status": "blocked",
+      "blocked_on": "Warehouse IT creating the SFTP account for the app and sending its host key. Tomás has asked, with no date yet.",
       "order": 6,
       "depends_on": [
         "T1"

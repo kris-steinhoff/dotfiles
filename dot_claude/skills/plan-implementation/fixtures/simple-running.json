@@ -203,6 +203,7 @@
       ],
       "verify": "Route sheet generated from the staging CSV omits a paused café and still includes the café's other days.",
       "status": "blocked",
+      "blocked_on": "Dagny Ekström shipping the change to the driver routes tool that leaves paused deliveries out.",
       "depends_on": [
         "T4"
       ],
@@ -395,7 +396,7 @@
       "source": "docs/specs/standing-order-pause.md",
       "status": "running",
       "approach": "Store pauses in their own table and make the nightly delivery generator the one place that honours them, so the production sheet, invoicing and routes all inherit it from delivery rows.\n\nThe café UI, the emails, and the bakers' footnote are independent of each other once the API and flag exist, so they run side by side. Staff tooling and the end-to-end test come last.",
-      "delivery": "One PR into main, opened as a draft after the first merge and marked ready when every task is merged. Rolled out per café behind standing_order_pause.",
+      "delivery": "One PR into main, opened as a draft after the first merge and marked ready when every task is merged. Rolled out café by café behind a feature flag.",
       "done_check": [
         {
           "text": "A pilot café can pause and resume an order from the site, and no delivery is generated inside the pause.",
@@ -416,13 +417,13 @@
         }
       ],
       "out_of_scope": [
-        "Per-item pauses (Q2)",
+        "Per-item pauses",
         "Self-service skipping a single delivery date",
         "Changing prices or minimums during a pause"
       ],
       "risks": [
-        "The routes CSV import is outside this repo (T11) and may land after the PR.",
-        "A pause created after the 22:00 cutoff wastes a bake; Q3 decides how staff handle it.",
+        "The driver routes import lives in another repository and may land after the PR.",
+        "A pause created after the 22:00 cutoff wastes a bake; how staff handle that is an open question.",
         "Daylight-saving changes near the cutoff time."
       ],
       "driver": {

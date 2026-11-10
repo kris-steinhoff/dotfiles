@@ -83,6 +83,14 @@ function code(warnings) {
   };
 }
 
+// The task cards: how many, how many show their detail, and how tall the list is. A card that isn't a details
+// element always shows its detail, so a page from before cards collapsed counts every card as open.
+function taskCards() {
+  const host = document.getElementById("tasks");
+  const cards = [...document.querySelectorAll("#tasks .card")];
+  return { cards: cards.length, open: cards.filter((card) => card.tagName !== "DETAILS" || card.open).length, height: host ? host.offsetHeight : 0 };
+}
+
 export function measure() {
   const warnings = [];
   const root = document.documentElement;
@@ -90,18 +98,19 @@ export function measure() {
   const rendered = !!title && title.textContent !== "Plan";
   if (!rendered) warnings.push("the plan didn't render, so a pass here means nothing");
   const subtitle = document.querySelector(".subtitle");
-  const taskCount = document.querySelectorAll("#tasks .card").length;
   const closedWidth = root.scrollWidth;
-  const open = withEverythingOpen(() => ({ scrollWidth: root.scrollWidth, graph: rendered ? graph(warnings) : null }));
+  const tasks = taskCards();
+  const open = withEverythingOpen(() => ({ scrollWidth: root.scrollWidth, graph: rendered ? graph(warnings) : null, tasksHeight: taskCards().height }));
   return {
     warnings,
     rendered,
     status: document.getElementById("status")?.textContent,
-    taskCount,
     // innerWidth grows with the page under mobile emulation, and hides overflow, so these two are the ones to compare.
     // scrollWidth is read with everything open, and closedScrollWidth as the page first appears.
     page: { scrollWidth: open.scrollWidth, closedScrollWidth: closedWidth, clientWidth: root.clientWidth, overflow: Math.max(open.scrollWidth, closedWidth) > root.clientWidth },
     subtitle: subtitle ? { height: subtitle.offsetHeight, wraps: subtitle.offsetHeight > parseFloat(getComputedStyle(subtitle).fontSize) * 2 } : null,
+    // height is the task list as the page first appears, and openHeight with every card open.
+    tasks: { ...tasks, openHeight: open.tasksHeight },
     graph: open.graph,
     links: rendered ? links(warnings) : null,
     code: code(warnings),

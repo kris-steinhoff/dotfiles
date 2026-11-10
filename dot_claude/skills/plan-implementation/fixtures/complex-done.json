@@ -16,8 +16,8 @@
       "objective": "Move the patient, imaging, prescription, billing, and appointment records of the three acquired practices onto one multi-tenant platform, with animals and owners matched across practices without wrongly merging anyone. Each practice must be able to cut over with a rehearsed, reversible runbook.",
       "source": "specs/platform-merge/records-consolidation.md, tracker epic PET-140",
       "status": "done",
-      "approach": "Isolation comes first: one Postgres database with row-level security on practice_id, so the matching work can read across practices through an explicit role while everything else cannot.\n\nEach practice is extracted untouched into a staging schema, then loaded domain by domain: identity, imaging, prescriptions, billing, scheduling. Anything ambiguous is flagged for a person instead of guessed, and original text is kept beside every normalised value.\n\nThe work lands as a stack of PRs ordered by what reviewers need to see first: tenancy and extraction, then identity, then prescriptions and billing, then imaging and the cutover tooling, with scheduling alongside on the identity PR.",
-      "delivery": "Stacked PRs. P1 (tenancy and extraction) and P2 (identity matching) are merged. P3 (prescriptions and billing) stacks on P2 and P4 (imaging and cutover) stacks on P3; P6 (scheduling) stacks on P2. P5 was a standalone imaging PR and is closed; its tasks live in P4.",
+      "approach": "Isolation comes first: one Postgres database where each practice can read only its own rows, so the matching work can read across practices through an explicit role while everything else cannot.\n\nEach practice is extracted untouched into a staging schema, then loaded domain by domain: identity, imaging, prescriptions, billing, scheduling. Anything ambiguous is flagged for a person instead of guessed, and original text is kept beside every normalised value.\n\nThe work lands as a stack of PRs ordered by what reviewers need to see first: tenancy and extraction, then identity, then prescriptions and billing, then imaging and the cutover tooling, with scheduling alongside on the identity PR.",
+      "delivery": "Stacked PRs. Tenancy and extraction, and identity matching, are merged. Prescriptions and billing stacks on identity, imaging and cutover stacks on that, and scheduling stacks on identity. A standalone imaging PR was closed, and its tasks moved to the imaging and cutover PR.",
       "done_check": [
         {
           "text": "No query run as one practice's role returns another practice's rows",
@@ -91,7 +91,7 @@
     },
     "tasks/T1": {
       "title": "Tenant isolation",
-      "goal": "Every table holding clinical or financial data carries practice_id, and Postgres refuses cross-practice reads.",
+      "goal": "Every table holding clinical or financial data records its practice, and the database refuses reads across practices.",
       "approach": "Add practice_id uuid NOT NULL to each table listed in tenancy/tables.yml and enable row-level security with one policy per table: USING (practice_id = current_setting('kestrel.practice_id')::uuid). The chart API sets that setting in a request middleware from the signed-in user's practice, inside the same transaction as the query.\n\nCross-practice reporting gets its own role that reads only through SECURITY DEFINER views we list explicitly, never BYPASSRLS on a login role. Owner matching (T9) runs as that role.\n\nBackfill is trivial because the platform has no data yet. The migration is written so a later practice can be added with one insert into practices.",
       "touches": [
         "db/migrations/0042_add_practice_id_and_rls.sql",

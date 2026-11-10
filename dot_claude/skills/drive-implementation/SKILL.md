@@ -37,7 +37,7 @@ Push and open each PR as the guide's Delivery says. Only the user merges a PR.
 
 ## Keeping the page current
 
-The page is the user's view, so update it as things happen rather than at the end: a task's status when it starts, blocks, or completes, its `outcome`, the PR and its status, the done-check as conditions are met. Journal what you decided that the user might want to check, with `by: claude` and the reason. Skip the choices nobody would review. Say little in the session; the page is where the user looks.
+The page is the user's view, so update it as things happen rather than at the end: a task's status when it starts, blocks (with what it waits on in `blocked_on`), or completes, its `outcome`, the PR and its status, the done-check as conditions are met. Journal what you decided that the user might want to check, with `by: claude` and the reason. Skip the choices nobody would review. Say little in the session; the page is where the user looks.
 
 ## When to ask
 

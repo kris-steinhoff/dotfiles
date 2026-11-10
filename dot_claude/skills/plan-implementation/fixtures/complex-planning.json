@@ -652,7 +652,7 @@
       "source": "MTR-510, spec at docs/billing-modernization/interval-billing-spec-v3.md",
       "status": "pending",
       "approach": "Three layers, built bottom up. First, a data layer that lands head-end files exactly once into a UTC interval table and maps meters to premises. Second, validation and estimation that mark every read as actual or estimated and never overwrite a value. Third, a pure rating function and a resumable bill run on top, with a parallel-run harness comparing new bills to the mainframe's before cutover.\n\nThe rate engine is a pure function so the same code serves the bill run, the parallel run, and the portal's bill-to-date projection. Quality flags travel with every reading all the way to the bill, since the commission's quarterly report counts estimated bills.",
-      "delivery": "Four stacked PRs, each reviewable on its own: P1 meter data foundation, P2 validation, estimation and backfill, P3 tariffs, rate engine and bill run, P4 parallel run and legacy export. Each is based on the one before so later review sees a coherent history. Portal (T15, T16), the regulator report (T17), rebilling (T14) and the cutover (T22) are not placed yet: portal and cutover depend on answers to Q5 and on the portal's design, and the report waits on what the bill run stores.",
+      "delivery": "Four stacked PRs, each reviewable on its own and based on the one before: the meter data foundation; validation, estimation and backfill; tariffs, the rate engine and the bill run; and the parallel run with the legacy export. The portal, the regulator report, rebilling and the cutover are not placed yet: they wait on open questions, the portal's design, and what the bill run stores.",
       "done_check": [
         {
           "text": "A 20,000 account cycle produces bills matching the legacy system within $0.02 on 99.8% of accounts",
@@ -686,7 +686,7 @@
         "Mid-cycle meter swaps are the most common cause of wrong bills and have the least test data.",
         "Head-end exports are late or retransmitted a few times a month; ingestion must tolerate both.",
         "Time-of-use bucketing across daylight-saving changes (23 and 25 hour days).",
-        "The commission's reading of net metering credit expiry (Q3) may arrive after the rate engine is built.",
+        "The commission's reading of net metering credit expiry may arrive after the rate engine is built.",
         "Mainframe copybooks may not match what the batch actually writes."
       ],
       "jira_browse_url": "https://tracker.brightwater.example/browse/",

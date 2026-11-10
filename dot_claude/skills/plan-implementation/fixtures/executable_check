@@ -27,7 +27,8 @@ RUN_KEYS = {
     "risks", "jira_browse_url", "epics", "driver", "handover", "started_at", "updated_at",
 }
 TASK_KEYS = {
-    "title", "goal", "approach", "touches", "verify", "status", "depends_on", "epics", "pr", "branch", "outcome", "order",
+    "title", "goal", "approach", "touches", "verify", "status", "blocked_on", "depends_on", "epics", "pr", "branch",
+    "outcome", "order",
 }
 PR_KEYS = {"title", "summary", "order", "branch", "base", "status", "url"}
 QUESTION_KEYS = {
@@ -36,6 +37,18 @@ QUESTION_KEYS = {
 }
 JOURNAL_KEYS = {"at", "text", "by", "questions"}
 HANDOVER_KEYS = {"summary", "branch", "pr_url", "look_first", "risks"}
+
+# Text written for people names no files, code identifiers, or ids. These catch the common slips, not every one.
+FOR_PEOPLE = [
+    ("a backtick", re.compile(r"`")),
+    ("a file name", re.compile(
+        r"(?<![\w.@])[\w./~-]*\w\.(?:py|md|sql|js|ts|tsx|go|json|ya?ml|sh|toml|tmpl|html|css|rb|java|kt|swift|rs|tf)\b"
+    )),
+    ("a code identifier", re.compile(r"\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b")),
+    ("an id", re.compile(r"\b[TQP]\d+\b")),
+]
+APPROACH_MAX = 800
+GOAL_MAX = 240
 
 TIMESTAMP = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$")
 URL = re.compile(r"https?://([^/\s\"')]+)")
@@ -161,8 +174,8 @@ class Fixture:
                 for key in ("goal", "verify"):
                     if not task.get(key):
                         self.problem(f"{where}: missing {key}")
-            if status == "blocked" and not task.get("approach"):
-                self.problem(f"{where}: a blocked task's approach names what it waits on")
+            if (status == "blocked") != bool(task.get("blocked_on")):
+                self.problem(f"{where}: blocked_on goes with status blocked, and only with it")
             if status == "merged":
                 for key in ("branch", "outcome", "pr"):
                     if not task.get(key):
@@ -303,6 +316,28 @@ class Fixture:
             if isinstance(value, str) and "`" in value:
                 self.problem(f"{where}: has a backtick, but this field stays plain")
 
+    def check_for_people(self) -> None:
+        """The plan as a whole, and each task's title, goal, and blocked_on, are written short and plain for people."""
+        run = self.run
+        fields = [("run/main.approach", run.get("approach")), ("run/main.delivery", run.get("delivery"))]
+        fields += [(f"done_check[{i}].text", c.get("text")) for i, c in enumerate(run.get("done_check") or [])]
+        for key in ("out_of_scope", "risks"):
+            fields += [(f"run/main.{key}[{i}]", item) for i, item in enumerate(run.get(key) or [])]
+        for task_id, task in self.tasks.items():
+            fields += [(f"tasks/{task_id}.{key}", task.get(key)) for key in ("title", "goal", "blocked_on")]
+        for where, value in fields:
+            if not isinstance(value, str):
+                continue
+            for what, pattern in FOR_PEOPLE:
+                found = pattern.search(value)
+                if found:
+                    self.problem(f"{where}: written for people, but has {what}: {found.group(0)!r}")
+        if len(run.get("approach") or "") > APPROACH_MAX:
+            self.problem(f"run/main.approach: {len(run['approach'])} characters, over {APPROACH_MAX}")
+        for task_id, task in self.tasks.items():
+            if len(task.get("goal") or "") > GOAL_MAX:
+                self.problem(f"tasks/{task_id}.goal: {len(task['goal'])} characters, over {GOAL_MAX}")
+
     def check_invented(self) -> None:
         def walk(value: object, where: str) -> None:
             if isinstance(value, dict):
@@ -432,6 +467,7 @@ class Fixture:
         # hostile-text exists to put backticks in these fields, to show that the page leaves them alone.
         if self.name != "hostile-text":
             self.check_plain_fields()
+            self.check_for_people()
         if self.shape:
             self.check_invented()
         self.check_stage()
