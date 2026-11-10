@@ -239,8 +239,8 @@ alias gsta='git stash'
 alias gstp='git stash pop'
 
 # Git - worktree
-# wt (~/.local/bin/wt) creates, lists, and removes worktrees under the main
-# checkout's .worktrees/. These wrappers exist only to change directory.
+# wt (~/.local/bin/wt) creates, lists, switches to, and removes worktrees under
+# the main checkout's .worktrees/. These wrappers exist only to change directory.
 alias wtl='wt list'
 
 # Create a worktree with wt add and cd into it. wt prints only the path on
@@ -250,6 +250,19 @@ wta() {
 	emulate -L zsh
 	local dir
 	dir=$(command wt add "$@") || return
+	if [[ -d $dir ]]; then
+		cd "$dir"
+	else
+		print -r -- "$dir"
+	fi
+}
+
+# cd into an existing worktree (or the main checkout) by branch or folder name.
+# Other output (--help, --json) is printed as is.
+wts() {
+	emulate -L zsh
+	local dir
+	dir=$(command wt switch "$@") || return
 	if [[ -d $dir ]]; then
 		cd "$dir"
 	else
@@ -278,6 +291,14 @@ _wt_worktrees() {
 	compadd -- $names
 }
 compdef _wt_worktrees wtr
+
+# Complete wts with the same names plus the main checkout's, to switch back.
+_wt_switch_targets() {
+	local -a names
+	names=(${(f)"$(command wt list --json 2>/dev/null | jq -r '.name')"})
+	compadd -- $names
+}
+compdef _wt_switch_targets wts
 
 # Complete wta with local + remote-tracking branches, remote prefix stripped
 # (origin/foo -> foo), deduped. New branch names are just typed in.

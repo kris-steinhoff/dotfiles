@@ -3,7 +3,7 @@
 # requires-python = ">=3.11"
 # dependencies = ["typer>=0.12"]
 # ///
-"""Create, list, and remove git worktrees in the repo's .worktrees/ folder.
+"""Create, list, switch to, and remove git worktrees in the repo's .worktrees/ folder.
 
 One script so people, agents, and skills share the same behavior. Every
 worktree it manages lives in <main checkout>/.worktrees/<folder>; worktrees
@@ -21,6 +21,11 @@ elsewhere are left alone and never listed.
 
   wt list
       The main checkout first, then each worktree under .worktrees/.
+
+  wt switch NAME
+      Prints the path of the managed worktree, or the main checkout, whose
+      branch, else folder, is NAME, for a shell wrapper to cd into. It only
+      finds existing worktrees; wt add makes new ones.
 
   wt remove NAME
       Removes the managed worktree whose branch, else folder, is NAME, then
@@ -65,7 +70,7 @@ EXCLUDE = f"/{MANAGED_DIR}/"
 app = typer.Typer(
     add_completion=False,
     no_args_is_help=True,
-    help="Create, list, and remove git worktrees in the repo's .worktrees/ folder.",
+    help="Create, list, switch to, and remove git worktrees in the repo's .worktrees/ folder.",
 )
 
 JsonFlag = Annotated[
@@ -115,6 +120,17 @@ class Repo:
 
     def managed(self) -> list[Record]:
         return [record for record in self.records if self.is_managed(record)]
+
+    def find(self, name: str, include_main: bool) -> Optional[Record]:
+        """The managed worktree whose branch, else folder, is `name`."""
+        candidates = [r for r in self.managed() if include_main or not r.main]
+        return next((r for r in candidates if r.branch == name), None) or next(
+            (r for r in candidates if os.path.basename(r.path) == name), None)
+
+    def unmanaged(self, name: str) -> Optional[Record]:
+        """A worktree outside .worktrees/ whose branch or folder is `name`."""
+        return next((r for r in self.records if not self.is_managed(r)
+                     and (r.branch == name or os.path.basename(r.path) == name)), None)
 
 
 # Output -------------------------------------------------------------------
@@ -356,6 +372,29 @@ def add(
 
 
 @app.command()
+def switch(
+    name: Annotated[str, typer.Argument(help="The worktree's branch, or its folder name.")],
+    as_json: JsonFlag = False,
+) -> None:
+    """Print the path of an existing worktree (or the main checkout) to cd into."""
+    try:
+        repo = discover()
+        record = repo.find(name, include_main=True)
+        if record is None:
+            outside = repo.unmanaged(name)
+            if outside:
+                raise Failure(f"{outside.path} isn't managed by wt (it is outside "
+                              f"{repo.managed_dir})")
+            raise Failure(f"no worktree named {name}; make one with wt add {shlex.quote(name)}")
+    except (Failure, OSError) as error:
+        handle_failure(error, as_json)
+    if as_json:
+        emit(record.as_json())
+    else:
+        print(record.path, flush=True)
+
+
+@app.command()
 def remove(
     name: Annotated[str, typer.Argument(help="The worktree's branch, or its folder name.")],
     as_json: JsonFlag = False,
@@ -363,15 +402,11 @@ def remove(
     """Remove a worktree under .worktrees/ and delete its branch if merged."""
     try:
         repo = discover()
-        candidates = [record for record in repo.managed() if not record.main]
-        record = next((r for r in candidates if r.branch == name), None) or next(
-            (r for r in candidates if os.path.basename(r.path) == name), None)
+        record = repo.find(name, include_main=False)
         if record is None:
-            def matches(r: Record) -> bool:
-                return r.branch == name or os.path.basename(r.path) == name
-            if matches(repo.records[0]):
+            if repo.find(name, include_main=True):
                 raise Failure(f"{name} is the main checkout; wt won't remove it")
-            outside = next((r for r in repo.records if matches(r) and not repo.is_managed(r)), None)
+            outside = repo.unmanaged(name)
             if outside:
                 raise Failure(f"{outside.path} isn't managed by wt (it is outside "
                               f"{repo.managed_dir}); use git worktree remove")

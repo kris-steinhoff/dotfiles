@@ -45,7 +45,7 @@ Shared configs live under `dot_config/kris-steinhoff/` (deployed to `~/.config/k
 - **Terminal**: Ghostty (ligatures disabled)
 - **Prompt**: Starship without Nerd Font glyphs, kubernetes module enabled
 - **Git**: push.default=current, pull.rebase, rebase.updateRefs, rebase.autoSquash
-- **Worktrees**: `wt` (add, list, remove) keeps each repo's worktrees in `.worktrees/`; `wta`, `wtr`, and `wtl` are zsh wrappers
+- **Worktrees**: `wt` (add, list, switch, remove) keeps each repo's worktrees in `.worktrees/`; `wta`, `wts`, `wtr`, and `wtl` are zsh wrappers
 - **AWS**: `aws-profile-login` / `aws-profile-logout` are zsh functions in `dot_config/kris-steinhoff/zshrc`, not scripts, because they set `AWS_PROFILE` in the interactive shell
 
 ## Area notes
