@@ -44,7 +44,8 @@ Shared configs live under `dot_config/kris-steinhoff/` (deployed to `~/.config/k
 - **Shell**: zsh with starship, zsh-autosuggestions, zsh-syntax-highlighting, direnv
 - **Terminal**: Ghostty (ligatures disabled)
 - **Prompt**: Starship without Nerd Font glyphs, kubernetes module enabled
-- **Git**: pull.rebase, rebase.updateRefs, rebase.autoSquash
+- **Git**: push.default=current, pull.rebase, rebase.updateRefs, rebase.autoSquash
+- **Worktrees**: `wt` (add, list, remove) keeps each repo's worktrees in `.worktrees/`; `wta`, `wtr`, and `wtl` are zsh wrappers
 - **AWS**: `aws-profile-login` / `aws-profile-logout` are zsh functions in `dot_config/kris-steinhoff/zshrc`, not scripts, because they set `AWS_PROFILE` in the interactive shell
 
 ## Area notes
@@ -57,4 +58,4 @@ Each area keeps its reasons in a notes file beside it. Load the notes before edi
 - Load `dot_agents/skills/AGENTS.md` before adding, editing, or removing any skill; it covers how a skill is authored once and deployed to every agent surface. Also load the `AGENTS.md` in the skill's own directory (`dot_agents/skills/<name>/`, or `dot_claude/skills/<name>/` for a Claude-only skill) before editing that skill, if it has one.
 - Load `.chezmoitemplates/AGENTS.md` before editing a global instruction partial in `.chezmoitemplates/`, a harness file that includes them (`dot_claude/CLAUDE.md.tmpl`, `dot_codex/AGENTS.md.tmpl`), or a persona (`.chezmoitemplates/agents/personas/`, `dot_claude/agents/`, and the coordinator's nudge hook `dot_claude/hooks/executable_coordinator-delegation-nudge.sh`).
 - Before editing `.chezmoi.toml.tmpl`, load the notes for the datum you touch: `agentBudget` in `dot_codex/README.md`, `claudeSandboxAllowWrite` in `dot_claude/AGENTS.md`.
-- Load `dot_local/bin/AGENTS.md` before editing `dot_local/bin/executable_ai-usage`.
+- Load `dot_local/bin/AGENTS.md` before editing `dot_local/bin/executable_ai-usage` or `dot_local/bin/executable_wt`.

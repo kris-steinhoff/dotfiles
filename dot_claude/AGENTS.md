@@ -24,3 +24,11 @@ The partial is a template for one reason: a machine can add its own sandbox writ
 ## Herdr's agent-state hook
 
 Herdr's agent-state hooks are Herdr's, and these dotfiles don't manage them. `herdr integration install <agent>` writes each one (Claude's is `~/.claude/hooks/herdr-agent-state.sh`), and Herdr rewrites it on upgrade, flagging an outdated or missing one in its settings' Integrations tab; a managed copy would need copying back after every upgrade, and `chezmoi apply` would stop to ask about the changed file until then. The `settings.json` entry that runs the hook is Herdr's as well, and the `modify_` script keeps it, so a new machine gets the hook when the Claude integration is installed from Herdr. Don't add a `.chezmoiremove` entry for the hook, since that would delete the live file Herdr needs.
+
+## Worktree hooks
+
+Claude Code makes its own worktrees in `<repo>/.claude/worktrees` on `worktree-<name>` branches, for `claude --worktree`, the `EnterWorktree` tool, and subagents with worktree isolation. The `WorktreeCreate` and `WorktreeRemove` hooks (`hooks/executable_wt-worktree-create.sh` and `hooks/executable_wt-worktree-remove.sh`) replace that with `wt`, so those worktrees land in `.worktrees/<name>` on a plain `<name>` branch like every other worktree (the reasons are in `dot_local/bin/AGENTS.md`). Claude reads the created path from the last line of the create hook's stdout, which is exactly what `wt add` prints. With the hook in place Claude no longer copies `.worktreeinclude` files; `wt.setup` covers per-repo setup instead.
+
+Removal goes through `wt remove`, which refuses a dirty worktree and keeps an unmerged branch, so Claude reports the removal as failed and nothing is lost. Claude never deletes branches itself, so the hook is also what keeps merged branches from piling up. A worktree made before the hooks existed, outside `.worktrees`, gets a plain `git worktree remove` and keeps its branch.
+
+Hooks don't inherit the interactive shell's `PATH`, so both scripts put `~/.local/bin` and Homebrew's `bin` (for `uv` and `jq`) first. The desktop app's Code tab creates session worktrees by its own setting (Settings, Claude Code, worktree location); the docs don't say whether it runs these hooks.

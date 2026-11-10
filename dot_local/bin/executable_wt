@@ -1,0 +1,447 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = ["typer>=0.12"]
+# ///
+"""Create, list, and remove git worktrees in the repo's .worktrees/ folder.
+
+One script so people, agents, and skills share the same behavior. Every
+worktree it manages lives in <main checkout>/.worktrees/<folder>; worktrees
+elsewhere are left alone and never listed.
+
+  wt add BRANCH [FOLDER] [--base REF]
+      FOLDER defaults to BRANCH, with every / replaced by -. An existing local
+      branch is attached as is. Otherwise origin is fetched and the branch is
+      cut from origin/BRANCH when origin has one, else from --base or
+      origin/<default branch>. With no origin remote it branches from --base
+      or HEAD. No branch records an upstream (--no-track), since recording one
+      writes .git/config, which Claude's sandbox blocks. If `git config
+      wt.setup` is set (read in the new worktree), it runs there with sh -c;
+      a failing setup only warns. Prints the new worktree's path on stdout.
+
+  wt list
+      The main checkout first, then each worktree under .worktrees/.
+
+  wt remove NAME
+      Removes the managed worktree whose branch, else folder, is NAME, then
+      deletes its branch if it is merged into the main checkout's HEAD or into
+      origin/<default branch> as last fetched (remove does not fetch). It never
+      forces: a dirty worktree or an unmerged branch is left in place and the
+      command that would force it is printed.
+
+Every subcommand takes --json, which prints one JSON object per line on stdout.
+Progress and messages go to stderr. The script never changes directory for the
+caller.
+
+Exit codes:
+  0  success.
+  1  error. With --json, stdout is {"error": ...}. A usage error (a missing
+     argument, an unknown option) also exits 1, with typer's message on stderr
+     and no JSON.
+  2  refused: a step needs force. With --json, stdout is the normal object, whose
+     force_commands lists the commands to run.
+
+Git is always invoked as an argv list with `git -C <dir>` and with
+GIT_TERMINAL_PROMPT=0, so an origin that wants credentials fails rather than
+prompting; only wt.setup, the user's own shell command, goes through a shell.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import shlex
+import subprocess
+import sys
+from dataclasses import asdict, dataclass
+from typing import Annotated, Optional
+
+import typer
+
+MANAGED_DIR = ".worktrees"
+EXCLUDE = f"/{MANAGED_DIR}/"
+
+app = typer.Typer(
+    add_completion=False,
+    no_args_is_help=True,
+    help="Create, list, and remove git worktrees in the repo's .worktrees/ folder.",
+)
+
+JsonFlag = Annotated[
+    bool, typer.Option("--json", help="Print JSONL (one JSON object per line) on stdout.")
+]
+
+
+class Failure(Exception):
+    """An error: exit 1."""
+
+
+# Set when a command refuses (exit 2), so main() can tell a refusal from a
+# usage error, which the CLI library also exits 2 for.
+refused = False
+
+
+@dataclass
+class Record:
+    name: str
+    branch: Optional[str]
+    path: str
+    head: Optional[str]
+    main: bool
+    detached: bool
+    locked: bool = False  # not part of the JSON output
+
+    def as_json(self) -> dict:
+        return {k: v for k, v in asdict(self).items() if k != "locked"}
+
+
+@dataclass
+class Repo:
+    common: str
+    main: str
+    records: list[Record]  # every worktree, main first
+
+    @property
+    def managed_dir(self) -> str:
+        return os.path.join(self.main, MANAGED_DIR)
+
+    def is_managed(self, record: Record) -> bool:
+        if record.main:
+            return True
+        path = os.path.realpath(record.path)
+        managed = os.path.realpath(self.managed_dir)
+        return path != managed and os.path.commonpath([path, managed]) == managed
+
+    def managed(self) -> list[Record]:
+        return [record for record in self.records if self.is_managed(record)]
+
+
+# Output -------------------------------------------------------------------
+
+
+def say(message: str) -> None:
+    print(f"wt: {message}", file=sys.stderr, flush=True)
+
+
+def emit(obj: dict) -> None:
+    print(json.dumps(obj), flush=True)
+
+
+def handle_failure(error: Exception, as_json: bool) -> None:
+    say(str(error))
+    if as_json:
+        emit({"error": str(error)})
+    raise typer.Exit(1)
+
+
+# Git ----------------------------------------------------------------------
+
+
+def run(argv: list[str], loud: bool = False) -> subprocess.CompletedProcess:
+    """Run a command. Quietly, its output is captured; loudly, its stdout and
+    stderr both go to our stderr, so stdout stays for results."""
+    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"} if argv[0] == "git" else None
+    if loud:
+        sys.stdout.flush()
+        sys.stderr.flush()
+        return subprocess.run(argv, stdout=sys.stderr, text=True, env=env)
+    return subprocess.run(argv, capture_output=True, text=True, env=env)
+
+
+def git(directory: str, *args: str) -> str:
+    proc = run(["git", "-C", directory, *args])
+    if proc.returncode != 0:
+        raise Failure(f"git {' '.join(args)}: {proc.stderr.strip()}")
+    return proc.stdout.strip()
+
+
+def git_ok(directory: str, *args: str) -> bool:
+    return run(["git", "-C", directory, *args]).returncode == 0
+
+
+def git_loud(directory: str, *args: str) -> None:
+    if run(["git", "-C", directory, *args], loud=True).returncode != 0:
+        raise Failure(f"git {' '.join(args)} failed")
+
+
+def ref_exists(directory: str, ref: str) -> bool:
+    return git_ok(directory, "show-ref", "--verify", "--quiet", ref)
+
+
+# Discovery ----------------------------------------------------------------
+
+
+def porcelain(directory: str) -> list[dict]:
+    """`git worktree list --porcelain -z` as one dict per worktree."""
+    records, current = [], {}
+    for line in git(directory, "worktree", "list", "--porcelain", "-z").split("\0"):
+        if not line:
+            if current:
+                records.append(current)
+                current = {}
+            continue
+        key, _, value = line.partition(" ")
+        current[key] = value
+    if current:
+        records.append(current)
+    return records
+
+
+def discover(directory: str | None = None) -> Repo:
+    here = directory or os.getcwd()
+    proc = run(["git", "-C", here, "rev-parse", "--path-format=absolute", "--git-common-dir"])
+    if proc.returncode != 0:
+        raise Failure("not in a git repository")
+    common = proc.stdout.strip()
+
+    raw = porcelain(here)
+    if not raw or "bare" in raw[0]:
+        raise Failure("bare repository; use git worktree add directly")
+
+    # A submodule's main checkout comes from core.worktree: its first porcelain
+    # record is the git folder inside the parent's .git/modules.
+    proc = run(["git", "-C", here, "config", "-f", os.path.join(common, "config"),
+                "--get", "core.worktree"])
+    configured = proc.stdout.strip() if proc.returncode == 0 else ""
+    main = os.path.realpath(os.path.join(common, configured)) if configured else raw[0]["worktree"]
+
+    records = []
+    for index, entry in enumerate(raw):
+        is_main = index == 0
+        path = main if is_main else entry["worktree"]
+        ref = entry.get("branch")
+        branch = ref.removeprefix("refs/heads/") if ref else None
+        records.append(Record(
+            name=branch or os.path.basename(path),
+            branch=branch,
+            path=path,
+            head=entry.get("HEAD"),
+            main=is_main,
+            detached="detached" in entry,
+            locked="locked" in entry,
+        ))
+    return Repo(common=common, main=main, records=records)
+
+
+def default_branch(directory: str) -> str | None:
+    """Origin's default branch: origin/HEAD as last fetched, else what origin
+    advertises (origin/HEAD is often unset after cloning an empty repo)."""
+    proc = run(["git", "-C", directory, "symbolic-ref", "--short", "refs/remotes/origin/HEAD"])
+    if proc.returncode == 0 and proc.stdout.strip().startswith("origin/"):
+        return proc.stdout.strip().removeprefix("origin/")
+    proc = run(["git", "-C", directory, "ls-remote", "--symref", "origin", "HEAD"])
+    match = re.search(r"^ref: refs/heads/(\S+)\tHEAD$", proc.stdout, re.MULTILINE)
+    return match.group(1) if match else None
+
+
+def exclude(common: str, pattern: str) -> None:
+    """Add `pattern` to <common>/info/exclude unless it is there."""
+    path = os.path.join(common, "info", "exclude")
+    text = open(path, encoding="utf-8").read() if os.path.exists(path) else ""
+    if pattern not in text.splitlines():
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "a", encoding="utf-8") as handle:
+            if text and not text.endswith("\n"):
+                handle.write("\n")
+            handle.write(pattern + "\n")
+
+
+# Commands -----------------------------------------------------------------
+
+
+@app.command("list")
+def list_worktrees(as_json: JsonFlag = False) -> None:
+    """List the main checkout and the worktrees under .worktrees/."""
+    try:
+        records = discover().managed()
+    except (Failure, OSError) as error:
+        handle_failure(error, as_json)
+    if as_json:
+        for record in records:
+            emit(record.as_json())
+        return
+    width = max(len(record.name) for record in records)
+    for record in records:
+        suffix = "  (main)" if record.main else ""
+        print(f"{record.name.ljust(width)}  {record.path}{suffix}")
+
+
+@app.command()
+def add(
+    branch: Annotated[str, typer.Argument(help="Branch to check out, created if needed.")],
+    folder: Annotated[
+        Optional[str], typer.Argument(help="Folder under .worktrees/ (default: BRANCH).")
+    ] = None,
+    base: Annotated[
+        Optional[str],
+        typer.Option("--base", help="Start point for a new branch (default: origin/<default>)."),
+    ] = None,
+    as_json: JsonFlag = False,
+) -> None:
+    """Create a worktree for BRANCH in .worktrees/ and print its path."""
+    try:
+        here = os.getcwd()
+        repo = discover(here)
+        folder = (folder if folder is not None else branch).replace("/", "-")
+        if not folder:
+            raise Failure("the folder name is empty")
+        if folder.startswith("."):
+            raise Failure(f"the folder name {folder!r} starts with a dot")
+        path = os.path.join(repo.managed_dir, folder)
+        if os.path.lexists(path):
+            raise Failure(f"{path} already exists")
+
+        exists = ref_exists(here, f"refs/heads/{branch}")
+        if not exists:
+            for remote in git(here, "remote").splitlines():
+                if branch.startswith(f"{remote}/"):
+                    short = branch.removeprefix(f"{remote}/")
+                    raise Failure(f"{branch} names a branch of the {remote} remote; "
+                                  f"use wt add {shlex.quote(short)}")
+
+        exclude(repo.common, EXCLUDE)
+
+        created_branch, start, fetched = True, None, None
+        if exists:
+            if base is not None:
+                raise Failure(f"{branch} already exists; --base applies only to new branches")
+            git_loud(here, "worktree", "add", path, branch)
+            created_branch = False
+        elif not git_ok(here, "remote", "get-url", "origin"):
+            start = base or "HEAD"
+            say(f"no origin remote, so branching from {start}")
+            git_loud(here, "worktree", "add", "--no-track", "-b", branch, path, start)
+        else:
+            fetched = run(["git", "-C", here, "fetch", "origin"], loud=True).returncode == 0
+            if not fetched:
+                say("could not fetch origin; using its last fetched state")
+            if base is None and ref_exists(here, f"refs/remotes/origin/{branch}"):
+                start = f"origin/{branch}"
+            elif base is not None:
+                start = base
+            else:
+                default = default_branch(here)
+                if default is None:
+                    raise Failure("can't tell origin's default branch; pass --base")
+                start = f"origin/{default}"
+            git_loud(here, "worktree", "add", "--no-track", "-b", branch, path, start)
+
+        setup = None
+        proc = run(["git", "-C", path, "config", "--get", "wt.setup"])
+        command = proc.stdout.strip() if proc.returncode == 0 else ""
+        if command:
+            say(f"running wt.setup: {command}")
+            sys.stdout.flush()
+            sys.stderr.flush()
+            code = subprocess.run(["sh", "-c", command], cwd=path, stdout=sys.stderr).returncode
+            if code != 0:
+                say(f"wt.setup exited {code}; the worktree is kept")
+            setup = {"command": command, "exit_code": code}
+    except (Failure, OSError) as error:
+        handle_failure(error, as_json)
+
+    if as_json:
+        emit({
+            "path": path,
+            "branch": branch,
+            "folder": folder,
+            "created_branch": created_branch,
+            "base": start,
+            "fetched": fetched,
+            "setup": setup,
+        })
+    else:
+        print(path, flush=True)
+
+
+@app.command()
+def remove(
+    name: Annotated[str, typer.Argument(help="The worktree's branch, or its folder name.")],
+    as_json: JsonFlag = False,
+) -> None:
+    """Remove a worktree under .worktrees/ and delete its branch if merged."""
+    try:
+        repo = discover()
+        candidates = [record for record in repo.managed() if not record.main]
+        record = next((r for r in candidates if r.branch == name), None) or next(
+            (r for r in candidates if os.path.basename(r.path) == name), None)
+        if record is None:
+            def matches(r: Record) -> bool:
+                return r.branch == name or os.path.basename(r.path) == name
+            if matches(repo.records[0]):
+                raise Failure(f"{name} is the main checkout; wt won't remove it")
+            outside = next((r for r in repo.records if matches(r) and not repo.is_managed(r)), None)
+            if outside:
+                raise Failure(f"{outside.path} isn't managed by wt (it is outside "
+                              f"{repo.managed_dir}); use git worktree remove")
+            raise Failure(f"no worktree named {name} in {repo.managed_dir}")
+
+        result = {
+            "path": record.path,
+            "branch": record.branch,
+            "worktree_removed": False,
+            "branch_deleted": False,
+            "force_commands": [],
+        }
+
+        def refuse(message: str, command: list[str]) -> None:
+            run(["git", "-C", repo.main, "worktree", "prune"])
+            say(message)
+            say(f"to force it, run: {shlex.join(command)}")
+            result["force_commands"].append(shlex.join(command))
+            if as_json:
+                emit(result)
+            global refused
+            refused = True
+            raise typer.Exit(2)
+
+        proc = run(["git", "-C", repo.main, "worktree", "remove", record.path])
+        if proc.returncode != 0:
+            if proc.stderr.strip():
+                print(proc.stderr.strip(), file=sys.stderr)
+            # git needs --force twice to remove a locked worktree.
+            force = ["--force", "--force"] if record.locked else ["--force"]
+            refuse(f"couldn't remove {record.path}",
+                   ["git", "worktree", "remove", *force, record.path])
+        result["worktree_removed"] = True
+        say(f"removed {record.path}")
+
+        if record.branch and ref_exists(repo.main, f"refs/heads/{record.branch}"):
+            # Plain `git branch -d` compares a branch with no upstream against the
+            # main checkout's HEAD, so it refuses a branch cut from a freshly
+            # fetched origin/<default> whenever the local default branch is behind.
+            default = default_branch(repo.main)
+            targets = ["HEAD"] + ([f"refs/remotes/origin/{default}"] if default else [])
+            merged = any(
+                git_ok(repo.main, "merge-base", "--is-ancestor",
+                       f"refs/heads/{record.branch}", target)
+                for target in targets
+            )
+            if not merged:
+                into = f"HEAD or origin/{default}" if default else "HEAD"
+                refuse(f"{record.branch} isn't merged into {into} (squash merges count as "
+                       "not merged), so it is kept", ["git", "branch", "-D", record.branch])
+            git(repo.main, "branch", "-D", record.branch)
+            result["branch_deleted"] = True
+            say(f"deleted branch {record.branch}")
+
+        run(["git", "-C", repo.main, "worktree", "prune"])
+    except (Failure, OSError) as error:
+        handle_failure(error, as_json)
+    if as_json:
+        emit(result)
+
+
+def main() -> None:
+    try:
+        app()
+    except SystemExit as exit_:
+        # A usage error exits 2, which here means "refused"; make it 1.
+        if exit_.code == 2 and not refused:
+            sys.exit(1)
+        raise
+
+
+if __name__ == "__main__":
+    main()
