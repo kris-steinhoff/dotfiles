@@ -35,12 +35,15 @@ caller.
 
 Exit codes:
   0  success.
-  1  error. With --json, stdout is {"error": ...}.
+  1  error. With --json, stdout is {"error": ...}. A usage error (a missing
+     argument, an unknown option) also exits 1, with typer's message on stderr
+     and no JSON.
   2  refused: a step needs force. With --json, stdout is the normal object, whose
      force_commands lists the commands to run.
 
-Git is always invoked as an argv list with `git -C <dir>`; only wt.setup, the
-user's own shell command, goes through a shell.
+Git is always invoked as an argv list with `git -C <dir>` and with
+GIT_TERMINAL_PROMPT=0, so an origin that wants credentials fails rather than
+prompting; only wt.setup, the user's own shell command, goes through a shell.
 """
 
 from __future__ import annotations
@@ -87,6 +90,10 @@ class Record:
     head: Optional[str]
     main: bool
     detached: bool
+    locked: bool = False  # not part of the JSON output
+
+    def as_json(self) -> dict:
+        return {k: v for k, v in asdict(self).items() if k != "locked"}
 
 
 @dataclass
@@ -121,7 +128,7 @@ def emit(obj: dict) -> None:
     print(json.dumps(obj), flush=True)
 
 
-def handle_failure(error: Failure, as_json: bool) -> None:
+def handle_failure(error: Exception, as_json: bool) -> None:
     say(str(error))
     if as_json:
         emit({"error": str(error)})
@@ -134,11 +141,12 @@ def handle_failure(error: Failure, as_json: bool) -> None:
 def run(argv: list[str], loud: bool = False) -> subprocess.CompletedProcess:
     """Run a command. Quietly, its output is captured; loudly, its stdout and
     stderr both go to our stderr, so stdout stays for results."""
+    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"} if argv[0] == "git" else None
     if loud:
         sys.stdout.flush()
         sys.stderr.flush()
-        return subprocess.run(argv, stdout=sys.stderr, text=True)
-    return subprocess.run(argv, capture_output=True, text=True)
+        return subprocess.run(argv, stdout=sys.stderr, text=True, env=env)
+    return subprocess.run(argv, capture_output=True, text=True, env=env)
 
 
 def git(directory: str, *args: str) -> str:
@@ -211,6 +219,7 @@ def discover(directory: str | None = None) -> Repo:
             head=entry.get("HEAD"),
             main=is_main,
             detached="detached" in entry,
+            locked="locked" in entry,
         ))
     return Repo(common=common, main=main, records=records)
 
@@ -246,11 +255,11 @@ def list_worktrees(as_json: JsonFlag = False) -> None:
     """List the main checkout and the worktrees under .worktrees/."""
     try:
         records = discover().managed()
-    except Failure as error:
+    except (Failure, OSError) as error:
         handle_failure(error, as_json)
     if as_json:
         for record in records:
-            emit(asdict(record))
+            emit(record.as_json())
         return
     width = max(len(record.name) for record in records)
     for record in records:
@@ -283,10 +292,18 @@ def add(
         if os.path.lexists(path):
             raise Failure(f"{path} already exists")
 
+        exists = ref_exists(here, f"refs/heads/{branch}")
+        if not exists:
+            for remote in git(here, "remote").splitlines():
+                if branch.startswith(f"{remote}/"):
+                    short = branch.removeprefix(f"{remote}/")
+                    raise Failure(f"{branch} names a branch of the {remote} remote; "
+                                  f"use wt add {shlex.quote(short)}")
+
         exclude(repo.common, EXCLUDE)
 
         created_branch, start, fetched = True, None, None
-        if ref_exists(here, f"refs/heads/{branch}"):
+        if exists:
             if base is not None:
                 raise Failure(f"{branch} already exists; --base applies only to new branches")
             git_loud(here, "worktree", "add", path, branch)
@@ -321,7 +338,7 @@ def add(
             if code != 0:
                 say(f"wt.setup exited {code}; the worktree is kept")
             setup = {"command": command, "exit_code": code}
-    except Failure as error:
+    except (Failure, OSError) as error:
         handle_failure(error, as_json)
 
     if as_json:
@@ -359,56 +376,59 @@ def remove(
                 raise Failure(f"{outside.path} isn't managed by wt (it is outside "
                               f"{repo.managed_dir}); use git worktree remove")
             raise Failure(f"no worktree named {name} in {repo.managed_dir}")
-    except Failure as error:
-        handle_failure(error, as_json)
 
-    result = {
-        "path": record.path,
-        "branch": record.branch,
-        "worktree_removed": False,
-        "branch_deleted": False,
-        "force_commands": [],
-    }
+        result = {
+            "path": record.path,
+            "branch": record.branch,
+            "worktree_removed": False,
+            "branch_deleted": False,
+            "force_commands": [],
+        }
 
-    def refuse(message: str, command: list[str]) -> None:
+        def refuse(message: str, command: list[str]) -> None:
+            run(["git", "-C", repo.main, "worktree", "prune"])
+            say(message)
+            say(f"to force it, run: {shlex.join(command)}")
+            result["force_commands"].append(shlex.join(command))
+            if as_json:
+                emit(result)
+            global refused
+            refused = True
+            raise typer.Exit(2)
+
+        proc = run(["git", "-C", repo.main, "worktree", "remove", record.path])
+        if proc.returncode != 0:
+            if proc.stderr.strip():
+                print(proc.stderr.strip(), file=sys.stderr)
+            # git needs --force twice to remove a locked worktree.
+            force = ["--force", "--force"] if record.locked else ["--force"]
+            refuse(f"couldn't remove {record.path}",
+                   ["git", "worktree", "remove", *force, record.path])
+        result["worktree_removed"] = True
+        say(f"removed {record.path}")
+
+        if record.branch and ref_exists(repo.main, f"refs/heads/{record.branch}"):
+            # Plain `git branch -d` compares a branch with no upstream against the
+            # main checkout's HEAD, so it refuses a branch cut from a freshly
+            # fetched origin/<default> whenever the local default branch is behind.
+            default = default_branch(repo.main)
+            targets = ["HEAD"] + ([f"refs/remotes/origin/{default}"] if default else [])
+            merged = any(
+                git_ok(repo.main, "merge-base", "--is-ancestor",
+                       f"refs/heads/{record.branch}", target)
+                for target in targets
+            )
+            if not merged:
+                into = f"HEAD or origin/{default}" if default else "HEAD"
+                refuse(f"{record.branch} isn't merged into {into} (squash merges count as "
+                       "not merged), so it is kept", ["git", "branch", "-D", record.branch])
+            git(repo.main, "branch", "-D", record.branch)
+            result["branch_deleted"] = True
+            say(f"deleted branch {record.branch}")
+
         run(["git", "-C", repo.main, "worktree", "prune"])
-        say(message)
-        say(f"to force it, run: {shlex.join(command)}")
-        result["force_commands"].append(shlex.join(command))
-        if as_json:
-            emit(result)
-        global refused
-        refused = True
-        raise typer.Exit(2)
-
-    proc = run(["git", "-C", repo.main, "worktree", "remove", record.path])
-    if proc.returncode != 0:
-        if proc.stderr.strip():
-            print(proc.stderr.strip(), file=sys.stderr)
-        refuse(f"couldn't remove {record.path}",
-               ["git", "worktree", "remove", "--force", record.path])
-    result["worktree_removed"] = True
-    say(f"removed {record.path}")
-
-    if record.branch and ref_exists(repo.main, f"refs/heads/{record.branch}"):
-        # Plain `git branch -d` compares a branch with no upstream against the
-        # main checkout's HEAD, so it refuses a branch cut from a freshly
-        # fetched origin/<default> whenever the local default branch is behind.
-        default = default_branch(repo.main)
-        targets = ["HEAD"] + ([f"refs/remotes/origin/{default}"] if default else [])
-        merged = any(
-            git_ok(repo.main, "merge-base", "--is-ancestor", f"refs/heads/{record.branch}", target)
-            for target in targets
-        )
-        if not merged:
-            into = f"HEAD or origin/{default}" if default else "HEAD"
-            refuse(f"{record.branch} isn't merged into {into} (squash merges count as "
-                   "not merged), so it is kept", ["git", "branch", "-D", record.branch])
-        git(repo.main, "branch", "-D", record.branch)
-        result["branch_deleted"] = True
-        say(f"deleted branch {record.branch}")
-
-    run(["git", "-C", repo.main, "worktree", "prune"])
+    except (Failure, OSError) as error:
+        handle_failure(error, as_json)
     if as_json:
         emit(result)
 
