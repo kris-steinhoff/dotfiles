@@ -244,12 +244,17 @@ alias gstp='git stash pop'
 alias wtl='wt list'
 
 # Create a worktree with wt add and cd into it. wt prints only the path on
-# stdout; its messages and setup output reach the terminal on stderr.
+# stdout; its messages and setup output reach the terminal on stderr. Other
+# output (--help, --json) is printed as is.
 wta() {
 	emulate -L zsh
 	local dir
 	dir=$(command wt add "$@") || return
-	cd "$dir"
+	if [[ -d $dir ]]; then
+		cd "$dir"
+	else
+		print -r -- "$dir"
+	fi
 }
 
 # Remove a worktree with wt remove, then cd to the main checkout if the
