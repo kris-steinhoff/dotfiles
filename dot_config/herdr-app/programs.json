@@ -1,0 +1,11 @@
+{
+  "programs": {
+    "ai-usage": {
+      "name": "AI usage",
+      "icon": "mods/ai-usage/icon.svg",
+      "tint": true,
+      "tile": "#7aa2f7",
+      "color": "#1a1b26"
+    }
+  }
+}
