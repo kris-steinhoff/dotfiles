@@ -1,10 +1,12 @@
 # github-pr
 
-`github-pr` owns every GitHub PR conversation posted on the owner's behalf, from either side, in three modes: `review ready`, `review <n>`, and `respond <n>`.
+`github-pr` owns every GitHub PR review posted on the owner's behalf, in two modes: `review ready` and `review <n>`. The author's side, replying to reviews of the owner's own PRs, is `drive-pr`.
 
-## One skill with modes
+## Reviewer's side only
 
-A bare number asks which mode rather than defaulting, because a number alone doesn't say whether the owner is the reviewer or the author. Reviewing and responding are one skill rather than a response skill plus a shared plumbing skill, because the scripts, the posting schema, and the triage-then-confirm interaction are the same on both sides, and because the posting rule grants permission per posting skill: a generic plumbing skill that could post anything would need its own fence. Queue discovery, head fetching, and posting are internal mechanics of this one workflow, not skills of their own. The skill runs inline because triage and posting confirmation must reach the user.
+The author's side is its own skill, `drive-pr`, even though both sides share the scripts and the posting schema. Replying as the author is part of carrying a PR to merge, which acts on its own rather than confirming every reply, and the posting rule grants permission per posting skill, so the skill that may post without confirming is the one whose description says so. A bare number means `review <n>` unless the owner wrote the PR, in which case the skill points at `drive-pr`. The skill runs inline because triage and posting confirmation must reach the user.
+
+The scripts and `references/posting.md` stay here, and `drive-pr` links to `feedback.py`, `post.py`, and `posting.md`. Moving or splitting them means moving those links too.
 
 ## `review ready`
 
@@ -22,15 +24,11 @@ The queue keeps no state of its own. Whether a PR is done is read from GitHub: `
 
 It also weighs in on other reviewers' open comments, bots' included. The agent judges each against the code itself, since the generic `review` skill reports only problems the change introduces. An Agree reply gives the comment the owner's severity, and a Dispute says with evidence why it doesn't hold. That tells the author which of several reviewers' comments matter and how much, and an Agree at Blocker requests changes like a finding of the owner's own, which is how a bot's mild suggestion is escalated when it would break something. A finding another reviewer already raised becomes an Agree on their thread rather than a second comment. Each reply is triaged like a finding.
 
-## `respond <n>`
-
-`respond <n>` is the author's side. It runs inline with no subagents, reads every unanswered review thread, summary body, and conversation comment, drafts a reply for each grounded in evidence (a fix is cited only by a commit already on the PR), and walks the user through every draft before one confirmation. It never resolves a thread, because resolving is the reviewer's confirmation that a fix holds. By default it re-requests review from each human whose review stands at changes requested, posted after the replies, since that request otherwise blocks the merge until the reviewer happens to look again; bots are left out, because their reviews run on their own triggers. Every reply needs the user's approval, including a plain "fixed in", so a driver run that wants to close a review loop stops for the user to do it. Replying is also what lets `watch-pr --until review` re-arm, since that watch keys on activity newer than the owner's latest.
-
 ## Shared scripts
 
-Both modes share two scripts and one reference.
+Both sides, this skill and `drive-pr`, share two scripts and one reference.
 
-- `scripts/feedback.py` prints the PR's review conversation as JSON: threads from GraphQL, which alone knows resolution state and thread ids, plus review bodies and conversation comments flagged `after_my_latest` by `watch-pr`'s rule. `respond` still lists the older ones as possibly answered, because one later reply of the owner's anywhere on the PR would otherwise hide every earlier summary.
+- `scripts/feedback.py` prints the PR's review conversation as JSON: threads from GraphQL, which alone knows resolution state and thread ids, plus review bodies and conversation comments flagged `after_my_latest` by `watch-pr`'s rule. `drive-pr respond` still lists the older ones as possibly answered, because one later reply of the owner's anywhere on the PR would otherwise hide every earlier summary.
 - `scripts/post.py` posts one confirmed batch (an optional review, thread replies, one conversation comment, and resolutions) after checks that refuse the whole batch when the PR's head has moved past the batch's `head_sha`, an inline anchor is not a RIGHT-side diff line, a reply targets anything but a thread's first comment, a thread to resolve is someone else's, or a cited commit is not on the PR. `--dry-run` runs only the checks.
 - `references/posting.md` holds the batch schema and the anchoring rules.
 

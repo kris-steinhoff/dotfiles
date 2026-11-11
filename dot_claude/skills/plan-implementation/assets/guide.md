@@ -41,6 +41,8 @@ The plan page has two kinds of reader. People open it to follow the work and to 
 - `title`, `summary`, `order`.
 - `branch`, and `base`, which is the base branch or the id of the PR this one stacks on.
 - `status`: `planned`, `draft`, `open`, `merged`, or `closed`. `url` once it's open.
+- `replies`: `auto` or `confirm`, whether replies to the PR's reviewers post without asking the user first (see PRs in review). Absent means `auto`.
+- `waiting_on`: while the PR is draft or open, what it waits on, in a sentence a person could act on, such as whose review it needs or which failing check needs someone. It is for people, like a task's `blocked_on`. Remove it when the PR merges or closes.
 
 `questions/Q<n>`, decisions that belong to people:
 
@@ -53,7 +55,7 @@ The plan page has two kinds of reader. People open it to follow the work and to 
 
 - `pending`: the plan is being written or waits on a go-ahead. Nothing gets built.
 - `running`: the plan is approved and being built or checked.
-- `done`: the work is handed over.
+- `done`: the work is handed over and every PR has merged or closed.
 - `stopped`: the plan was abandoned.
 
 The page shows a running plan as Blocked when it has unfinished tasks and none of them is in progress or ready to start. Nobody sets that; it follows from the tasks and questions, so say what's needed there.
@@ -83,6 +85,14 @@ Each task gets its own branch off its PR's branch, in its own worktree, by the r
 Push a PR's branch and open it as a draft when its first task merges, and mark it ready for review when its tasks are all merged and its checks pass. Only the user merges a PR.
 
 Don't add, drop, or renumber tasks without the user's say-so. When they ask, keep the numbers in build order and update every reference to them.
+
+## PRs in review
+
+From the time a PR opens until a person merges or closes it, keep it mergeable: resolve conflicts with its base, fix failing checks, act on what reviewers say, and reply to them as the PR's author. Replies post without asking when the PR's `replies` is `auto`; when it is `confirm`, each batch of replies is a question with the drafts in its `context` and the options "Post" and "Edit", and "Edit" waits for a comment saying what to change.
+
+Fixes for reviewers and checks are work on the PR, not new tasks. Journal each round: what came in, what you changed, and what you replied. A reviewer's comment that asks for different behavior or more scope, a failure only a person can fix, and a disagreement with a reviewer that the code doesn't settle are questions, held up only by what depends on them.
+
+Keep each PR's `waiting_on` current, and set its `status` when it merges or closes. Merging is always a person's step.
 
 ## Questions and decisions
 
@@ -117,7 +127,8 @@ Work can pause with tasks left, because some wait on things outside the reposito
 
 1. Check each `done_check` condition the merged work covers, recording `met` or `unmet` with a note.
 2. Push each PR whose tasks have all merged and mark it ready for review.
-3. Write `run/main.handover`: what landed, what to look at first, and what you're least sure of.
-4. If no tasks remain, set `status` to `done`. Otherwise leave it `running`. Journal it and clear `driver`.
+3. Write `run/main.handover`: what landed, what to look at first, and what you're least sure of. Journal it.
+4. Carry each PR that is ready for review through review, as PRs in review says, until it merges or closes.
+5. When no tasks remain and every PR has merged or closed, set `status` to `done`, journal it, and clear `driver`. A session that stops before then, for any reason, clears `driver` and leaves `status` at `running`, so the next session picks the plan up.
 
 When nothing is ready because a question or a person's step holds things up, journal it and stop. An answer or a comment wakes you.

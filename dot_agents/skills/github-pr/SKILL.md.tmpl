@@ -1,6 +1,6 @@
 ---
 name: github-pr
-description: Works GitHub PRs from either side, posting only what the user confirms. `review <n>` reviews one PR, `review ready` works every non-draft PR awaiting my or my team's review (fit for `/loop`), and `respond <n>` drafts the author's replies. Use for anything posted to a PR on the user's behalf.
+description: Reviews GitHub PRs as the user, posting only what the user confirms. `review <n>` reviews one PR, and `review ready` works every non-draft PR awaiting my or my team's review (fit for `/loop`). Use for anything posted to someone else's PR as its reviewer; the author's side is `drive-pr`.
 {{- with get . "custom" }}
 {{ . }}
 {{- end }}
@@ -8,22 +8,21 @@ description: Works GitHub PRs from either side, posting only what the user confi
 
 # github-pr
 
-Own every GitHub PR conversation posted on the user's behalf, from either side. The modes:
+Own every GitHub PR review posted on the user's behalf. The modes:
 
 - `review ready` discovers review requests and groups related ones. Subagents review them in the background while this session triages each PR with the user and hands the approved review to a posting subagent.
 - `review <n>` conducts one review where it is invoked, from the PR's diff with no checkout, triages findings with the user, and posts only after confirmation.
-- `respond <n>` drafts the author's replies to the PR's unanswered review comments, walks the user through each, and posts only after confirmation.
 
-A bare `<n>`, or no mode at all, does not pick one. Ask whether to review or respond, suggesting `respond` when the authenticated user is the PR's author and `review` otherwise.
+A bare `<n>` means `review <n>`, unless the authenticated user is the PR's author: then the user wants the author's side, which is the `drive-pr` skill, so say so and ask which they meant.
 
 This skill may be invoked directly, by any agent, or repeatedly with `/loop 5m /github-pr review ready` in a Claude session that remains open. Both GitHub scripts below, and the schema of everything posted, are in [references/posting.md](references/posting.md); read it before reading a PR's threads or posting.
 
 ## Open with the summary
 
-The PR's summary is how the user tells which PR is in front of them, so every review and response opens with it:
+The PR's summary is how the user tells which PR is in front of them, so every review opens with it:
 
 - A `review ready` session opens each PR's triage with its board instead, and shows the summary's table in the confirmation, as [references/queue.md](references/queue.md) describes.
-- A `respond <n>` or `review <n>` session opens with the summary itself: before reading anything else about the PR, run the `summarize-github-pr` skill and send its output, every line as markdown, as your first message.
+- A `review <n>` session opens with the summary itself: before reading anything else about the PR, run the `summarize-github-pr` skill and send its output, every line as markdown, as your first message.
 
 ## `review ready`: work the queue
 
@@ -93,30 +92,9 @@ Run it from any checkout of the repository; under a sandbox that proxies network
 
 At the start, review whatever head it returns. When it moves later, tell the user in a line that the head moved and what the new commits do, then review again before going on: the reviewer gets the same brief plus the commits since `previous_head` (`previous_head..head_sha`, or a diff between the two heads when `rewritten` says it was a force-push) and this pass's results so far with the user's rulings. Inline, invoke the shared `review` skill again; in a `review ready` queue, the PR goes back to its reviewer subagent. Triage only what is new or materially changed. An item the user already ruled on that still stands keeps its ruling, and one the new commits fix drops out; name the dropped ones in triage's count line, such as `1 Follow-up; the hero height one is fixed by 066422b`.
 
-## `respond <n>`: reply as the author
-
-Run this inline, in the session that invokes it; it starts no subagents. Answers rest on the code as it stands: read it from a checkout of the PR's head when one exists, or else from git after `scripts/queue.py fetch --pr-number <n>`, with `git show <head_sha>:<path>`. If the authenticated user is not the PR's author, say so and ask before going on.
-
-Run `scripts/feedback.py <n>` and take every `unanswered` inline thread, whoever started it, and every review summary body and conversation comment that is not my own. Whether a summary or comment was already answered is a judgment the API can't make: list those after `my_latest` as needing replies, and the older ones separately as possibly answered, so triage settles them rather than a timestamp. Bot reviewers are included; say which items are a bot's, so the user can skip them quickly.
-
-Draft one reply for each item, grounded in evidence rather than intent:
-
-- **Fixed**: name the commit that fixes it and what changed, such as `Fixed in 4f1c2e9: the token now expires after an hour.` The commit must already be on the PR; cite it only after reading its diff against the comment.
-- **Declined**: the reason, stated plainly and without arguing.
-- **Answered**: for a question, the answer from the code.
-- **Deferred**: what will happen instead, such as a follow-up ticket, when the caller or the user has said so.
-
-When nothing settles an item (no commit addresses it and no one has said whether it will be fixed), don't invent a stance. Show the user the comment, mark the reply undecided, and let triage settle it.
-
-Triage follows [Triage with the user](#triage-with-the-user), with the drafts as its items: show each reviewer's comment and its draft reply, and `Other` edits the reply. The final confirmation shows every reply that will post and where it lands, and whose review will be re-requested.
-
-When a human reviewer's review stands at changes requested (`changes_requested_by`), re-request their review by default once the replies post, since their request otherwise keeps blocking the merge until they happen to look again. Name them in the confirmation, where the user can drop one or add another human who reviewed. Bots aren't re-requested; their reviews run on their own triggers.
-
-Render the confirmed replies into a batch with no review: `thread_replies` for inline threads, and at most one `issue_comment` that answers review summary bodies and conversation comments by naming or quoting each point it addresses. List every commit a reply cites in `commits`, and the reviewers to re-request in `rerequest`. Never resolve a thread in this mode, even one whose fix has landed: that confirmation is the reviewer's to give.
-
 ## Triage with the user
 
-Open triage with a one-line count of the items, such as `2 Blockers, 3 Follow-ups, and 2 replies to Copilot`, then ask about them. In a review, the items are the findings, the replies on my prior findings that still stand, and the Agree and Dispute replies to other reviewers.
+Open triage with a one-line count of the items, such as `2 Blockers, 3 Follow-ups, and 2 replies to Copilot`, then ask about them. The items are the findings, the replies on my prior findings that still stand, and the Agree and Dispute replies to other reviewers.
 
 Every item gets its own question and its own ruling, but the questions go out together, Blockers first. Asking one item per prompt ("Follow-up 1 of 5", wait, "Follow-up 2 of 5", …) costs the user a round trip per finding and gains nothing, because findings rarely depend on each other. Ask only whether each item should be included; do not ask for an overall verdict yet.
 
@@ -127,9 +105,9 @@ Hold an item back for a later round only when its question depends on another it
 
 Keep each question concise: what the item is and its concrete consequence. For a reply to another reviewer, name whose comment it answers and the stance, such as `Agree with Copilot, as a Blocker: the retry loop never exits`. Do not put the full technical body or file coordinates in the question unless the user asks to discuss it. Preserve each ruling as you proceed; when the user opens discussion on one item of a batch, settle it and keep the rulings the rest of the batch already gave.
 
-In a review, derive the GitHub event from the included items: any Blocker, whether my own finding or an Agree with another reviewer, means `REQUEST_CHANGES`; otherwise use `APPROVE`. A Follow-up never changes the event by itself. If nothing remains included, the review is an approval. When the review found nothing to triage, go straight to the confirmation.
+Derive the GitHub event from the included items: any Blocker, whether my own finding or an Agree with another reviewer, means `REQUEST_CHANGES`; otherwise use `APPROVE`. A Follow-up never changes the event by itself. If nothing remains included, the review is an approval. When the review found nothing to triage, go straight to the confirmation.
 
-After triage, show everything that will post and explicitly ask for confirmation before posting: in a review, the event, the included findings, the replies, and the threads to be resolved. Open the confirmation with the summary's table (number and title, author and URL, ready time and stack) copied from the PR's summary, running `summarize-github-pr` for it if this session hasn't, so the user can see which PR it is posting to. If the user declines, revise or stop as directed. Never infer posting approval from the earlier per-item rulings.
+After triage, show everything that will post and explicitly ask for confirmation before posting: the event, the included findings, the replies, and the threads to be resolved. Open the confirmation with the summary's table (number and title, author and URL, ready time and stack) copied from the PR's summary, running `summarize-github-pr` for it if this session hasn't, so the user can see which PR it is posting to. If the user declines, revise or stop as directed. Never infer posting approval from the earlier per-item rulings.
 
 ## Post
 
@@ -139,9 +117,9 @@ Render the confirmed content into a batch, with this exact header, so every post
 {{ includeTemplate ".chezmoitemplates/posting-attribution.md" . | trim }}
 ```
 
-In a review, the batch has one inline comment per included finding at its anchor, a finding with no anchor in the body under its name, `thread_replies` for the replies on my still-standing prior findings and on other reviewers' threads, and `resolve` for the verified fixes. Replies to other reviewers' summary bodies and conversation comments, which have no thread, go in the review's body, naming whose point each answers. When the event rests on an Agree at Blocker, the body names that point too, such as `Requesting changes for Copilot's point on the retry loop (see its thread)`, so the review says why even before its replies land.
+The batch has one inline comment per included finding at its anchor, a finding with no anchor in the body under its name, `thread_replies` for the replies on my still-standing prior findings and on other reviewers' threads, and `resolve` for the verified fixes. Replies to other reviewers' summary bodies and conversation comments, which have no thread, go in the review's body, naming whose point each answers. When the event rests on an Agree at Blocker, the body names that point too, such as `Requesting changes for Copilot's point on the retry loop (see its thread)`, so the review says why even before its replies land.
 
-Set `head_sha` to the head the content was formed against. Run `scripts/post.py --dry-run batch.json` and resolve every problem it reports. If the PR's head has moved, do not post content formed against the stale code. In a review, go back through [Keep up with the head](#keep-up-with-the-head) and confirm again. In `respond`, read the new commits, revise any draft they change (a new commit may fix what a reply was about to decline), and confirm again. Only then run `scripts/post.py batch.json`. If a step fails after part of the batch landed, retry only with the remainder batch the poster prints, never the original. Do not fall back to hand-built `gh` posting if the script fails. Posting is the only external mutation this skill performs, and only after the confirmation above.
+Set `head_sha` to the head the content was formed against. Run `scripts/post.py --dry-run batch.json` and resolve every problem it reports. If the PR's head has moved, do not post content formed against the stale code: go back through [Keep up with the head](#keep-up-with-the-head) and confirm again. Only then run `scripts/post.py batch.json`. If a step fails after part of the batch landed, retry only with the remainder batch the poster prints, never the original. Do not fall back to hand-built `gh` posting if the script fails. Posting is the only external mutation this skill performs, and only after the confirmation above.
 
 A posting subagent from a `review ready` queue follows the same steps with the content it was handed, and changes none of it. Any fix a check asks for, such as moving a finding whose anchor won't post into the body, changes what the user confirmed, so it posts nothing and reports the problem back instead.
 
@@ -150,4 +128,4 @@ A posting subagent from a `review ready` queue follows the same steps with the c
 - Do not edit the PR's source in any mode.
 - Do not request or report Nits.
 - Do not run more than one reviewer for the same PR in a session.
-- Resolve only threads I started, and only in a review.
+- Resolve only threads I started.

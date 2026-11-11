@@ -30,7 +30,8 @@ TASK_KEYS = {
     "title", "goal", "approach", "touches", "verify", "status", "blocked_on", "depends_on", "epics", "pr", "branch",
     "outcome", "order",
 }
-PR_KEYS = {"title", "summary", "order", "branch", "base", "status", "url"}
+PR_KEYS = {"title", "summary", "order", "branch", "base", "status", "url", "replies", "waiting_on"}
+PR_REPLIES = {"auto", "confirm"}
 QUESTION_KEYS = {
     "title", "context", "options", "recommendation", "blocks", "task", "status", "asked_at", "answered_at",
     "answered_by", "answer",
@@ -221,6 +222,10 @@ class Fixture:
                 self.problem(f"{where}: bad status {status!r}")
             if (status == "planned") == bool(pr.get("url")):
                 self.problem(f"{where}: a url goes with every status but planned")
+            if "replies" in pr and pr["replies"] not in PR_REPLIES:
+                self.problem(f"{where}: bad replies {pr['replies']!r}")
+            if pr.get("waiting_on") and status not in ("draft", "open"):
+                self.problem(f"{where}: {status} with waiting_on, which goes only with draft or open")
             live = [t for t in self.tasks.values() if t.get("pr") == pr_id and t.get("status") != "dropped"]
             merged = [t for t in live if t.get("status") == "merged"]
             if status == "planned" and merged:
@@ -325,6 +330,7 @@ class Fixture:
             fields += [(f"run/main.{key}[{i}]", item) for i, item in enumerate(run.get(key) or [])]
         for task_id, task in self.tasks.items():
             fields += [(f"tasks/{task_id}.{key}", task.get(key)) for key in ("title", "goal", "blocked_on")]
+        fields += [(f"prs/{pr_id}.waiting_on", pr.get("waiting_on")) for pr_id, pr in self.prs.items()]
         for where, value in fields:
             if not isinstance(value, str):
                 continue
@@ -410,8 +416,8 @@ class Fixture:
                 self.problem("done stage: handover needs branch and look_first")
             if run.get("driver"):
                 self.problem("done stage: driver not cleared")
-            if pr_statuses - {"open", "merged", "closed"}:
-                self.problem("done stage: a PR is still planned or draft")
+            if pr_statuses - {"merged", "closed"}:
+                self.problem("done stage: a PR has not merged or closed")
             if any(not t.get("pr") for t in tasks if t.get("status") != "dropped"):
                 self.problem("done stage: a live task has no pr")
 
