@@ -1,20 +1,27 @@
-// AI service usage at the foot of the sidebar, from the `ai-usage` script in
-// ~/.local/bin. That script keeps a shared cache with its own fetch interval,
-// so polling it here never adds requests to the providers.
-import { View, div } from "gpui-kit";
-import { h_flex, v_flex } from "gpui-base";
-import { exec, home, layout, run, theme } from "herdr";
+// AI service usage at the right end of the bottom bar, from the `ai-usage`
+// script in ~/.local/bin. That script keeps a shared cache with its own fetch
+// interval, so polling it here never adds requests to the providers.
+//
+// Each service is one glyph of nested rings, one ring per limit window, the
+// longest window outermost. A ring fills with the share used. Its color goes
+// by where the window ends up at the current rate, not by the raw percent: 70%
+// of a week with a day left is fine, 40% of five hours after thirty minutes
+// is not.
+import { View, div, PathBuilder } from "gpui-kit";
+import { h_flex } from "gpui-base";
+import { exec, home, layout, run, spaces, theme } from "herdr";
 
 const BLOCK_ID = "ai-usage";
 const POLL_MS = 60_000;
+const PAD_X = 14; // matches the shipped status bar
+const GLYPH = 18; // px; the bar is 28 tall
+const MAX_RINGS = 3;
+const LIVE_TAB = "AI usage";
 const NAMES = { claude: "Claude", chatgpt: "ChatGPT", openrouter: "OpenRouter" };
 
-// Heights, in px, that the block is sized from.
-const PAD_Y = 8;
-const TITLE_H = 15;
-const ROW_H = 16;
-const ROW_GAP = 3;
-const SERVICE_GAP = 8;
+// Projections from the first moments of a window are noise, so pace only
+// counts once this share of the window has passed.
+const MIN_ELAPSED = 0.1;
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -25,18 +32,35 @@ function find(node, id) {
   return null;
 }
 
-// Matches the shipped sidebar mods: the rail goes by the sidebar's width.
-const narrow = () => (find(layout(), "sidebar")?.size?.px ?? Infinity) < 160;
-
-function barColor(t, pct) {
-  if (pct >= 90) return t.ansi1;
-  if (pct >= 75) return t.ansi3;
-  return t.accent;
+// Share of the window's time already passed (0..1), or null when the window
+// has no fixed length or reset time (a credit balance, a monthly budget).
+function elapsed(w, now) {
+  if (!w.window_seconds || !w.resets_at) return null;
+  const left = (Date.parse(w.resets_at) - now) / 1000;
+  if (!Number.isFinite(left)) return null;
+  return Math.max(0, Math.min(1, 1 - left / w.window_seconds));
 }
 
-function untilReset(iso) {
+// Where the window ends up at the current rate, in percent; null when that
+// can't be told yet.
+function projected(w, now) {
+  const f = elapsed(w, now);
+  if (f === null || f < MIN_ELAPSED) return null;
+  return w.used_percent / f;
+}
+
+// "danger" when on track to run out before the reset, "warn" when on track to
+// pass 90%. Windows without pace fall back to the raw percent.
+function level(w, now) {
+  if (w.used_percent >= 100) return "danger";
+  const p = projected(w, now);
+  if (p === null) return w.used_percent >= 90 ? "danger" : w.used_percent >= 75 ? "warn" : "ok";
+  return p >= 100 ? "danger" : p >= 90 ? "warn" : "ok";
+}
+
+function untilReset(iso, now) {
   if (!iso) return "";
-  const ms = Date.parse(iso) - Date.now();
+  const ms = Date.parse(iso) - now;
   if (!(ms > 0)) return "resetting";
   const mins = Math.round(ms / 60_000);
   const d = Math.floor(mins / 1440);
@@ -47,9 +71,38 @@ function untilReset(iso) {
   return `resets in ${m}m`;
 }
 
+// Ring geometry for n rings in the glyph: radii outermost first, and a stroke
+// that leaves a hairline between neighbours.
+function rings(n) {
+  const outer = GLYPH / 2 - 1;
+  if (n === 1) return { stroke: 2.5, radii: [outer - 0.25] };
+  const step = Math.min(3.5, (outer - 3) / (n - 1));
+  const stroke = Math.min(2, step - 1);
+  return { stroke, radii: Array.from({ length: n }, (_, i) => outer - stroke / 2 - i * step) };
+}
+
+const C = GLYPH / 2;
+const at = (r, frac) => [C + r * Math.sin(frac * 2 * Math.PI), C - r * Math.cos(frac * 2 * Math.PI)];
+
+// A circle as two half arcs, added to a builder as its own subpath.
+function circle(b, r) {
+  return b.move_to(C, C - r).arc_to(r, r, 0, false, true, C, C + r).arc_to(r, r, 0, false, true, C, C - r);
+}
+
+// Clockwise from twelve o'clock, `frac` of the way round.
+function arc(b, r, frac) {
+  if (frac >= 0.999) return circle(b, r);
+  const [x, y] = at(r, frac);
+  return b.move_to(C, C - r).arc_to(r, r, 0, frac > 0.5, true, x, y);
+}
+
+function layer(path, color) {
+  return window.paint_path(path, color).absolute().top(0).left(0).size(GLYPH);
+}
+
 export default class AiUsage extends View {
   init(_props, cx) {
-    this.services = null; // [{ id, name, status, windows }]
+    this.services = null; // [{ id, name, status, error, windows }]
     this.failure = null;
     this.refresh(cx);
     cx.timer.every(POLL_MS, (cx) => this.refresh(cx));
@@ -76,20 +129,13 @@ export default class AiUsage extends View {
     });
   }
 
-  // The block's height follows its rows, so it never clips or leaves a gap.
-  wantedHeight(collapsed) {
-    const inner = !this.services?.length
-      ? ROW_H
-      : collapsed
-        ? this.services.length * ROW_H + (this.services.length - 1) * ROW_GAP
-        : this.services.reduce((sum, s) => sum + TITLE_H + s.windows.length * (ROW_H + ROW_GAP), 0) +
-          (this.services.length - 1) * SERVICE_GAP;
-    return inner + 2 * PAD_Y + 1; // + the top border
-  }
-
-  fitBlock(cx, collapsed) {
-    const px = this.wantedHeight(collapsed);
-    if (find(layout(), BLOCK_ID)?.size?.px === px || this.resizingTo === px) return;
+  // The block is as wide as what it shows: the content row is measured and
+  // the block resized to fit, so the bar's other items keep their room.
+  fitBlock(contentWidth, cx) {
+    const px = Math.ceil(contentWidth) + 2 * PAD_X;
+    const current = find(layout(), BLOCK_ID)?.size?.px;
+    if (current !== undefined && Math.abs(current - px) <= 1) return;
+    if (this.resizingTo === px) return;
     this.resizingTo = px;
     cx.spawn(async () => {
       run("layout.resize", { id: BLOCK_ID, px });
@@ -97,46 +143,84 @@ export default class AiUsage extends View {
     });
   }
 
-  render(cx) {
+  // The windows a glyph draws, outermost first: the longest windows outside.
+  // Past MAX_RINGS, the ones furthest along their pace are kept.
+  ringWindows(s, now) {
+    const length = (w) => w.window_seconds ?? Infinity;
+    let ws = [...s.windows];
+    if (ws.length > MAX_RINGS) {
+      const urgency = (w) => projected(w, now) ?? w.used_percent;
+      ws = ws.sort((a, b) => urgency(b) - urgency(a)).slice(0, MAX_RINGS);
+    }
+    return ws.sort((a, b) => length(b) - length(a));
+  }
+
+  tooltip(s, ws, now) {
+    const lines = ws.map((w) => {
+      const parts = [`${w.label}: ${Math.round(w.used_percent)}%`];
+      const p = projected(w, now);
+      if (p !== null) parts.push(`on pace for ${Math.round(p)}%`);
+      const reset = untilReset(w.resets_at, now);
+      if (reset) parts.push(reset);
+      return parts.join(" · ");
+    });
+    const hidden = s.windows.length - ws.length;
+    if (hidden > 0) lines.push(`${hidden} more in the live view`);
+    if (s.status === "stale") lines.push(`Stale: ${s.error ?? "last fetch failed"}`);
+    return [s.name, ...lines].join("\n");
+  }
+
+  glyph(t, s, now) {
+    const ws = this.ringWindows(s, now);
+    const { stroke, radii } = rings(ws.length);
+    const colors = { ok: t.accent, warn: t.ansi3, danger: t.ansi1 };
+
+    const track = radii.reduce((b, r) => circle(b, r), PathBuilder.stroke(stroke)).build();
+    const layers = [layer(track, t.border)];
+
+    ws.forEach((w, i) => {
+      const frac = Math.max(0, Math.min(1, w.used_percent / 100));
+      if (frac > 0.005) {
+        const color = s.status === "stale" ? t.dim : colors[level(w, now)];
+        layers.push(layer(arc(PathBuilder.stroke(stroke), radii[i], frac).build(), color));
+      }
+    });
+
+    // No label: hovering names the service.
+    return div().id(`svc-${s.id}`).relative().size(GLYPH).flex_none()
+      .tooltip(this.tooltip(s, ws, now)).children(layers);
+  }
+
+  // Shows the live `ai-usage` view: the tab already running it if there is
+  // one (this space's first), else a new tab in this space.
+  openLive() {
+    const all = spaces();
+    const ordered = [...all.filter((s) => s.active), ...all.filter((s) => !s.active)];
+    for (const space of ordered) {
+      const tab = space.tabs.find((tb) => tb.named && tb.name === LIVE_TAB);
+      if (tab) {
+        if (!space.active) run("space.select", { id: space.id });
+        run("tab.select", { id: tab.id });
+        return;
+      }
+    }
+    run("tab.new", { name: LIVE_TAB, argv: ["ai-usage"] });
+  }
+
+  render() {
     const t = theme();
-    const collapsed = narrow();
-    this.fitBlock(cx, collapsed);
-    const openLive = () => run("tab.new", { name: "AI usage", argv: ["ai-usage"] });
+    const now = Date.now();
 
-    const root = v_flex().id("root").size_full().bg(t.chrome).border_t(1).border_color(t.border)
-      .px(collapsed ? 4 : 12).py(PAD_Y).text_size(12).cursor_pointer().on_click(openLive);
+    const content = this.services?.length
+      ? this.services.map((s) => this.glyph(t, s, now))
+      : [div().id("empty").text_color(t.dim).tooltip(this.failure ?? "Loading AI usage")
+          .child(this.services === null && !this.failure ? "AI usage …" : "AI usage unavailable")];
 
-    if (!this.services?.length) {
-      const text = this.services === null && !this.failure ? "…" : collapsed ? "–" : "AI usage unavailable";
-      return root.child(h_flex().id("empty").h(ROW_H).items_center().when(collapsed, (el) => el.justify_center())
-        .text_color(t.dim).tooltip(this.failure ?? "Loading AI usage").child(text));
-    }
-
-    if (collapsed) {
-      return root.gap(ROW_GAP).children(this.services.map((s) => {
-        const top = Math.max(...s.windows.map((w) => w.used_percent));
-        const detail = s.windows.map((w) => `${w.label}: ${Math.round(w.used_percent)}%`).join("\n");
-        return h_flex().id(`rail-${s.id}`).h(ROW_H).justify_center().items_center()
-          .text_size(11).font_semibold().text_color(barColor(t, top))
-          .tooltip(`${s.name}\n${detail}`).child(`${Math.round(top)}%`);
-      }));
-    }
-
-    return root.gap(SERVICE_GAP).children(this.services.map((s) =>
-      v_flex().gap(ROW_GAP)
-        .child(h_flex().h(TITLE_H).gap(6).items_center().text_size(11).font_semibold().text_color(t.muted)
-          .child(s.name)
-          .when(s.status === "stale", (el) => el.child(div().id(`stale-${s.id}`).font_normal().text_color(t.dim)
-            .tooltip(s.error ?? "Last fetch failed").child("stale"))))
-        .children(s.windows.map((w) => {
-          const pct = Math.max(0, Math.min(100, w.used_percent));
-          const reset = untilReset(w.resets_at);
-          return h_flex().id(`w-${s.id}-${w.key}`).h(ROW_H).gap(8).items_center()
-            .tooltip(reset ? `${w.label} · ${reset}` : w.label)
-            .child(div().w(92).flex_none().truncate().text_color(t.muted).child(w.label))
-            .child(div().flex_1().h(4).rounded_full().bg(t.border).overflow_hidden()
-              .child(div().h_full().w(`${pct}%`).rounded_full().bg(barColor(t, pct))))
-            .child(div().w(34).flex_none().text_right().text_color(t.foreground).child(`${Math.round(w.used_percent)}%`));
-        }))));
+    return h_flex().id("root").size_full().px(PAD_X).justify_end().items_center()
+      .bg(t.chrome).border_t(1).border_color(t.border).text_size(11.8).cursor_pointer()
+      .on_click(() => this.openLive())
+      .child(h_flex().id("content").flex_none().gap(12).items_center()
+        .on_size_change((size, cx) => this.fitBlock(size.width, cx))
+        .children(content));
   }
 }

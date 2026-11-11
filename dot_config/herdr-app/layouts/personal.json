@@ -67,16 +67,6 @@
           ]
         },
         {
-          "id": "ai-usage",
-          "type": "block",
-          "size": {
-            "px": 80
-          },
-          "content": {
-            "mod": "ai-usage"
-          }
-        },
-        {
           "id": "sidebar-footer",
           "type": "block",
           "size": {
@@ -178,14 +168,31 @@
           ]
         },
         {
-          "id": "status",
-          "type": "block",
+          "id": "status-row",
+          "type": "row",
           "size": {
             "px": 28
           },
-          "content": {
-            "mod": "workspace-status"
-          }
+          "resizable": false,
+          "children": [
+            {
+              "id": "status",
+              "type": "block",
+              "content": {
+                "mod": "workspace-status"
+              }
+            },
+            {
+              "id": "ai-usage",
+              "type": "block",
+              "size": {
+                "px": 220
+              },
+              "content": {
+                "mod": "ai-usage"
+              }
+            }
+          ]
         }
       ]
     }
