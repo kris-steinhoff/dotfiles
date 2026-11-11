@@ -183,6 +183,19 @@
               }
             },
             {
+              "id": "reviews-badge",
+              "type": "block",
+              "size": {
+                "px": 120
+              },
+              "content": {
+                "mod": "reviews",
+                "props": {
+                  "badge": true
+                }
+              }
+            },
+            {
               "id": "ai-usage",
               "type": "block",
               "size": {

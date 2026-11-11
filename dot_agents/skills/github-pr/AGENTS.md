@@ -35,3 +35,5 @@ Both modes share two scripts and one reference.
 - `references/posting.md` holds the batch schema and the anchoring rules.
 
 The poster requires an attribution header but does not choose its text. The text lives in `.chezmoitemplates/posting-attribution.md`, which the skill renders with `includeTemplate ".chezmoitemplates/posting-attribution.md" . | trim` (the `trim` drops the file's trailing newline inside a code fence). Any other posting skill includes the same partial, so the line stays in one place.
+
+The Herdr `reviews` mod (`dot_config/herdr-app/mods/reviews/`, notes in `dot_config/herdr-app/AGENTS.md`) runs `queue.py ready` from its deployed path and reads `items` with `number`, `title`, `url`, `author`, `size`, `stacked_on`, `jira_keys`, and `state`, then starts a session per PR with `/github-pr review <n>`. Changing that output or the script's path breaks the mod.
