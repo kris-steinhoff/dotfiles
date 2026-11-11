@@ -5,6 +5,7 @@
     "charset": "unicode",
     "colorCompatibility": "auto",
     "autoWrap": true,
+    "widthReserve": 2,
     "padding": 1,
     "lines": [
       {
