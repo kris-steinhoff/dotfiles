@@ -1,5 +1,5 @@
 {
-  "about": "A short, finished plan that shows the sparse paths: handover without risks, one out-of-scope item, one answered question, one open PR.",
+  "about": "A short, finished plan that shows the sparse paths: handover without risks, one out-of-scope item, one answered question, one merged PR.",
   "now": "2026-09-16T20:10:00Z",
   "viewer": "u_marisol",
   "people": {
@@ -104,7 +104,7 @@
       "order": 1,
       "branch": "reminder-opt-out-link",
       "base": "main",
-      "status": "open",
+      "status": "merged",
       "url": "https://code.harborlantern.example/clinic/reminders/pull/58"
     },
     "questions/Q1": {

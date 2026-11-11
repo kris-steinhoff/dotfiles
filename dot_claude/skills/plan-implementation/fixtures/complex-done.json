@@ -671,7 +671,7 @@
       "order": 3,
       "branch": "kestrel/platform-merge/03-prescriptions-formulary-billing",
       "base": "P2",
-      "status": "open",
+      "status": "merged",
       "summary": "Formulary, dose parser, controlled-drug audit trail, ledger import and reconciliation, and the dispensing-to-billing link.",
       "url": "https://code.kestrelmoor.example/platform/chart-merge/pull/341"
     },
@@ -680,7 +680,7 @@
       "order": 4,
       "branch": "kestrel/platform-merge/04-imaging-and-cutover-tooling-on-top-of-prescriptions-billing",
       "base": "P3",
-      "status": "open",
+      "status": "merged",
       "url": "https://code.kestrelmoor.example/platform/chart-merge/pull/352"
     },
     "prs/P5": {
@@ -697,7 +697,7 @@
       "order": 6,
       "branch": "kestrel/platform-merge/06-scheduling-on-identity",
       "base": "P2",
-      "status": "open",
+      "status": "merged",
       "summary": "Resources schema, appointment import, and the list reception works through.",
       "url": "https://code.kestrelmoor.example/platform/chart-merge/pull/346"
     },

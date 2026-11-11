@@ -1527,7 +1527,7 @@
       "order": 5,
       "branch": "oakhollow/p5-fines-payments-notices-public-search-site",
       "base": "main",
-      "status": "open",
+      "status": "merged",
       "url": "https://code.oakhollow.example/consortium/catalogued/pull/452"
     },
     "prs/P6": {
@@ -1535,7 +1535,7 @@
       "order": 6,
       "branch": "oakhollow/p6-desk-offline-cutover-tooling-runbook",
       "base": "P5",
-      "status": "open",
+      "status": "merged",
       "url": "https://code.oakhollow.example/consortium/catalogued/pull/455",
       "summary": "Last piece: what the circulation desks and the infrastructure team need to cut branches over in three waves. Stacked on P5 because the rehearsal tooling imports with the fine tables."
     },

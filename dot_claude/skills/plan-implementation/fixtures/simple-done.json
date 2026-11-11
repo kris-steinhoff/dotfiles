@@ -1,5 +1,5 @@
 {
-  "about": "A finished, straight-line plan with no epics and one answered question, handed over on a single open PR.",
+  "about": "A finished, straight-line plan with no epics and one answered question, handed over on a single PR, since merged.",
   "now": "2026-06-09T17:30:00Z",
   "viewer": "u_nguyen",
   "people": {
@@ -210,7 +210,7 @@
       "order": 1,
       "branch": "json-output-all-subcommands",
       "base": "main",
-      "status": "open",
+      "status": "merged",
       "url": "https://code.tessellate-collective.example/tessel/tessel/pull/318"
     },
     "questions/Q1": {

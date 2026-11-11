@@ -1,6 +1,6 @@
 # GitHub PR posting schema and anchor rules
 
-Reference for `scripts/post.py` and `scripts/feedback.py`, and for the anchoring rules a review finding must satisfy to land inline. Load it before reading a PR's threads or posting; the workflows that decide what to post live in `SKILL.md`.
+Reference for `scripts/post.py` and `scripts/feedback.py`, and for the anchoring rules a review finding must satisfy to land inline. Load it before reading a PR's threads or posting. Two skills post through it, `github-pr` as a reviewer and `shepherd-pr` as the author, and each one's `SKILL.md` decides what to post.
 
 ## Reading the conversation
 
@@ -57,7 +57,7 @@ A review's Agree or Dispute on another reviewer's inline comment goes in `thread
 
 ### Response posting
 
-An author's replies post without a review: `thread_replies` for inline threads, and at most one `issue_comment` that answers review summary bodies and conversation comments by quoting or naming each point it addresses. The response never resolves a thread; resolving is the reviewer's confirmation that a fix holds. Every commit a reply cites as a fix goes in `commits`, and the reviewers the user confirmed re-requesting, by default everyone in `changes_requested_by`, go in `rerequest`, so they are asked to look only once the replies are there.
+An author's replies post without a review: `thread_replies` for inline threads, and at most one `issue_comment` that answers review summary bodies and conversation comments by quoting or naming each point it addresses. The response never resolves a thread; resolving is the reviewer's confirmation that a fix holds. Every commit a reply cites as a fix goes in `commits`, and the reviewers to re-request, those in `changes_requested_by` whose points the batch answers, go in `rerequest`, so they are asked to look only once the replies are there.
 
 ## Anchoring: prefer inline, fall back to a named body finding
 

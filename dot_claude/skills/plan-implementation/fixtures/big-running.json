@@ -556,7 +556,8 @@
       "branch": "wms-rewrite/slotting-recommender-and-directed-putaway",
       "base": "main",
       "status": "open",
-      "url": "https://code.fennimore.example/warehouse/inventory-service/pull/131"
+      "url": "https://code.fennimore.example/warehouse/inventory-service/pull/131",
+      "waiting_on": "Review from Oluwaseun"
     },
     "prs/P3": {
       "title": "Picking, allocation, and cycle counts",

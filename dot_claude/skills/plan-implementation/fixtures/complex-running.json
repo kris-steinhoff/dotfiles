@@ -706,7 +706,9 @@
       "branch": "cust-77-declaration-builder-workflow-and-duty-core",
       "base": "P1",
       "status": "open",
-      "url": "https://code.halcyon-freight.example/platform/bookings/pull/1197"
+      "url": "https://code.halcyon-freight.example/platform/bookings/pull/1197",
+      "waiting_on": "A second review from Dariusz, who asked for the duty rounding to follow the gateway rules",
+      "replies": "confirm"
     },
     "prs/P3": {
       "title": "Duty rules, classification review and amendment",

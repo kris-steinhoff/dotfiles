@@ -4,7 +4,7 @@
 
 ## Getting it printed
 
-An agent reliably shows the last message of a turn, while mid-turn it narrates and tends to paraphrase a script's output instead of printing it. Rewording the instruction and a `PreToolUse` hook that refused the next tool call until the summary was shown did not change that; run as its own turn, the summary prints without extra guidance. So the summary is a session's whole first message, where the owner wants it anyway, rather than one step among several. A `review ready` queue triages in its own session and has no such turn to give each PR, so it opens each PR's triage with its board instead, a table it composes itself, which agents do print mid-turn, and shows the summary's table in the posting confirmation. A `respond <n>` or `review <n>` session, which runs inline, relies on the skill's instruction.
+An agent reliably shows the last message of a turn, while mid-turn it narrates and tends to paraphrase a script's output instead of printing it. Rewording the instruction and a `PreToolUse` hook that refused the next tool call until the summary was shown did not change that; run as its own turn, the summary prints without extra guidance. So the summary is a session's whole first message, where the owner wants it anyway, rather than one step among several. A `review ready` queue triages in its own session and has no such turn to give each PR, so it opens each PR's triage with its board instead, a table it composes itself, which agents do print mid-turn, and shows the summary's table in the posting confirmation. A `github-pr review <n>` or `shepherd-pr` session, which runs inline, relies on the skill's instruction.
 
 ## The shape
 
