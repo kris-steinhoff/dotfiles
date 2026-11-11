@@ -219,8 +219,7 @@ export default class Reviews extends View {
   // --- Badge -----------------------------------------------------------------
 
   fitBlock(contentWidth, cx) {
-    // Never 0: a block with no width might not start its mod after a restart.
-    const px = Math.max(1, Math.ceil(contentWidth));
+    const px = Math.ceil(contentWidth);
     const current = find(layout(), BADGE_ID)?.size?.px;
     if (current === px || this.resizingTo === px) return;
     this.resizingTo = px;
@@ -246,16 +245,17 @@ export default class Reviews extends View {
     if (start) parts.push(div().text_color(t.foreground).child(`${start} to review`));
     if (needs) parts.push(div().text_color(t.blocked).child(`${needs} need${needs === 1 ? "s" : ""} you`));
     if (running) parts.push(div().text_color(t.muted).child(`${running} reviewing`));
+    // Shown even when nothing waits, so the Reviews tab is always a click away.
+    if (!parts.length) parts.push(div().text_color(t.dim).child(queue ? "no reviews" : "reviews …"));
     const dot = needs ? t.blocked : start ? t.accent : t.dim;
 
     return h_flex().id("root").size_full().justify_end().items_center()
       .bg(t.chrome).border_t(1).border_color(t.border).text_size(11.8).cursor_pointer()
       .on_click(() => openQueueTab())
-      .child(h_flex().id("content").flex_none().gap(6).items_center()
-        .when(parts.length > 0, (el) => el.px(PAD_X)
-          .tooltip("GitHub reviews waiting on you. Click for the queue.")
-          .child(div().size(6).rounded(3).bg(dot))
-          .children(parts.flatMap((p, i) => (i ? [div().text_color(t.dim).child("·"), p] : [p]))))
+      .child(h_flex().id("content").flex_none().gap(6).px(PAD_X).items_center()
+        .tooltip("GitHub reviews waiting on you. Click for the queue.")
+        .child(div().size(6).rounded(3).bg(dot))
+        .children(parts.flatMap((p, i) => (i ? [div().text_color(t.dim).child("·"), p] : [p])))
         .on_size_change((size, cx) => this.fitBlock(size.width, cx)));
   }
 
