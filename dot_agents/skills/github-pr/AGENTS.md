@@ -1,12 +1,12 @@
 # github-pr
 
-`github-pr` owns every GitHub PR review posted on the owner's behalf, in two modes: `review ready` and `review <n>`. The author's side, replying to reviews of the owner's own PRs, is `shepherd-pr`.
+`github-pr` owns every GitHub PR review posted on the owner's behalf, in two modes: `review ready` and `review <n>`. The author's side, replying to reviews of the owner's own PRs, is `drive-pr`.
 
 ## Reviewer's side only
 
-The author's side is its own skill, `shepherd-pr`, even though both sides share the scripts and the posting schema. Replying as the author is part of carrying a PR to merge, which acts on its own rather than confirming every reply, and the posting rule grants permission per posting skill, so the skill that may post without confirming is the one whose description says so. A bare number means `review <n>` unless the owner wrote the PR, in which case the skill points at `shepherd-pr`. The skill runs inline because triage and posting confirmation must reach the user.
+The author's side is its own skill, `drive-pr`, even though both sides share the scripts and the posting schema. Replying as the author is part of carrying a PR to merge, which acts on its own rather than confirming every reply, and the posting rule grants permission per posting skill, so the skill that may post without confirming is the one whose description says so. A bare number means `review <n>` unless the owner wrote the PR, in which case the skill points at `drive-pr`. The skill runs inline because triage and posting confirmation must reach the user.
 
-The scripts and `references/posting.md` stay here, and `shepherd-pr` links to `feedback.py`, `post.py`, and `posting.md`. Moving or splitting them means moving those links too.
+The scripts and `references/posting.md` stay here, and `drive-pr` links to `feedback.py`, `post.py`, and `posting.md`. Moving or splitting them means moving those links too.
 
 ## `review ready`
 
@@ -26,9 +26,9 @@ It also weighs in on other reviewers' open comments, bots' included. The agent j
 
 ## Shared scripts
 
-Both sides, this skill and `shepherd-pr`, share two scripts and one reference.
+Both sides, this skill and `drive-pr`, share two scripts and one reference.
 
-- `scripts/feedback.py` prints the PR's review conversation as JSON: threads from GraphQL, which alone knows resolution state and thread ids, plus review bodies and conversation comments flagged `after_my_latest` by `watch-pr`'s rule. `shepherd-pr respond` still lists the older ones as possibly answered, because one later reply of the owner's anywhere on the PR would otherwise hide every earlier summary.
+- `scripts/feedback.py` prints the PR's review conversation as JSON: threads from GraphQL, which alone knows resolution state and thread ids, plus review bodies and conversation comments flagged `after_my_latest` by `watch-pr`'s rule. `drive-pr respond` still lists the older ones as possibly answered, because one later reply of the owner's anywhere on the PR would otherwise hide every earlier summary.
 - `scripts/post.py` posts one confirmed batch (an optional review, thread replies, one conversation comment, and resolutions) after checks that refuse the whole batch when the PR's head has moved past the batch's `head_sha`, an inline anchor is not a RIGHT-side diff line, a reply targets anything but a thread's first comment, a thread to resolve is someone else's, or a cited commit is not on the PR. `--dry-run` runs only the checks.
 - `references/posting.md` holds the batch schema and the anchoring rules.
 

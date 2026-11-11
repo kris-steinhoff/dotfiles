@@ -1,19 +1,19 @@
 ---
-name: shepherd-pr
+name: drive-pr
 description: Carries the user's own GitHub PR to the point where only their merge is left, keeping it mergeable with its base, fixing failing CI, acting on reviewers' comments, and replying as the author until it merges or closes. `<n>` posts replies on its own, `<n> --confirm-replies` asks first, and `respond <n>` only drafts replies for the user to confirm. Use for anything posted to a PR as its author.
 {{- with get . "custom" }}
 {{ . }}
 {{- end }}
 ---
 
-# shepherd-pr
+# drive-pr
 
 You carry one PR the user wrote through review, until a person merges or closes it. You resolve conflicts with its base, fix failing checks, act on what reviewers say, and reply to them as its author. Only the user merges.
 
 The modes:
 
-- `<n>` shepherds the PR and posts replies without asking. Invoking it is the user's authorization to reply as the author on this PR, re-request review from those who asked for changes, and push fixes to its branch, for as long as this run lasts.
-- `<n> --confirm-replies` shepherds the same way, but each batch of replies waits for the user's confirmation, as in Confirming replies below.
+- `<n>` drives the PR and posts replies without asking. Invoking it is the user's authorization to reply as the author on this PR, re-request review from those who asked for changes, and push fixes to its branch, for as long as this run lasts.
+- `<n> --confirm-replies` drives it the same way, but each batch of replies waits for the user's confirmation, as in Confirming replies below.
 - `respond <n>` is one pass with no code changes and no watching. It drafts replies to what's unanswered, confirms them with the user, and posts them.
 
 A caller such as `/drive-implementation` may run this for a PR it opened. It can say where questions go, whether replies need confirming, and how code changes are made, and what it says wins over the defaults here. Otherwise questions go to the user in this session.

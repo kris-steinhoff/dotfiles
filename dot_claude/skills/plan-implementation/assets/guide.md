@@ -41,7 +41,7 @@ The plan page has two kinds of reader. People open it to follow the work and to 
 - `title`, `summary`, `order`.
 - `branch`, and `base`, which is the base branch or the id of the PR this one stacks on.
 - `status`: `planned`, `draft`, `open`, `merged`, or `closed`. `url` once it's open.
-- `replies`: `auto` or `confirm`, whether replies to the PR's reviewers post without asking the user first (see Shepherding). Absent means `auto`.
+- `replies`: `auto` or `confirm`, whether replies to the PR's reviewers post without asking the user first (see PRs in review). Absent means `auto`.
 - `waiting_on`: while the PR is draft or open, what it waits on, in a sentence a person could act on, such as whose review it needs or which failing check needs someone. It is for people, like a task's `blocked_on`. Remove it when the PR merges or closes.
 
 `questions/Q<n>`, decisions that belong to people:
@@ -86,7 +86,7 @@ Push a PR's branch and open it as a draft when its first task merges, and mark i
 
 Don't add, drop, or renumber tasks without the user's say-so. When they ask, keep the numbers in build order and update every reference to them.
 
-## Shepherding
+## PRs in review
 
 From the time a PR opens until a person merges or closes it, keep it mergeable: resolve conflicts with its base, fix failing checks, act on what reviewers say, and reply to them as the PR's author. Replies post without asking when the PR's `replies` is `auto`; when it is `confirm`, each batch of replies is a question with the drafts in its `context` and the options "Post" and "Edit", and "Edit" waits for a comment saying what to change.
 
@@ -128,7 +128,7 @@ Work can pause with tasks left, because some wait on things outside the reposito
 1. Check each `done_check` condition the merged work covers, recording `met` or `unmet` with a note.
 2. Push each PR whose tasks have all merged and mark it ready for review.
 3. Write `run/main.handover`: what landed, what to look at first, and what you're least sure of. Journal it.
-4. Shepherd each PR that is ready for review until it merges or closes.
+4. Carry each PR that is ready for review through review, as PRs in review says, until it merges or closes.
 5. When no tasks remain and every PR has merged or closed, set `status` to `done`, journal it, and clear `driver`. A session that stops before then, for any reason, clears `driver` and leaves `status` at `running`, so the next session picks the plan up.
 
 When nothing is ready because a question or a person's step holds things up, journal it and stop. An answer or a comment wakes you.

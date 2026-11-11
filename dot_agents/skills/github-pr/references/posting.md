@@ -1,6 +1,6 @@
 # GitHub PR posting schema and anchor rules
 
-Reference for `scripts/post.py` and `scripts/feedback.py`, and for the anchoring rules a review finding must satisfy to land inline. Load it before reading a PR's threads or posting. Two skills post through it, `github-pr` as a reviewer and `shepherd-pr` as the author, and each one's `SKILL.md` decides what to post.
+Reference for `scripts/post.py` and `scripts/feedback.py`, and for the anchoring rules a review finding must satisfy to land inline. Load it before reading a PR's threads or posting. Two skills post through it, `github-pr` as a reviewer and `drive-pr` as the author, and each one's `SKILL.md` decides what to post.
 
 ## Reading the conversation
 

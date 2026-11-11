@@ -1,6 +1,6 @@
 ---
 name: github-pr
-description: Reviews GitHub PRs as the user, posting only what the user confirms. `review <n>` reviews one PR, and `review ready` works every non-draft PR awaiting my or my team's review (fit for `/loop`). Use for anything posted to someone else's PR as its reviewer; the author's side is `shepherd-pr`.
+description: Reviews GitHub PRs as the user, posting only what the user confirms. `review <n>` reviews one PR, and `review ready` works every non-draft PR awaiting my or my team's review (fit for `/loop`). Use for anything posted to someone else's PR as its reviewer; the author's side is `drive-pr`.
 {{- with get . "custom" }}
 {{ . }}
 {{- end }}
@@ -13,7 +13,7 @@ Own every GitHub PR review posted on the user's behalf. The modes:
 - `review ready` discovers review requests and groups related ones. Subagents review them in the background while this session triages each PR with the user and hands the approved review to a posting subagent.
 - `review <n>` conducts one review where it is invoked, from the PR's diff with no checkout, triages findings with the user, and posts only after confirmation.
 
-A bare `<n>` means `review <n>`, unless the authenticated user is the PR's author: then the user wants the author's side, which is the `shepherd-pr` skill, so say so and ask which they meant.
+A bare `<n>` means `review <n>`, unless the authenticated user is the PR's author: then the user wants the author's side, which is the `drive-pr` skill, so say so and ask which they meant.
 
 This skill may be invoked directly, by any agent, or repeatedly with `/loop 5m /github-pr review ready` in a Claude session that remains open. Both GitHub scripts below, and the schema of everything posted, are in [references/posting.md](references/posting.md); read it before reading a PR's threads or posting.
 

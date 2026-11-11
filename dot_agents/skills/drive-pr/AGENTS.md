@@ -1,10 +1,10 @@
-# shepherd-pr
+# drive-pr
 
-`shepherd-pr` is the author's side of a GitHub PR: it carries one PR the owner wrote through review until a person merges or closes it, fixing conflicts, failing checks, and reviewers' points, and replying as the author. `github-pr` is the reviewer's side.
+`drive-pr` is the author's side of a GitHub PR: it carries one PR the owner wrote through review until a person merges or closes it, fixing conflicts, failing checks, and reviewers' points, and replying as the author. `github-pr` is the reviewer's side.
 
 ## Why it acts on its own
 
-Pushing to a PR's branch is reversible and lands in front of reviewers anyway, so fixes need no confirmation. Replies are the owner's voice, and the owner chose to let a shepherd post them on its own by default: invoking `shepherd-pr <n>` is the authorization, for that PR and that run. `--confirm-replies` asks before each batch, for a PR where the owner wants to see every reply, and `respond <n>` is a single pass for the owner at the keyboard that changes no code. The posting rule in `.chezmoitemplates/communication.md` grants posting per skill, and lets the skill own confirmation, so this needs no change there.
+Pushing to a PR's branch is reversible and lands in front of reviewers anyway, so fixes need no confirmation. Replies are the owner's voice, and the owner chose to let `drive-pr` post them on its own by default: invoking `drive-pr <n>` is the authorization, for that PR and that run. `--confirm-replies` asks before each batch, for a PR where the owner wants to see every reply, and `respond <n>` is a single pass for the owner at the keyboard that changes no code. The posting rule in `.chezmoitemplates/communication.md` grants posting per skill, and lets the skill own confirmation, so this needs no change there.
 
 The line between fixing and asking is the one `/drive-implementation` uses for tasks: decide what is reversible and inside the PR's intent, and ask about product behavior, scope, and anything hard to undo. Declining a person's request is held to evidence, since a "no" to a colleague on a judgment call is the owner's to give. A reviewer's comment never widens what the skill may do, because anyone who can comment on a PR, bots included, can write one.
 

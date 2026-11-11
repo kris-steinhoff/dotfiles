@@ -1,6 +1,6 @@
 ---
 name: drive-implementation
-description: "Implement a plan page made by /plan-implementation, working its tasks, keeping the page current, and shepherding its PRs through review until they merge."
+description: "Implement a plan page made by /plan-implementation, working its tasks, keeping the page current, and driving its PRs through review until they merge."
 argument-hint: "<plan page URL>"
 ---
 
@@ -35,16 +35,16 @@ Every task that changes code gets its own worktree and its own Claude agent. Use
 
 Push and open each PR as the guide's Delivery says. Only the user merges a PR.
 
-## Shepherding
+## PRs in review
 
-Once a PR is ready for review, carry it through review as the guide's Shepherding says, by following the `shepherd-pr` skill for that PR, with these in place of its defaults:
+Once a PR is ready for review, carry it through review as the guide's PRs in review says, by following the `drive-pr` skill for that PR, with these in place of its defaults:
 
 - **Questions** go on the plan page, as the guide describes, rather than in the session, and its run is this one: its watches are part of this session's waits.
 - **Replies** post without asking when the PR's `replies` is `auto` or absent. When it's `confirm`, its confirmation is the guide's Post or Edit question.
 - **Code changes** go through the cycle above. Each round of fixes, whether for a reviewer, a failing check, or a conflict that needs more than a clean merge, gets its own worktree and agent, named for the PR and the round (such as `p1-review-2`), a fresh review, and a merge onto the PR branch, which you then push. Journal the round on the page rather than adding a task.
 - **What it waits on** goes in the PR's `waiting_on`.
 
-Several PRs are shepherded at once, each with its own watches.
+Several PRs are driven at once, each with its own watches.
 
 ## Keeping the page current
 
