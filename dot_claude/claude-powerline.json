@@ -52,13 +52,13 @@
             "showUnits": true
           },
           "block": {
-            "enabled": true,
+            "enabled": false,
             "type": "cost",
             "burnType": "cost",
             "displayStyle": "text"
           },
           "weekly": {
-            "enabled": true,
+            "enabled": false,
             "displayStyle": "text"
           },
           "version": {
