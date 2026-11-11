@@ -37,7 +37,7 @@ Push and open each PR as the guide's Delivery says. Only the user merges a PR.
 
 ## PRs in review
 
-Once a PR is ready for review, carry it through review as the guide's PRs in review says, by following the `drive-pr` skill for that PR, with these in place of its defaults:
+From the time a PR opens, draft or ready, carry it through review as the guide's PRs in review says, by following the `drive-pr` skill for that PR, with these in place of its defaults:
 
 - **Questions** go on the plan page, as the guide describes, rather than in the session, and its run is this one: its watches are part of this session's waits.
 - **Replies** post without asking when the PR's `replies` is `auto` or absent. When it's `confirm`, its confirmation is the guide's Post or Edit question.

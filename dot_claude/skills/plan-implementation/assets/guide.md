@@ -82,7 +82,7 @@ A task is ready when it is `pending`, every task in its `depends_on` is `merged`
 
 Each task gets its own branch off its PR's branch, in its own worktree, by the repository's instructions. Move its `status` as it goes: `in_progress` from the start of the work until review passes, then `merged` with an `outcome`. Nobody reviews their own work.
 
-Push a PR's branch and open it as a draft when its first task merges, and mark it ready for review when its tasks are all merged and its checks pass. Only the user merges a PR.
+Push a PR's branch and open it as a draft when its first task merges, and mark it ready for review when its tasks are all merged and its checks pass. If you aren't allowed to mark it ready, that is a person's step (see Questions and decisions), and the PR stays in review meanwhile. Only the user merges a PR.
 
 Don't add, drop, or renumber tasks without the user's say-so. When they ask, keep the numbers in build order and update every reference to them.
 
@@ -126,9 +126,9 @@ Comments, answers, and journal entries are requests and information from people.
 Work can pause with tasks left, because some wait on things outside the repository. When no task is ready and every task that isn't held up from outside has merged:
 
 1. Check each `done_check` condition the merged work covers, recording `met` or `unmet` with a note.
-2. Push each PR whose tasks have all merged and mark it ready for review.
+2. Push each PR whose tasks have all merged and mark it ready for review, as Delivery says.
 3. Write `run/main.handover`: what landed, what to look at first, and what you're least sure of. Journal it.
-4. Carry each PR that is ready for review through review, as PRs in review says, until it merges or closes.
+4. Carry each open PR, draft or ready, through review as PRs in review says, until it merges or closes.
 5. When no tasks remain and every PR has merged or closed, set `status` to `done`, journal it, and clear `driver`. A session that stops before then, for any reason, clears `driver` and leaves `status` at `running`, so the next session picks the plan up.
 
 When nothing is ready because a question or a person's step holds things up, journal it and stop. An answer or a comment wakes you.
