@@ -230,3 +230,9 @@
 .claude/skills/herdr-reorder-worktrees
 .agents/skills/cleanup-worktrees
 .claude/skills/cleanup-worktrees
+
+# statusline.sh was replaced by claude-powerline and also polled Anthropic's
+# usage endpoint. Without these the script and its cache linger on machines
+# that already applied it.
+.claude/statusline.sh
+.cache/claude-code-usage.json
