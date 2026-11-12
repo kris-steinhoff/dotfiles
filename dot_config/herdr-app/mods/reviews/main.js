@@ -1,4 +1,4 @@
-// The GitHub review queue, from the github-pr skill's own queue script, for
+// The GitHub review queue, from `~/.local/bin/github-review-queue --all`, for
 // every GitHub repo a Herdr space on this computer is in.
 //
 // One mod in two places, told apart by props:
@@ -46,7 +46,10 @@ const L_REPO = "herdr-reviews.repo";
 const L_PR = "herdr-reviews.pr";
 const L_TITLE = "herdr-reviews.title";
 
-const queueScript = () => `${home()}/.agents/skills/github-pr/scripts/queue.py`;
+// `--all`, not `--ready`: the mod needs reviewed PRs too. One stays listed while
+// its session is working or waiting on me, and keeps its mute until it leaves
+// the queue (see listed() and pruneMuted()).
+const queueCommand = () => `${home()}/.local/bin/github-review-queue`;
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -206,7 +209,7 @@ async function scan() {
     if (!name) continue;
     const entry = { key, name, root, items: [], error: null };
     try {
-      const r = await exec(queueScript(), ["ready", "--repo", root], { timeout: 120_000 });
+      const r = await exec(queueCommand(), ["--all", "--repo", root], { timeout: 120_000 });
       if (r.code !== 0) throw new Error(lastLine(r.stderr) || `exit ${r.code}`);
       entry.items = (JSON.parse(r.stdout).items ?? []).sort((a, b) => a.number - b.number);
     } catch (e) {
