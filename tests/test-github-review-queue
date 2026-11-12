@@ -14,14 +14,16 @@ import unittest
 SCRIPT = Path(__file__).resolve().parents[1] / "dot_local" / "bin" / "executable_github-review-queue"
 
 ITEM_KEYS = {"number", "title", "url", "author", "base_branch", "head_branch", "head_sha",
-             "created_at", "size", "stacked_on", "jira_keys", "state", "other_reviewers"}
+             "created_at", "size", "stacked_on", "jira_keys", "state", "other_reviewers",
+             "requested_directly"}
 
 
 # A fake gh. The queue is a JSON file of PRs; each one's head is origin's
 # refs/pull/<n>/head, as GitHub reports it. A PR's "reviews" lists
 # [login, commit, state, body], the commit being a PR number (that PR's head
 # now), a literal sha, or null; state defaults to COMMENTED and body to text.
-# A login ending in [bot] is a bot. The PR's author is always ada.
+# A login ending in [bot] is a bot. The PR's author is always ada. A PR's
+# "requested" lists its pending review requests: a login, or "team:<slug>".
 # FAKE_OPEN holds open PRs that are not in the queue, as JSON.
 FAKE_GH = r'''#!/usr/bin/env python3
 import json
@@ -73,9 +75,11 @@ elif args[:2] == ["api", "graphql"]:
     for r in everyone:
         if r["state"] in ("APPROVED", "CHANGES_REQUESTED"):
             latest[r["author"]["login"]] = r
+    requests = [{"requestedReviewer": {"__typename": "Team", "slug": who[5:]} if who.startswith("team:")
+                 else {"__typename": "User", "login": who}} for who in pr.get("requested", [])]
     print(json.dumps({"data": {"repository": {"pullRequest": {
         "mine": {"nodes": mine}, "everyone": {"nodes": everyone[-100:]},
-        "opinionated": {"nodes": list(latest.values())}}}}}))
+        "opinionated": {"nodes": list(latest.values())}, "requests": {"nodes": requests}}}}}))
 elif args[:2] == ["pr", "list"] and "--search" in args:
     print(json.dumps([record(pr) for pr in queue]))
 elif args[:2] == ["pr", "list"]:
@@ -194,6 +198,16 @@ class ReviewQueueTests(unittest.TestCase):
         self.assertEqual(items[1]["other_reviewers"], ["barbara", "grace"])
         self.assertEqual(items[2]["other_reviewers"], [])
         self.assertEqual(items[3]["other_reviewers"], ["grace"])
+
+    def test_requested_directly_only_when_a_request_names_me(self):
+        self.queue([
+            {"number": 1, "requested": ["kris"]},
+            {"number": 2, "requested": ["team:kris"]},          # a team, even one named like me
+            {"number": 3, "requested": ["team:web", "grace"]},
+            {"number": 4, "requested": ["team:web", "kris"]},
+        ])
+        self.assertEqual({n: i["requested_directly"] for n, i in self.items().items()},
+                         {1: True, 2: False, 3: False, 4: True})
 
     def test_exactly_one_mode_is_required(self):
         for args in ([], ["--all", "--ready"]):

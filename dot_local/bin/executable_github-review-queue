@@ -10,7 +10,8 @@ A PR is reviewed when one of my recent reviews names its current head commit
 and is an approval, a change request, or a comment with a body. That is read
 from GitHub, not from local state, so a PR pushed since my review is new again.
 Each PR also lists `other_reviewers`: the logins of everyone but me, its author,
-and bots with a review of that kind at any commit.
+and bots with a review of that kind at any commit; and `requested_directly`:
+whether a pending review request names me, not one of my teams.
 
 Exit codes: 0 success; 1 a gh or git call failed (a message on stderr);
 2 a usage error, or a needs_judgment JSON on stdout (such as --repo not being
@@ -33,7 +34,8 @@ JIRA_KEY = re.compile(r"\b([A-Z][A-Z0-9]+-[0-9]+)\b")
 # at the first 100, oldest first, and every thread reply is a review, so on a
 # busy PR my latest could fall off it; asking for my own last ones sees them.
 # Everyone's last 100 could still miss an old review under a flood of replies,
-# so each person's latest approval or change request is asked for as well.
+# so each person's latest approval or change request is asked for as well. The
+# pending review requests tell a request made of me from one made of a team.
 REVIEWS_QUERY = """
 query($owner: String!, $name: String!, $pr: Int!, $author: String!) {
   repository(owner: $owner, name: $name) {
@@ -41,6 +43,7 @@ query($owner: String!, $name: String!, $pr: Int!, $author: String!) {
       mine: reviews(last: 100, author: $author) { nodes { state body commit { oid } } }
       everyone: reviews(last: 100) { nodes { state body author { login __typename } } }
       opinionated: latestOpinionatedReviews(first: 100) { nodes { state body author { login __typename } } }
+      requests: reviewRequests(first: 100) { nodes { requestedReviewer { __typename ... on User { login } } } }
     }
   }
 }
@@ -146,6 +149,12 @@ def other_reviewers(pr, me, author):
     return sorted(logins)
 
 
+def requested_directly(pr, me):
+    """Whether a pending review request names me, rather than a team I'm on."""
+    return any((request.get("requestedReviewer") or {}).get("login") == me
+               for request in nodes(pr, "requests"))
+
+
 def list_queue(args):
     repo = repo_root(args.repo)
     me = viewer_login(repo)
@@ -170,6 +179,7 @@ def list_queue(args):
         item["state"] = "reviewed" if reviewed_at_head(reviews, item["head_sha"]) else "new"
         author = (entry.get("author") or {}).get("login")
         item["other_reviewers"] = other_reviewers(reviews, me, author)
+        item["requested_directly"] = requested_directly(reviews, me)
         if args.all or item["state"] == "new":
             items.append(item)
     emit({"items": items})

@@ -248,6 +248,7 @@ function demoScan() {
       items: [
         item("acme/web", 88, "Dark mode for settings page", "Sam Lee", [200, 45, 7]),
         item("acme/web", 91, "Fix footer links", "Sam Lee", [4, 2, 1], { other_reviewers: ["dortiz"] }),
+        item("acme/web", 93, "Fix header links", "Sam Lee", [6, 2, 1], { other_reviewers: ["dortiz"], requested_directly: true }),
       ],
     },
     { key: "demo-infra", name: "acme/infra", root: demoRoot(), items: [], error: "gh: HTTP 502 (test data)" },
@@ -277,7 +278,9 @@ function setMuted(key, on) {
 }
 
 // A PR someone else has already reviewed is muted the first time it's seen
-// that way. It's muted only once, so an unmute sticks.
+// that way. It's muted only once, so an unmute sticks. A PR whose author asked
+// me by name, not through a team, is never muted this way, and one muted this
+// way before the request came is unmuted.
 function autoMute(repos) {
   const auto = { ...autoMuted() };
   const keys = muted();
@@ -285,6 +288,14 @@ function autoMute(repos) {
   for (const repo of repos) {
     for (const item of repo.items) {
       const key = `${repo.name}#${item.number}`;
+      if (item.requested_directly) {
+        if (auto[key]) {
+          keys.delete(key);
+          auto[key] = false;
+          changed = true;
+        }
+        continue;
+      }
       if (!item.other_reviewers?.length || key in auto) continue;
       // One I'd already muted by hand keeps that reason.
       auto[key] = !keys.has(key);
@@ -596,6 +607,8 @@ export default class Reviews extends View {
       plural(size.files ?? 0, "file"),
       item.stacked_on ? `stacked on #${item.stacked_on}` : null,
       others && !auto ? `reviewed by ${others}` : null,
+      // Says why a PR others reviewed isn't muted.
+      others && item.requested_directly ? "asked of you by name" : null,
       ...(item.jira_keys ?? []),
     ].filter(Boolean).join(" · ");
 
