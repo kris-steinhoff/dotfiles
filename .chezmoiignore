@@ -14,6 +14,9 @@ README.md
 .config/herdr-app/AGENTS.md
 .local/bin/AGENTS.md
 
+# Tests for scripts outside the skills, run from the source directory.
+tests/
+
 {{- if ne .chezmoi.os "darwin" }}
 Library/**
 {{- end }}

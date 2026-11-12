@@ -1,6 +1,6 @@
 # Scripts in ~/.local/bin
 
-This file covers the reasons behind the scripts deployed to `~/.local/bin` that have notes, `ai-usage` and `wt`, so load it before changing either one. Usage lives in each script's docstring and `--help`; this file holds why.
+This file covers the reasons behind the scripts deployed to `~/.local/bin` that have notes, `ai-usage`, `github-review-queue`, and `wt`, so load it before changing any of them. Usage lives in each script's docstring and `--help`; this file holds why.
 
 ## ai-usage
 
@@ -9,6 +9,16 @@ This file covers the reasons behind the scripts deployed to `~/.local/bin` that 
 OpenRouter is prepaid credits rather than a subscription, so its panel shows the account's balance, a bar per budget enforced on the key, and the key's spend today, this week, and this month. Its keys come from the environment, set machine-locally: `OPENROUTER_API_KEY` for the key's spend and budgets, and `OPENROUTER_MANAGEMENT_KEY` for the balance, because OpenRouter's balance endpoint accepts only a management key, which can also create and delete keys. Either one alone is enough, and a machine with neither hides the panel. Because sign-in can differ between callers when it comes from the environment, a missing credential is never written to the shared cache, so a caller without the keys can't hide OpenRouter from one that has them.
 
 Every mode reads through a shared per-service cache in `~/.local/state/ai-usage/`, so any number of callers (a status line, several live views) can run as often as they like without adding requests: a caller fetches only when the last attempt is older than its `--interval` (default 600), and a file lock makes concurrent stale callers wait for one fetch rather than each making their own. Failed attempts are cached too, so callers back off from an error together; a 429's Retry-After binds even Ctrl-R, since forcing through it only draws another 429. The default is 10 minutes rather than 5 because Claude Code itself calls the same `/api/oauth/usage` endpoint, and Anthropic limits that endpoint per account: with several Claude sessions running, the total went over the limit and drew 429s with an hour-long Retry-After, even though ai-usage asked only once per interval. The cache holds the payload and the Claude plan name, never tokens. Run inside the Claude sandbox, it needs to reach `api.anthropic.com`, `chatgpt.com`, and `openrouter.ai` and to write that cache; `settings.json` grants all of them.
+
+## github-review-queue
+
+`executable_github-review-queue` lists one repository's open, non-draft PRs that request a review from me or one of my teams, excluding my own, as `{"items": [...]}`. `--all` prints every one with its state, `new` or `reviewed`, and `--ready` prints only the new ones. It is a stdlib Python script that runs on macOS's `/usr/bin/python3` (3.9), so it works inside the Claude sandbox, and it depends on nothing in the `github-pr` skill. Its tests are `tests/test-github-review-queue`, run from the source directory against a fake `gh`.
+
+- **No state of its own.** Whether a PR is done is read from GitHub: a PR is `reviewed` when one of my recent reviews names its current head commit and is an approval, a change request, or a comment with a body. A lone thread reply doesn't count, though GitHub records it as a review too. It is read per PR through GraphQL, because `gh pr list` returns only a PR's first hundred reviews. A PR pushed since my review is new again, and a review whose commit GitHub reports as null, which happens after a force-push, counts as not at the head.
+- **The costs of keeping no state.** Three are accepted. A PR whose author answers the review without pushing stays done until review is requested again at a new head. A PR finished without posting comes back as new in another session. And nothing marks a PR as taken: the Herdr reviews tab finds an existing session for a PR by its labels, so it doesn't start a second one, but two agents working the queue by hand could still both review the same PR.
+- **The Herdr reviews mod depends on its output.** The mod (`dot_config/herdr-app/mods/reviews/`, notes in `dot_config/herdr-app/AGENTS.md`) calls it with `--all` and reads `number`, `title`, `url`, `author`, `created_at`, `size` (`additions`, `deletions`, `files`), `stacked_on`, `jira_keys`, and `state`, so renaming or changing the meaning of any of those breaks the mod. `base_branch`, `head_branch`, and `head_sha` stay for other callers. The test that checks each item's exact key set guards this contract.
+- **`stacked_on` ignores forks.** It is the open PR whose head branch is this PR's base, but only among PRs from this repository. A fork's head branch lives in the fork, so a fork's PR from its `main` would otherwise look like the PR under every PR based on `main`.
+- **`jira_keys`** come from the title and the upper-cased head branch, so a branch named `nxc-162-household-editing` yields `NXC-162`.
 
 ## wt
 
