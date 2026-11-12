@@ -8,6 +8,7 @@ Personal dotfiles managed with [chezmoi](https://chezmoi.io/). This repo is the 
 - **Removals.** chezmoi doesn't delete a target just because its source disappeared, so removing a managed file also needs its target path in `.chezmoiremove`, or it lingers on every machine that applied it.
 - **`.chezmoitemplates/`.** chezmoi parses every file there as a template on every render, markdown notes included, so one stray template delimiter breaks every template. The `chezmoi-templates-parse` pre-commit hook checks this with `chezmoi --source . execute-template ''`.
 - **Notes for agents.** This file, `README.md`, and the per-area notes below are listed in `.chezmoiignore` so they never deploy (`.chezmoitemplates/` never deploys anyway). A new notes file elsewhere needs a line there. `CLAUDE.md` stays listed too, as a guard.
+- **Tests.** `tests/` holds tests for scripts outside the skills, such as `tests/test-github-review-queue`, run from the source directory. `.chezmoiignore` lists it, so it never deploys; a skill's own tests live in its `tests/` folder.
 - **Markdown** is soft-wrapped (prettier with `proseWrap: never`, run by pre-commit).
 
 ## Bootstrap
@@ -59,4 +60,4 @@ Each area keeps its reasons in a notes file beside it. Load the notes before edi
 - Load `dot_agents/skills/AGENTS.md` before adding, editing, or removing any skill; it covers how a skill is authored once and deployed to every agent surface. Also load the `AGENTS.md` in the skill's own directory (`dot_agents/skills/<name>/`, or `dot_claude/skills/<name>/` for a Claude-only skill) before editing that skill, if it has one.
 - Load `.chezmoitemplates/AGENTS.md` before editing a global instruction partial in `.chezmoitemplates/`, a harness file that includes them (`dot_claude/CLAUDE.md.tmpl`, `dot_codex/AGENTS.md.tmpl`), or a persona (`.chezmoitemplates/agents/personas/`, `dot_claude/agents/`, and the coordinator's nudge hook `dot_claude/hooks/executable_coordinator-delegation-nudge.sh`).
 - Before editing `.chezmoi.toml.tmpl`, load the notes for the datum you touch: `agentBudget` in `dot_codex/README.md`, `claudeSandboxAllowWrite` in `dot_claude/AGENTS.md`.
-- Load `dot_local/bin/AGENTS.md` before editing `dot_local/bin/executable_ai-usage` or `dot_local/bin/executable_wt`.
+- Load `dot_local/bin/AGENTS.md` before editing `dot_local/bin/executable_ai-usage`, `dot_local/bin/executable_github-review-queue`, or `dot_local/bin/executable_wt`.
