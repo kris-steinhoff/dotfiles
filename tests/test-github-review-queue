@@ -227,14 +227,14 @@ class ReviewQueueTests(unittest.TestCase):
 
     def test_stacked_on_and_jira_keys(self):
         self.queue([
-            {"number": 1, "head": "nxc-5-api"},
-            {"number": 2, "base": "nxc-5-api", "head": "nxc-5-ui"},
+            {"number": 1, "head": "xyz-5-api"},
+            {"number": 2, "base": "xyz-5-api", "head": "xyz-5-ui"},
             {"number": 3, "title": "Tidy db", "head": "tidy-db"},
             {"number": 4, "base": "abc-9-model"},
         ], others=[{"number": 9, "head": "abc-9-model"}])
         items = self.items()
         self.assertEqual({n: i["stacked_on"] for n, i in items.items()}, {1: None, 2: 1, 3: None, 4: 9})
-        self.assertEqual(items[1]["jira_keys"], ["NXC-5"])
+        self.assertEqual(items[1]["jira_keys"], ["XYZ-5"])
         self.assertEqual(items[3]["jira_keys"], [])
         self.assertEqual({item["state"] for item in items.values()}, {"new"})
 

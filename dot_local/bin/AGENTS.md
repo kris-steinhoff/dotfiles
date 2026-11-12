@@ -22,7 +22,7 @@ Every mode reads through a shared per-service cache in `~/.local/state/ai-usage/
 - **`other_reviewers`** lists the logins of everyone except me, the PR's author, and bots who has a review that counts by the same rule as mine, at any commit. Bots are left out because review bots such as Copilot comment on nearly every PR, so counting them would mark almost everything as already reviewed. It reads each person's last 100 reviews and also their latest approval or change request, since thread replies can push an older approval out of those 100.
 - **`requested_directly`** is whether one of the PR's pending review requests names me rather than a team I'm on. The mod uses it to keep a PR off its automatic mute: a request by name means the author wants me in particular, whoever else has reviewed. GitHub drops my request once I review, so it is true only until then.
 - **`stacked_on` ignores forks.** It is the open PR whose head branch is this PR's base, but only among PRs from this repository. A fork's head branch lives in the fork, so a fork's PR from its `main` would otherwise look like the PR under every PR based on `main`.
-- **`jira_keys`** come from the title and the upper-cased head branch, so a branch named `nxc-162-household-editing` yields `NXC-162`.
+- **`jira_keys`** come from the title and the upper-cased head branch, so a branch named `abc-162-saved-searches` yields `ABC-162`.
 
 ## wt
 

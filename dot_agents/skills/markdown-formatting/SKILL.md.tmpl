@@ -74,7 +74,7 @@ In a tree linked with `[[wiki-links]]` or shortcut references, check that every 
 scripts/check-links [ROOT]
 ```
 
-It exits 0 when clean, 1 with one finding per line on stderr, and 2 if the root isn't a directory; `ROOT` defaults to the working directory. Findings are unresolved links (with ranked near matches), ambiguous bare links (with the shortest unique qualification), and shortcut references like `[NXC-156]` with no definition in the file. It models marksman's own resolution rules, where a bare `[[rate limits]]` is matched loosely and a path-qualified `[[decisions/rate-limits]]` literally, so unlike a general link checker it doesn't report correct links as broken.
+It exits 0 when clean, 1 with one finding per line on stderr, and 2 if the root isn't a directory; `ROOT` defaults to the working directory. Findings are unresolved links (with ranked near matches), ambiguous bare links (with the shortest unique qualification), and shortcut references like `[ABC-156]` with no definition in the file. It models marksman's own resolution rules, where a bare `[[rate limits]]` is matched loosely and a path-qualified `[[decisions/rate-limits]]` literally, so unlike a general link checker it doesn't report correct links as broken.
 
 The script only detects; deciding what a broken link meant is yours.
 
