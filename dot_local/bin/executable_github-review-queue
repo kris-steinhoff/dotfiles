@@ -1,0 +1,171 @@
+#!/usr/bin/env python3
+"""List the GitHub PRs waiting on my review in one repository.
+
+Both modes list the repository's open, non-draft PRs that request a review
+from me or one of my teams, excluding my own, as JSON: {"items": [...]}.
+`--all` prints every one with its state, new or reviewed; `--ready` prints
+only the new ones.
+
+A PR is reviewed when one of my recent reviews names its current head commit
+and is an approval, a change request, or a comment with a body. That is read
+from GitHub, not from local state, so a PR pushed since my review is new again.
+
+Exit codes: 0 success; 1 a gh or git call failed (a message on stderr);
+2 a usage error, or a needs_judgment JSON on stdout (such as --repo not being
+a git checkout).
+"""
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+
+
+SEARCH = "is:open -is:draft review-requested:@me -author:@me"
+GH_FIELDS = "number,title,url,author,baseRefName,headRefName,headRefOid,createdAt"
+JIRA_KEY = re.compile(r"\b([A-Z][A-Z0-9]+-[0-9]+)\b")
+# My latest reviews on one PR. gh pr list's reviews field stops at the first
+# 100, oldest first, and every thread reply is a review, so on a busy PR my
+# latest could fall off it; asking for my own last ones sees them.
+MY_REVIEWS_QUERY = """
+query($owner: String!, $name: String!, $pr: Int!, $author: String!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $pr) {
+      reviews(last: 100, author: $author) { nodes { state body commit { oid } } }
+    }
+  }
+}
+"""
+
+
+class ListError(Exception):
+    pass
+
+
+def run(argv, cwd=None):
+    return subprocess.run(argv, cwd=cwd, capture_output=True, text=True)
+
+
+def emit(obj, code=0):
+    print(json.dumps(obj, separators=(",", ":")))
+    raise SystemExit(code)
+
+
+def judgment(reason, **partial):
+    emit({"status": "needs_judgment", "reason": reason, **partial}, 2)
+
+
+def repo_root(path):
+    proc = run(["git", "-C", path, "rev-parse", "--show-toplevel"])
+    if proc.returncode == 0:
+        return proc.stdout.strip()
+    judgment(f"{path!r} is not a git checkout")
+
+
+def gh_out(repo, *args):
+    proc = run(["gh", *args], cwd=repo)
+    if proc.returncode != 0:
+        detail = proc.stderr.strip() or proc.stdout.strip()
+        raise ListError(f"gh {' '.join(args)} failed ({proc.returncode}): {detail}")
+    return proc.stdout
+
+
+def gh_json(repo, *args):
+    out = gh_out(repo, *args)
+    try:
+        return json.loads(out)
+    except json.JSONDecodeError as error:
+        raise ListError(f"gh returned invalid JSON: {out[:200]}") from error
+
+
+def viewer_login(repo):
+    return gh_out(repo, "api", "user", "-q", ".login").strip()
+
+
+def pr_item(raw):
+    author = raw.get("author") or {}
+    return {
+        "number": raw.get("number"),
+        "title": raw.get("title", ""),
+        "url": raw.get("url", ""),
+        # The author's full name, or their login when they have none (a bot).
+        "author": author.get("name") or author.get("login", ""),
+        "base_branch": raw.get("baseRefName", ""),
+        "head_branch": raw.get("headRefName", ""),
+        "head_sha": raw.get("headRefOid", ""),
+        "created_at": raw.get("createdAt", ""),
+    }
+
+
+def counts(review):
+    """A review that finishes a pass: an approval, a change request, or a
+    comment review with a body. An empty comment review is a lone thread
+    reply; pending and dismissed reviews don't count either."""
+    state = review.get("state")
+    return state in ("APPROVED", "CHANGES_REQUESTED") or (
+        state == "COMMENTED" and (review.get("body") or "").strip() != "")
+
+
+def reviewed_at_head(repo, number, head, me):
+    """Whether one of my reviews that counts is at the PR's current head. A
+    review's commit is null after a force-push drops it, which counts as not
+    at the head."""
+    data = gh_json(repo, "api", "graphql", "-f", f"query={MY_REVIEWS_QUERY}",
+                   "-F", "owner={owner}", "-F", "name={repo}", "-F", f"pr={number}",
+                   "-f", f"author={me}")
+    pr = ((data.get("data") or {}).get("repository") or {}).get("pullRequest") or {}
+    return any(counts(review) and head and (review.get("commit") or {}).get("oid") == head
+               for review in (pr.get("reviews") or {}).get("nodes") or [])
+
+
+def list_queue(args):
+    repo = repo_root(args.repo)
+    me = viewer_login(repo)
+    raw = gh_json(repo, "pr", "list", "--search", SEARCH, "--limit", str(args.limit),
+                  "--json", f"{GH_FIELDS},additions,deletions,changedFiles")
+    open_prs = gh_json(repo, "pr", "list", "--state", "open", "--limit", "500",
+                       "--json", "number,headRefName,isCrossRepository")
+    # A fork's PR is skipped as a stack candidate: its head branch lives in the
+    # fork, so one named main would otherwise sit under every PR based on main.
+    by_head = {pr["headRefName"]: pr["number"] for pr in open_prs
+               if pr.get("headRefName") and not pr.get("isCrossRepository")}
+    items = []
+    for entry in raw:
+        item = pr_item(entry)
+        item["size"] = {"additions": entry.get("additions"), "deletions": entry.get("deletions"),
+                        "files": entry.get("changedFiles")}
+        below = by_head.get(item["base_branch"])
+        item["stacked_on"] = below if below != item["number"] else None
+        text = f"{item['title']} {item['head_branch'].upper()}"
+        item["jira_keys"] = sorted(set(JIRA_KEY.findall(text)))
+        reviewed = reviewed_at_head(repo, item["number"], item["head_sha"], me)
+        item["state"] = "reviewed" if reviewed else "new"
+        if args.all or item["state"] == "new":
+            items.append(item)
+    emit({"items": items})
+
+
+def parser():
+    root = argparse.ArgumentParser(prog="github-review-queue", description=__doc__,
+                                   formatter_class=argparse.RawDescriptionHelpFormatter)
+    mode = root.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--all", action="store_true", help="every PR awaiting my review, new or reviewed")
+    mode.add_argument("--ready", action="store_true", help="only the PRs I haven't reviewed at their head")
+    root.add_argument("--repo", default=os.getcwd(), help="the repository's checkout (default: the current directory)")
+    root.add_argument("--limit", type=int, default=50, help="the most PRs to list (default: 50)")
+    return root
+
+
+def main():
+    args = parser().parse_args()
+    try:
+        list_queue(args)
+    except ListError as error:
+        print(f"github-review-queue: {error}", file=sys.stderr)
+        raise SystemExit(1)
+
+
+if __name__ == "__main__":
+    main()
