@@ -31,31 +31,17 @@ function find(node, id) {
   return null;
 }
 
-// Share of the window's time already passed (0..1), or null when the window
-// has no fixed length or reset time (a credit balance, a monthly budget).
-function elapsed(w, now) {
-  if (!w.window_seconds || !w.resets_at) return null;
-  const left = (Date.parse(w.resets_at) - now) / 1000;
-  if (!Number.isFinite(left)) return null;
-  return Math.max(0, Math.min(1, 1 - left / w.window_seconds));
-}
-
-// How far the window is ahead of the even pace, the one that reaches 100%
-// exactly at the reset, as a share of its length: with no further use, how
-// long until elapsed time catches up with what's used. Ahead at all means on
-// track to run out before the reset. Negative when behind pace, null when the
-// window has no fixed length or reset time. A difference rather than a
-// projection (used / elapsed), which swings wildly while elapsed is near zero.
-function ahead(w, now) {
-  const f = elapsed(w, now);
-  return f === null ? null : w.used_percent / 100 - f;
-}
+// How far the window is ahead of the even pace, as a share of its length,
+// from `ai-usage` (see `ahead_of_pace` there). Ahead at all means on track to
+// run out before the reset; negative when behind pace, null when the window
+// has no fixed length or reset time.
+const ahead = (w) => w.ahead_of_pace ?? null;
 
 // "danger" at the limit or far ahead of pace, "warn" when ahead of pace at
 // all. Windows without pace fall back to the raw percent.
-function level(w, now) {
+function level(w) {
   if (w.used_percent >= 100) return "danger";
-  const a = ahead(w, now);
+  const a = ahead(w);
   if (a === null) return w.used_percent >= 90 ? "danger" : w.used_percent >= 75 ? "warn" : "ok";
   return a >= FAR_AHEAD ? "danger" : a > 0 ? "warn" : "ok";
 }
@@ -152,11 +138,11 @@ export default class AiUsage extends View {
   // The windows a glyph draws, outermost first: the shortest outside, the
   // longest (and those with no fixed length) inside.
   // Past MAX_RINGS, the ones furthest along their pace are kept.
-  ringWindows(s, now) {
+  ringWindows(s) {
     const length = (w) => w.window_seconds ?? Infinity;
     let ws = [...s.windows];
     if (ws.length > MAX_RINGS) {
-      const urgency = (w) => ahead(w, now) ?? w.used_percent / 100 - 1;
+      const urgency = (w) => ahead(w) ?? w.used_percent / 100 - 1;
       ws = ws.sort((a, b) => urgency(b) - urgency(a)).slice(0, MAX_RINGS);
     }
     return ws.sort((a, b) => (length(a) === length(b) ? 0 : length(a) - length(b)));
@@ -165,7 +151,7 @@ export default class AiUsage extends View {
   tooltip(s, ws, now) {
     const lines = ws.map((w) => {
       const parts = [`${w.label}: ${Math.round(w.used_percent)}%`];
-      const a = ahead(w, now);
+      const a = ahead(w);
       if (a !== null && a * w.window_seconds >= 60) parts.push(`on pace again in ${duration(a * w.window_seconds * 1000)}`);
       const reset = untilReset(w.resets_at, now);
       if (reset) parts.push(reset);
@@ -178,7 +164,7 @@ export default class AiUsage extends View {
   }
 
   glyph(t, s, now) {
-    const ws = this.ringWindows(s, now);
+    const ws = this.ringWindows(s);
     const { stroke, radii } = rings(ws.length);
     const colors = { ok: t.accent, warn: t.ansi3, danger: t.ansi1 };
 
@@ -188,7 +174,7 @@ export default class AiUsage extends View {
     ws.forEach((w, i) => {
       const frac = Math.max(0, Math.min(1, w.used_percent / 100));
       if (frac > 0.005) {
-        const color = s.status === "stale" ? t.dim : colors[level(w, now)];
+        const color = s.status === "stale" ? t.dim : colors[level(w)];
         layers.push(layer(arc(PathBuilder.stroke(stroke), radii[i], frac).build(), color));
       }
     });

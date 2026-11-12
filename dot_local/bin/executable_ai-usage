@@ -1047,12 +1047,35 @@ def run_live(services: list[str], interval: int) -> None:
 # --------------------------------------------------------------------------- #
 # Helpers
 # --------------------------------------------------------------------------- #
+def ahead_of_pace(w: Window, now: datetime) -> float | None:
+    """How far a window is ahead of the even pace, as a share of its length.
+
+    The even pace reaches 100% exactly at the reset, so this is the used share
+    minus the share of the window's time already passed: with no further use,
+    how long until elapsed time catches up with what's used. Positive means on
+    track to run out before the reset, negative means behind pace. None when
+    the window has no fixed length or reset time (a credit balance, a monthly
+    budget). A difference rather than a projection (used / elapsed), which
+    swings wildly while elapsed is near zero.
+    """
+    if not w.window_seconds or not w.resets_at:
+        return None
+    resets = parse_iso(w.resets_at)
+    if resets is None:
+        return None
+    left = (resets - now).total_seconds()
+    elapsed = max(0.0, min(1.0, 1 - left / w.window_seconds))
+    return w.pct / 100 - elapsed
+
+
 def windows_json(service: str, entry: Cached) -> dict:
     """One service's windows in the shape shared across providers.
 
     `status` is `ok`, `stale` (an older payload kept after a failed fetch),
     `error` (no payload at all), or `signed_out`. A consumer can tell a
     service that is not set up from one whose usage is merely unknown.
+    Each window's `ahead_of_pace` is measured at the time of the call, not
+    the fetch, so it stays current while the cached payload ages.
     """
     if entry.error is not None and entry.error.credentials_missing:
         status = "signed_out"
@@ -1064,17 +1087,17 @@ def windows_json(service: str, entry: Cached) -> dict:
         status = "ok"
     windows = []
     if entry.data is not None:
-        built = WINDOW_BUILDERS[service](entry.data)
-        windows = [
-            {
+        now = datetime.now(timezone.utc)
+        for w in WINDOW_BUILDERS[service](entry.data):
+            ahead = ahead_of_pace(w, now)
+            windows.append({
                 "key": w.key,
                 "label": w.label,
                 "used_percent": round(w.pct, 1),
                 "window_seconds": w.window_seconds,
                 "resets_at": w.resets_at,
-            }
-            for w in built
-        ]
+                "ahead_of_pace": round(ahead, 4) if ahead is not None else None,
+            })
     return {
         "status": status,
         "fetched_at": datetime.fromtimestamp(entry.fetched_at, timezone.utc).isoformat() if entry.fetched_at else None,
