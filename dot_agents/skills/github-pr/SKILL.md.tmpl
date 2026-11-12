@@ -85,7 +85,7 @@ In triage, each Agree or Dispute is an item like a finding. An included Agree co
 The author may push while the review is open, and a review formed against older code can't post. So check the head when the review starts, before triage's first question, and before the final confirmation:
 
 ```bash
-scripts/queue.py fetch --pr-number <n>
+scripts/fetch.py <n>
 ```
 
 Run it from any checkout of the repository; under a sandbox that proxies network access, it reaches `api.github.com` and `github.com`. It fetches the PR's current head to a private ref and its base branch to `origin/<base>`, and changes nothing in the working tree. It returns `moved: true`, with `previous_head` and `rewritten`, when the head differs from the last fetch.

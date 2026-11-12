@@ -1,0 +1,163 @@
+#!/usr/bin/env python3
+"""Behavior tests for github-pr's fetch helper, against a fake gh and real git
+repos."""
+
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+import unittest
+
+
+SKILL_DIR = Path(__file__).resolve().parents[1]
+SCRIPT = SKILL_DIR / "scripts" / "fetch.py"
+if not SCRIPT.exists():
+    SCRIPT = SKILL_DIR / "scripts" / "executable_fetch.py"
+
+
+# A fake gh. The open PRs are a JSON file; each one's head is origin's
+# refs/pull/<n>/head, as GitHub reports it. A PR's "base" and "head" are its
+# branch names (main and pr-<n> by default), and "fork" marks it as opened from
+# another repository.
+FAKE_GH = r'''#!/usr/bin/env python3
+import json
+import os
+import subprocess
+import sys
+
+args = sys.argv[1:]
+prs = json.load(open(os.environ["FAKE_PRS"]))
+
+
+def head(n):
+    return subprocess.run(["git", "-C", os.environ["FAKE_ORIGIN"], "rev-parse", f"refs/pull/{n}/head"],
+                          capture_output=True, text=True).stdout.strip()
+
+
+def record(pr):
+    return {"number": pr["number"], "title": pr.get("title", f"PR {pr['number']}"), "url": "u",
+            "author": {"login": "ada"}, "baseRefName": pr.get("base", "main"),
+            "headRefName": pr.get("head", f"pr-{pr['number']}"), "headRefOid": head(pr["number"]),
+            "createdAt": "2026-01-01T00:00:00Z", "isCrossRepository": pr.get("fork", False)}
+
+
+if args[:2] == ["pr", "list"]:
+    print(json.dumps([record(pr) for pr in prs]))
+elif args[:2] == ["pr", "view"]:
+    n = int(args[2])
+    print(json.dumps(next(record(pr) for pr in prs if pr["number"] == n)))
+else:
+    sys.exit(f"unexpected gh call {args}")
+'''
+
+
+class FetchTests(unittest.TestCase):
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.root = Path(os.path.realpath(temp.name))
+        self.origin = self.root / "origin.git"
+        self.repo = self.root / "repo"
+        subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(self.origin)], check=True)
+        subprocess.run(["git", "clone", "-q", str(self.origin), str(self.repo)], check=True,
+                       capture_output=True)
+        self.git("commit", "-q", "--allow-empty", "-m", "base")
+        self.git("push", "-q", "origin", "main")
+        bin_dir = self.root / "bin"
+        bin_dir.mkdir()
+        (bin_dir / "gh").write_text(FAKE_GH)
+        (bin_dir / "gh").chmod(0o755)
+        self.prs_file = self.root / "prs.json"
+        self.env = dict(os.environ)
+        self.env.update({"PATH": f"{bin_dir}{os.pathsep}{self.env['PATH']}",
+                         "FAKE_ORIGIN": str(self.origin), "FAKE_PRS": str(self.prs_file)})
+        self.open_prs([])
+
+    def git(self, *args, cwd=None):
+        return subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", "-C",
+                               str(cwd or self.repo), *args], check=True, capture_output=True,
+                              text=True).stdout.strip()
+
+    def push(self, number, parent=None):
+        """Add a commit to a PR's head on origin, on `parent` when given (a force-push)."""
+        base = parent or subprocess.run(
+            ["git", "-C", str(self.origin), "rev-parse", "-q", "--verify", f"refs/pull/{number}/head"],
+            capture_output=True, text=True).stdout.strip() or "main"
+        tree = self.git("rev-parse", f"{base}^{{tree}}", cwd=self.origin)
+        sha = self.git("commit-tree", tree, "-p", base, "-m", f"push to {number}", cwd=self.origin)
+        self.git("update-ref", f"refs/pull/{number}/head", sha, cwd=self.origin)
+        return sha
+
+    def open_prs(self, prs):
+        """Make `prs` the open PRs, each with a head on origin and its base
+        branch there too."""
+        for pr in prs:
+            if not subprocess.run(["git", "-C", str(self.origin), "rev-parse", "-q", "--verify",
+                                   f"refs/pull/{pr['number']}/head"], capture_output=True).stdout:
+                self.push(pr["number"])
+            base = pr.get("base", "main")
+            if base != "main":
+                self.git("update-ref", f"refs/heads/{base}", "main", cwd=self.origin)
+        self.prs_file.write_text(json.dumps(prs))
+
+    def fetch(self, number, code=0):
+        result = subprocess.run([sys.executable, str(SCRIPT), str(number)], cwd=self.repo,
+                                capture_output=True, text=True, env=self.env)
+        self.assertEqual(result.returncode, code, result.stdout + result.stderr)
+        return json.loads(result.stdout)
+
+    def head(self, number):
+        return self.git("rev-parse", f"refs/pull/{number}/head", cwd=self.origin)
+
+    def test_fetch_reads_the_head_without_a_checkout(self):
+        self.open_prs([{"number": 1}])
+        before = self.git("rev-parse", "HEAD")
+        first = self.fetch(1)
+        self.assertEqual(first["head_sha"], self.head(1))
+        self.assertFalse(first["moved"])
+        self.assertEqual(first["merge_base"], before)
+        self.assertEqual((first["stacked_on"], first["stacked_under"]), (None, []))
+        self.assertEqual(self.git("rev-parse", "HEAD"), before)
+        self.assertEqual(self.git("status", "--porcelain"), "")
+
+        self.push(1)
+        moved = self.fetch(1)
+        self.assertEqual((moved["moved"], moved["rewritten"]), (True, False))
+        self.assertEqual(moved["previous_head"], first["head_sha"])
+
+        self.push(1, parent="main")
+        forced = self.fetch(1)
+        self.assertEqual((forced["moved"], forced["rewritten"]), (True, True))
+
+    def test_fetch_reports_a_stack_both_ways(self):
+        self.open_prs([
+            {"number": 1, "head": "api"},
+            {"number": 2, "base": "api", "head": "ui"},
+            {"number": 3, "base": "api", "head": "docs"},
+            {"number": 4},
+        ])
+        lower, upper = self.fetch(1), self.fetch(2)
+        self.assertEqual((lower["stacked_on"], lower["stacked_under"]), (None, [2, 3]))
+        self.assertEqual((upper["stacked_on"], upper["stacked_under"]), (1, []))
+        unrelated = self.fetch(4)
+        self.assertEqual((unrelated["stacked_on"], unrelated["stacked_under"]), (None, []))
+
+    def test_a_fork_pr_is_not_a_stack_s_lower_pr(self):
+        # A fork's PR from its own branch called main, and one from a branch
+        # whose name matches another PR's base.
+        self.open_prs([
+            {"number": 1, "head": "main", "fork": True},
+            {"number": 2, "head": "api", "fork": True},
+            {"number": 3, "base": "api", "head": "ui"},
+            {"number": 4},
+        ])
+        self.assertIsNone(self.fetch(3)["stacked_on"])
+        self.assertIsNone(self.fetch(4)["stacked_on"])
+        self.assertEqual(self.fetch(2)["stacked_under"], [])
+        self.assertEqual(self.fetch(1)["stacked_under"], [])
+
+
+if __name__ == "__main__":
+    unittest.main()
