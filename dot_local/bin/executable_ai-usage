@@ -297,8 +297,9 @@ class Window:
 
 # Named windows the endpoint may return, in display order: (key, label, limit-kind).
 # limit-kind links a window to its entry in the limits[] array so the server's
-# own severity can be used. Windows with no matching kind (the per-model splits)
-# fall back to percent-based coloring rather than borrowing the aggregate's.
+# own severity can color a window that reports no reset time, where pace can't
+# be measured. Windows with no matching kind (the per-model splits) fall back to
+# percent-based coloring rather than borrowing the aggregate's.
 NAMED_WINDOWS: list[tuple[str, str, str | None]] = [
     ("five_hour", "Session · 5h", "session"),
     ("seven_day", "Week · all models", "weekly_all"),
@@ -505,7 +506,45 @@ def build_openrouter_windows(data: dict) -> list[Window]:
 # --------------------------------------------------------------------------- #
 # Rendering
 # --------------------------------------------------------------------------- #
+# A window ahead of pace is yellow, and red once it is this far ahead, as a
+# share of its length (half an hour of a 5-hour window). The Herdr ai-usage
+# mod colors its rings with the same threshold.
+FAR_AHEAD = 0.1
+
+
+def ahead_of_pace(w: Window, now: datetime) -> float | None:
+    """How far a window is ahead of the even pace, as a share of its length.
+
+    The even pace reaches 100% exactly at the reset, so this is the used share
+    minus the share of the window's time already passed: with no further use,
+    how long until elapsed time catches up with what's used. Positive means on
+    track to run out before the reset, negative means behind pace. None when
+    the window has no fixed length or reset time (a credit balance, a monthly
+    budget). A difference rather than a projection (used / elapsed), which
+    swings wildly while elapsed is near zero.
+    """
+    if not w.window_seconds or not w.resets_at:
+        return None
+    resets = parse_iso(w.resets_at)
+    if resets is None:
+        return None
+    left = (resets - now).total_seconds()
+    elapsed = max(0.0, min(1.0, 1 - left / w.window_seconds))
+    return w.pct / 100 - elapsed
+
+
 def severity_color(w: Window) -> str:
+    """Color a window by pace: on track to run out before the reset is the
+    warning, not a high percent, since 70% of a week with a day left is fine
+    while 40% of five hours after twenty minutes is not. A window without pace
+    falls back to the provider's own severity, then to the raw percent."""
+    if w.pct >= 100:
+        return "red"
+    ahead = ahead_of_pace(w, datetime.now(timezone.utc))
+    if ahead is not None:
+        if ahead >= FAR_AHEAD:
+            return "red"
+        return "yellow" if ahead > 0 else "green"
     if w.severity:
         return {
             "normal": "green",
@@ -1047,27 +1086,6 @@ def run_live(services: list[str], interval: int) -> None:
 # --------------------------------------------------------------------------- #
 # Helpers
 # --------------------------------------------------------------------------- #
-def ahead_of_pace(w: Window, now: datetime) -> float | None:
-    """How far a window is ahead of the even pace, as a share of its length.
-
-    The even pace reaches 100% exactly at the reset, so this is the used share
-    minus the share of the window's time already passed: with no further use,
-    how long until elapsed time catches up with what's used. Positive means on
-    track to run out before the reset, negative means behind pace. None when
-    the window has no fixed length or reset time (a credit balance, a monthly
-    budget). A difference rather than a projection (used / elapsed), which
-    swings wildly while elapsed is near zero.
-    """
-    if not w.window_seconds or not w.resets_at:
-        return None
-    resets = parse_iso(w.resets_at)
-    if resets is None:
-        return None
-    left = (resets - now).total_seconds()
-    elapsed = max(0.0, min(1.0, 1 - left / w.window_seconds))
-    return w.pct / 100 - elapsed
-
-
 def windows_json(service: str, entry: Cached) -> dict:
     """One service's windows in the shape shared across providers.
 

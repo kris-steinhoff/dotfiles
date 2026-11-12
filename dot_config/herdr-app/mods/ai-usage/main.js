@@ -19,7 +19,8 @@ const LIVE_TAB = "AI usage";
 const NAMES = { claude: "Claude", chatgpt: "ChatGPT", openrouter: "OpenRouter" };
 
 // A ring ahead of pace is yellow, and red once it is this far ahead, as a
-// share of the window's length (half an hour of a 5-hour window).
+// share of the window's length (half an hour of a 5-hour window). The
+// `ai-usage` terminal view colors its bars with the same threshold.
 const FAR_AHEAD = 0.1;
 
 function find(node, id) {
