@@ -3,10 +3,9 @@
 // interval, so polling it here never adds requests to the providers.
 //
 // Each service is one glyph of nested rings, one ring per limit window, the
-// longest window outermost. A ring fills with the share used. Its color goes
-// by where the window ends up at the current rate, not by the raw percent: 70%
-// of a week with a day left is fine, 40% of five hours after thirty minutes
-// is not.
+// longest window innermost. A ring fills with the share used. Its color goes
+// by pace, not by the raw percent: 70% of a week with a day left is fine, 40%
+// of five hours after twenty minutes is not.
 import { View, div, PathBuilder } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { exec, home, layout, run, spaces, theme } from "herdr";
@@ -19,9 +18,9 @@ const MAX_RINGS = 3;
 const LIVE_TAB = "AI usage";
 const NAMES = { claude: "Claude", chatgpt: "ChatGPT", openrouter: "OpenRouter" };
 
-// Projections from the first moments of a window are noise, so pace only
-// counts once this share of the window has passed.
-const MIN_ELAPSED = 0.1;
+// A ring ahead of pace is yellow, and red once it is this far ahead, as a
+// share of the window's length (half an hour of a 5-hour window).
+const FAR_AHEAD = 0.1;
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -41,34 +40,41 @@ function elapsed(w, now) {
   return Math.max(0, Math.min(1, 1 - left / w.window_seconds));
 }
 
-// Where the window ends up at the current rate, in percent; null when that
-// can't be told yet.
-function projected(w, now) {
+// How far the window is ahead of the even pace, the one that reaches 100%
+// exactly at the reset, as a share of its length: with no further use, how
+// long until elapsed time catches up with what's used. Ahead at all means on
+// track to run out before the reset. Negative when behind pace, null when the
+// window has no fixed length or reset time. A difference rather than a
+// projection (used / elapsed), which swings wildly while elapsed is near zero.
+function ahead(w, now) {
   const f = elapsed(w, now);
-  if (f === null || f < MIN_ELAPSED) return null;
-  return w.used_percent / f;
+  return f === null ? null : w.used_percent / 100 - f;
 }
 
-// "danger" when on track to run out before the reset, "warn" when on track to
-// pass 90%. Windows without pace fall back to the raw percent.
+// "danger" at the limit or far ahead of pace, "warn" when ahead of pace at
+// all. Windows without pace fall back to the raw percent.
 function level(w, now) {
   if (w.used_percent >= 100) return "danger";
-  const p = projected(w, now);
-  if (p === null) return w.used_percent >= 90 ? "danger" : w.used_percent >= 75 ? "warn" : "ok";
-  return p >= 100 ? "danger" : p >= 90 ? "warn" : "ok";
+  const a = ahead(w, now);
+  if (a === null) return w.used_percent >= 90 ? "danger" : w.used_percent >= 75 ? "warn" : "ok";
+  return a >= FAR_AHEAD ? "danger" : a > 0 ? "warn" : "ok";
+}
+
+function duration(ms) {
+  const mins = Math.round(ms / 60_000);
+  const d = Math.floor(mins / 1440);
+  const h = Math.floor((mins % 1440) / 60);
+  const m = mins % 60;
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
 }
 
 function untilReset(iso, now) {
   if (!iso) return "";
   const ms = Date.parse(iso) - now;
   if (!(ms > 0)) return "resetting";
-  const mins = Math.round(ms / 60_000);
-  const d = Math.floor(mins / 1440);
-  const h = Math.floor((mins % 1440) / 60);
-  const m = mins % 60;
-  if (d > 0) return `resets in ${d}d ${h}h`;
-  if (h > 0) return `resets in ${h}h ${m}m`;
-  return `resets in ${m}m`;
+  return `resets in ${duration(ms)}`;
 }
 
 // Ring geometry for n rings in the glyph: radii outermost first, and a stroke
@@ -143,23 +149,24 @@ export default class AiUsage extends View {
     });
   }
 
-  // The windows a glyph draws, outermost first: the longest windows outside.
+  // The windows a glyph draws, outermost first: the shortest outside, the
+  // longest (and those with no fixed length) inside.
   // Past MAX_RINGS, the ones furthest along their pace are kept.
   ringWindows(s, now) {
     const length = (w) => w.window_seconds ?? Infinity;
     let ws = [...s.windows];
     if (ws.length > MAX_RINGS) {
-      const urgency = (w) => projected(w, now) ?? w.used_percent;
+      const urgency = (w) => ahead(w, now) ?? w.used_percent / 100 - 1;
       ws = ws.sort((a, b) => urgency(b) - urgency(a)).slice(0, MAX_RINGS);
     }
-    return ws.sort((a, b) => length(b) - length(a));
+    return ws.sort((a, b) => (length(a) === length(b) ? 0 : length(a) - length(b)));
   }
 
   tooltip(s, ws, now) {
     const lines = ws.map((w) => {
       const parts = [`${w.label}: ${Math.round(w.used_percent)}%`];
-      const p = projected(w, now);
-      if (p !== null) parts.push(`on pace for ${Math.round(p)}%`);
+      const a = ahead(w, now);
+      if (a !== null && a * w.window_seconds >= 60) parts.push(`on pace again in ${duration(a * w.window_seconds * 1000)}`);
       const reset = untilReset(w.resets_at, now);
       if (reset) parts.push(reset);
       return parts.join(" · ");
