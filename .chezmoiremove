@@ -240,3 +240,9 @@
 # A prs mod briefly replaced the Herdr reviews mod; without this it lingers on
 # machines that applied it.
 .config/herdr-app/mods/prs
+
+# github-pr's queue moved out of the skill into the github-review-queue command,
+# and the skill kept only fetch.py from queue.py; without these the old script
+# and its test linger and fail on machines that already applied them.
+.agents/skills/github-pr/scripts/queue.py
+.agents/skills/github-pr/tests/test-queue
