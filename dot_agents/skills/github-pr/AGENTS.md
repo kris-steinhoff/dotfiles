@@ -1,6 +1,6 @@
 # github-pr
 
-`github-pr` owns every GitHub PR review posted on the owner's behalf, in two modes: `review ready` and `review <n>`. The author's side, replying to reviews of the owner's own PRs, is `drive-pr`.
+`github-pr` owns every GitHub PR review posted on the owner's behalf, in one mode, `review <n>`. The author's side, replying to reviews of the owner's own PRs, is `drive-pr`.
 
 ## Reviewer's side only
 
@@ -8,21 +8,17 @@ The author's side is its own skill, `drive-pr`, even though both sides share the
 
 The scripts and `references/posting.md` stay here, and `drive-pr` links to `feedback.py`, `post.py`, and `posting.md`. Moving or splitting them means moving those links too.
 
-## `review ready`
-
-`review ready` enumerates the current repository's open, non-draft PRs awaiting direct or team review. Background subagents review them while the session that ran `review ready` holds every triage; without subagents the queue says so and stops. As each review lands, the session triages that PR with the owner, hands the confirmed review to a posting subagent, and moves on while that one posts, so the owner works through the queue without waiting on a review or a post. A board, a table of the PRs and their stages, opens each PR's triage. The poster is handed the confirmed content and may change none of it, so a check that fails, such as an anchor that won't post, comes back to the owner rather than being fixed quietly.
+## `review <n>`
 
 A review reads the PR from git without a checkout: `fetch.py` brings the head into a private ref (`refs/github-pr-review/<n>/head`) and the base into `origin/<base>`, and the reviewer reads `git diff <merge-base> <head>`, which is GitHub's diff, and the code around it with `git show` and `git grep` at the head. A checkout gives a reviewer little, since it can't run a PR's tests any more than it can without one, and costs a lot: branch claims, moving a checked-out branch when the author pushes, and forced worktree removal. Without one, moving to a new head is just another fetch.
 
-Before launching, the queue looks across the batch for PRs that belong together. `ready` reports each pair's evidence (a stack, where one PR's base is another's head, a shared Jira key, shared files), and the agent judges which pairs are really one piece of work and in what order, because whether two PRs touching one file are related is judgment a script can't make. A group gets one reviewer that takes its PRs in order, the lower PR of a stack first, each with its own triage and posting, so later reviews build on what the earlier ones read. A subagent reviewer is sent each next PR as a message, which keeps its context.
+The queue of PRs awaiting review, and the rule for when one is done, live in `github-review-queue` (notes in `dot_local/bin/AGENTS.md`), and the Herdr Reviews tab runs one review session per PR, so the skill reviews one PR per run and keeps no queue of its own.
 
-The queue keeps no state of its own. Whether a PR is done is read from GitHub: `ready` marks it `reviewed` when one of the owner's recent reviews names its current head commit and is an approval, a change request, or a comment with a body (not a lone thread reply, which GitHub also records as a review). It is read per PR through GraphQL, because `gh pr list` returns only a PR's first hundred reviews. Repeated `/loop 5m /github-pr review ready` calls therefore converge: they skip a PR even while GitHub still lists a team's request, and a PR pushed since the owner's review is new again. A review whose commit GitHub reports as null, which happens after a force-push, counts as not at the head. Three costs of keeping no state are accepted: two sessions running the queue at once can review the same PR; a PR whose author answers the review without pushing stays done until review is requested again at a new head; and a PR finished without posting comes back as new in another session. The skill knows nothing about the coordinator persona; any open session with subagents can run the queue.
-
-## `review <n>`
-
-`review <n>` runs inline wherever it is invoked, and a queue gives each subagent the same review steps up to triage. It reads the PR and the owner's prior review threads, invokes the generic `review` skill without Nits, asks the user to rule on each Blocker and Follow-up as Include/Exclude/Other (or a yes/no fallback), derives `REQUEST_CHANGES` only when an included Blocker remains, and asks for a final posting confirmation. Triage asks about the findings together, one question each in as few prompts as the question tool allows, and holds a finding back only when its question depends on another's ruling; one prompt per finding is the failure to avoid. On a re-review it resolves the threads of prior findings it verified as fixed, and only threads the owner started.
+`review <n>` runs inline wherever it is invoked. It reads the PR and the owner's prior review threads, invokes the generic `review` skill without Nits, asks the user to rule on each Blocker and Follow-up as Include/Exclude/Other (or a yes/no fallback), derives `REQUEST_CHANGES` only when an included Blocker remains, and asks for a final posting confirmation. Triage asks about the findings together, one question each in as few prompts as the question tool allows, and holds a finding back only when its question depends on another's ruling; one prompt per finding is the failure to avoid. On a re-review it resolves the threads of prior findings it verified as fixed, and only threads the owner started.
 
 It also weighs in on other reviewers' open comments, bots' included. The agent judges each against the code itself, since the generic `review` skill reports only problems the change introduces. An Agree reply gives the comment the owner's severity, and a Dispute says with evidence why it doesn't hold. That tells the author which of several reviewers' comments matter and how much, and an Agree at Blocker requests changes like a finding of the owner's own, which is how a bot's mild suggestion is escalated when it would break something. A finding another reviewer already raised becomes an Agree on their thread rather than a second comment. Each reply is triaged like a finding.
+
+Stacks are found per review, by `fetch.py`, rather than across a queue. With one session per PR there is no queue to group PRs in, so each review reads its neighbours from GitHub itself: the lower PR as context, with its code's findings left to its own review, and up to five PRs built on this one, so a Follow-up doesn't ask for what an upper PR already does. Related PRs that aren't a stack, such as two that share a Jira key or files, aren't grouped: telling which are really one piece of work takes a view across the queue that a single review doesn't have. Fetching a lower PR moves its private ref, which a session reviewing that PR in the same checkout shares, so that session may miss a move at its next head check; `post.py` still refuses a batch formed against an old head.
 
 ## Shared scripts
 
@@ -34,4 +30,4 @@ Both sides, this skill and `drive-pr`, share two scripts and one reference.
 
 The poster requires an attribution header but does not choose its text. The text lives in `.chezmoitemplates/posting-attribution.md`, which the skill renders with `includeTemplate ".chezmoitemplates/posting-attribution.md" . | trim` (the `trim` drops the file's trailing newline inside a code fence). Any other posting skill includes the same partial, so the line stays in one place.
 
-The Herdr `reviews` mod (`dot_config/herdr-app/mods/reviews/`, notes in `dot_config/herdr-app/AGENTS.md`) runs `queue.py ready` from its deployed path and reads `items` with `number`, `title`, `url`, `author`, `created_at`, `size`, `stacked_on`, `jira_keys`, and `state`, then starts a session per PR with `/github-pr review <n>`. Changing that output or the script's path breaks the mod.
+The Herdr `reviews` mod (`dot_config/herdr-app/mods/reviews/`, notes in `dot_config/herdr-app/AGENTS.md`) starts `/github-pr review <n>` in the repo's main checkout, and that invocation is its only tie to the skill. Its queue comes from `github-review-queue`.

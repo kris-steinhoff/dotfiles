@@ -1,2 +1,2 @@
-{{- $custom := `argument-hint: "review <pr-number> | review ready"` -}}
+{{- $custom := `argument-hint: "review <pr-number>"` -}}
 {{- includeTemplate "dot_agents/skills/github-pr/SKILL.md.tmpl" (merge (dict "custom" $custom) .) -}}
