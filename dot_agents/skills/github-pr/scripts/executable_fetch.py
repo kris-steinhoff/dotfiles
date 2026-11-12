@@ -101,14 +101,17 @@ def view(repo, number):
     return pr_item(raw), bool(raw.get("isCrossRepository"))
 
 
-def stack(repo, item, cross_repository):
+def list_open_prs(repo):
+    return gh_json(repo, "pr", "list", "--state", "open", "--limit", "500",
+                   "--json", "number,headRefName,baseRefName,isCrossRepository")
+
+
+def stack(open_prs, item, cross_repository):
     """The open PR this one is stacked on, and the open PRs stacked on it.
 
     A fork's PR is never a stack's lower PR: its head branch lives in the fork,
     so one named main would otherwise sit under every PR based on main. The
     same rule as github-review-queue's stacked_on, so the two agree."""
-    open_prs = gh_json(repo, "pr", "list", "--state", "open", "--limit", "500",
-                       "--json", "number,headRefName,baseRefName,isCrossRepository")
     by_head = {pr["headRefName"]: pr["number"] for pr in open_prs
                if pr.get("headRefName") and not pr.get("isCrossRepository")}
     below = by_head.get(item["base_branch"])
@@ -122,6 +125,9 @@ def fetch(repo, number):
     """Bring the PR's current head and base into git's object store, with no checkout."""
     previous = run(["git", "rev-parse", "--verify", "-q", head_ref(number)], cwd=repo).stdout.strip()
     item, cross_repository = view(repo, number)
+    # Listed before the private ref moves: a failure after it would leave the
+    # ref at the new head, and the retry would report moved: false.
+    listed = list_open_prs(repo)
     head = fetch_head(repo, number)
     if head != item["head_sha"]:
         item, cross_repository = view(repo, number)
@@ -140,7 +146,7 @@ def fetch(repo, number):
         # between the two heads is all that compares them.
         result["rewritten"] = run(["git", "merge-base", "--is-ancestor", previous, head],
                                   cwd=repo).returncode != 0
-    result.update(stack(repo, item, cross_repository))
+    result.update(stack(listed, item, cross_repository))
     emit(result)
 
 

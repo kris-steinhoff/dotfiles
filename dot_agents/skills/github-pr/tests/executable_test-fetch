@@ -144,6 +144,15 @@ class FetchTests(unittest.TestCase):
         unrelated = self.fetch(4)
         self.assertEqual((unrelated["stacked_on"], unrelated["stacked_under"]), (None, []))
 
+    def test_a_middle_pr_reports_both_neighbours(self):
+        self.open_prs([
+            {"number": 1, "head": "api"},
+            {"number": 2, "base": "api", "head": "ui"},
+            {"number": 3, "base": "ui", "head": "docs"},
+        ])
+        middle = self.fetch(2)
+        self.assertEqual((middle["stacked_on"], middle["stacked_under"]), (1, [3]))
+
     def test_a_fork_pr_is_not_a_stack_s_lower_pr(self):
         # A fork's PR from its own branch called main, and one from a branch
         # whose name matches another PR's base.
