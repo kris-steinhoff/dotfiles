@@ -24,7 +24,7 @@ from pr_api import viewer_login
 
 
 SEARCH = "is:open -is:draft review-requested:@me -author:@me"
-GH_FIELDS = "number,title,url,author,baseRefName,headRefName,headRefOid"
+GH_FIELDS = "number,title,url,author,baseRefName,headRefName,headRefOid,createdAt"
 JIRA_KEY = re.compile(r"\b([A-Z][A-Z0-9]+-[0-9]+)\b")
 SHARED_FILES_SHOWN = 5
 # My latest reviews on one PR. gh pr list's reviews field stops at the first
@@ -95,6 +95,7 @@ def pr_item(raw):
         "base_branch": raw.get("baseRefName", ""),
         "head_branch": raw.get("headRefName", ""),
         "head_sha": raw.get("headRefOid", ""),
+        "created_at": raw.get("createdAt", ""),
     }
 
 

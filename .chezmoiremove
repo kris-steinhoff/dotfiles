@@ -236,3 +236,7 @@
 # that already applied it.
 .claude/statusline.sh
 .cache/claude-code-usage.json
+
+# A prs mod briefly replaced the Herdr reviews mod; without this it lingers on
+# machines that applied it.
+.config/herdr-app/mods/prs
