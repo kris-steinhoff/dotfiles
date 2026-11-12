@@ -111,11 +111,13 @@ function sessionFor(repoName, number) {
   return sessions().find((s) => s.labels[L_REPO] === repoName && s.labels[L_PR] === String(number)) ?? null;
 }
 
-// What a session is doing, from the status its agent reports.
+// What a session is doing, from the status its agent reports. Only a blocked
+// one waits on me: a finished one has said its piece, and stays finished until
+// it's closed, which for a PR that's still listed may be never.
 function stage(t, session) {
   switch (session.status) {
     case "blocked": return { label: "needs you", color: t.blocked, waits: true };
-    case "done": return { label: "finished", color: t.done, waits: true };
+    case "done": return { label: "finished", color: t.done };
     case "working": return { label: "working", color: t.working, busy: true };
     default: return { label: "idle", color: t.muted };
   }
