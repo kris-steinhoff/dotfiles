@@ -33,6 +33,9 @@ const SHOW_KEY = "reviews.show"; // { address, at }: a session to show, asked fo
 const SHOWN_KEY = "reviews.shown"; // the session the viewer pane shows now
 const SORT_KEY = "reviews.sort"; // an id from SORTS
 const MUTED_KEY = "reviews.muted"; // ["owner/repo#n"]: set aside until unmuted or gone from the queue
+// { "owner/repo#n": still muted for that reason }: PRs muted once because
+// someone else reviewed them, never again; false once I mute or unmute by hand.
+const AUTO_MUTED_KEY = "reviews.automuted";
 const POLL_MS = 5 * 60_000;
 const NEXT_KEY = "reviews.next"; // when the poller checks next, for the countdown
 const TICK_MS = 10_000; // how often the poller looks at the clock, and the tab redraws its times
@@ -242,7 +245,10 @@ function demoScan() {
     },
     {
       key: "demo-web", name: "acme/web", root: demoRoot(), error: null,
-      items: [item("acme/web", 88, "Dark mode for settings page", "Sam Lee", [200, 45, 7])],
+      items: [
+        item("acme/web", 88, "Dark mode for settings page", "Sam Lee", [200, 45, 7]),
+        item("acme/web", 91, "Fix footer links", "Sam Lee", [4, 2, 1], { other_reviewers: ["dortiz"] }),
+      ],
     },
     { key: "demo-infra", name: "acme/infra", root: demoRoot(), items: [], error: "gh: HTTP 502 (test data)" },
   ];
@@ -258,23 +264,52 @@ function listed(item, session) {
 }
 
 const muted = () => new Set(shared(MUTED_KEY) ?? []);
+const autoMuted = () => shared(AUTO_MUTED_KEY) ?? {};
 
+// By hand, from a row's menu. Either way the mute is no longer the automatic one.
 function setMuted(key, on) {
   const keys = muted();
   if (on) keys.add(key);
   else keys.delete(key);
   setShared(MUTED_KEY, [...keys]);
+  const auto = autoMuted();
+  if (auto[key]) setShared(AUTO_MUTED_KEY, { ...auto, [key]: false });
+}
+
+// A PR someone else has already reviewed is muted the first time it's seen
+// that way. It's muted only once, so an unmute sticks.
+function autoMute(repos) {
+  const auto = { ...autoMuted() };
+  const keys = muted();
+  let changed = false;
+  for (const repo of repos) {
+    for (const item of repo.items) {
+      const key = `${repo.name}#${item.number}`;
+      if (!item.other_reviewers?.length || key in auto) continue;
+      // One I'd already muted by hand keeps that reason.
+      auto[key] = !keys.has(key);
+      keys.add(key);
+      changed = true;
+    }
+  }
+  if (!changed) return;
+  setShared(AUTO_MUTED_KEY, auto);
+  setShared(MUTED_KEY, [...keys]);
 }
 
 // Mutes last until undone, or until the PR leaves the queue of a repo that was
-// read; a repo that failed or isn't watched now keeps its mutes.
+// read; a repo that failed or isn't watched now keeps its mutes. The record of
+// automatic mutes is pruned the same way.
 function pruneMuted(repos) {
-  const keys = shared(MUTED_KEY) ?? [];
-  if (!keys.length) return;
   const read = new Set(repos.filter((r) => !r.error).map((r) => r.name));
   const queued = new Set(repos.flatMap((r) => r.items.map((i) => `${r.name}#${i.number}`)));
-  const kept = keys.filter((k) => queued.has(k) || !read.has(k.slice(0, k.lastIndexOf("#"))));
+  const keep = (k) => queued.has(k) || !read.has(k.slice(0, k.lastIndexOf("#")));
+  const keys = shared(MUTED_KEY) ?? [];
+  const kept = keys.filter(keep);
   if (kept.length !== keys.length) setShared(MUTED_KEY, kept);
+  const auto = Object.entries(autoMuted());
+  const autoKept = auto.filter(([k]) => keep(k));
+  if (autoKept.length !== auto.length) setShared(AUTO_MUTED_KEY, Object.fromEntries(autoKept));
 }
 
 // Sessions to close: their PR has left the list (reviewed at its head, merged,
@@ -344,6 +379,7 @@ export default class Reviews extends View {
         const repos = DEMO ? demoScan() : await scan();
         setShared(QUEUE_KEY, { checked_at: Date.now(), repos });
         pruneMuted(repos);
+        autoMute(repos);
         this.scanned = true;
       } catch (e) {
         console.log(`reviews: scan failed: ${e?.message ?? e}`);
@@ -549,11 +585,17 @@ export default class Reviews extends View {
     const session = sessionFor(repo.name, item.number);
     const selected = this.selected === key;
     const size = item.size ?? {};
+    const others = item.other_reviewers?.join(", ");
+    // Why a muted row is muted, first, which for an automatic mute names who else reviewed it.
+    const auto = isMuted && others && autoMuted()[key];
+    const why = !isMuted ? null : auto ? `already reviewed by ${others}` : "muted by you";
     const meta = [
+      why,
       item.created_at && age(item.created_at) ? `opened ${age(item.created_at)} ago` : null,
       `+${size.additions ?? 0} −${size.deletions ?? 0}`,
       plural(size.files ?? 0, "file"),
       item.stacked_on ? `stacked on #${item.stacked_on}` : null,
+      others && !auto ? `reviewed by ${others}` : null,
       ...(item.jira_keys ?? []),
     ].filter(Boolean).join(" · ");
 

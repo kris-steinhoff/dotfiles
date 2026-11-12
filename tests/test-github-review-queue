@@ -14,13 +14,14 @@ import unittest
 SCRIPT = Path(__file__).resolve().parents[1] / "dot_local" / "bin" / "executable_github-review-queue"
 
 ITEM_KEYS = {"number", "title", "url", "author", "base_branch", "head_branch", "head_sha",
-             "created_at", "size", "stacked_on", "jira_keys", "state"}
+             "created_at", "size", "stacked_on", "jira_keys", "state", "other_reviewers"}
 
 
 # A fake gh. The queue is a JSON file of PRs; each one's head is origin's
 # refs/pull/<n>/head, as GitHub reports it. A PR's "reviews" lists
 # [login, commit, state, body], the commit being a PR number (that PR's head
 # now), a literal sha, or null; state defaults to COMMENTED and body to text.
+# A login ending in [bot] is a bot. The PR's author is always ada.
 # FAKE_OPEN holds open PRs that are not in the queue, as JSON.
 FAKE_GH = r'''#!/usr/bin/env python3
 import json
@@ -40,7 +41,8 @@ def head(n):
 
 def review(login, commit, state="COMMENTED", body="Looks good."):
     oid = head(commit) if isinstance(commit, int) else commit
-    return {"author": {"login": login}, "state": state, "body": body,
+    kind = "Bot" if login.endswith("[bot]") else "User"
+    return {"author": {"login": login, "__typename": kind}, "state": state, "body": body,
             "commit": {"oid": oid} if oid else None}
 
 
@@ -64,9 +66,16 @@ if args[:2] == ["api", "user"]:
 elif args[:2] == ["api", "graphql"]:
     assert (field("owner"), field("name")) == ("{owner}", "{repo}"), args
     pr = next(pr for pr in queue + others if pr["number"] == int(field("pr")))
-    mine = [review(*r) for r in pr.get("reviews", []) if r[0] == field("author")]
-    nodes = [{k: v for k, v in r.items() if k != "author"} for r in mine]
-    print(json.dumps({"data": {"repository": {"pullRequest": {"reviews": {"nodes": nodes}}}}}))
+    everyone = [review(*r) for r in pr.get("reviews", [])]
+    mine = [{k: v for k, v in r.items() if k != "author"}
+            for r in everyone if r["author"]["login"] == field("author")]
+    latest = {}  # each person's latest approval or change request
+    for r in everyone:
+        if r["state"] in ("APPROVED", "CHANGES_REQUESTED"):
+            latest[r["author"]["login"]] = r
+    print(json.dumps({"data": {"repository": {"pullRequest": {
+        "mine": {"nodes": mine}, "everyone": {"nodes": everyone[-100:]},
+        "opinionated": {"nodes": list(latest.values())}}}}}))
 elif args[:2] == ["pr", "list"] and "--search" in args:
     print(json.dumps([record(pr) for pr in queue]))
 elif args[:2] == ["pr", "list"]:
@@ -168,6 +177,23 @@ class ReviewQueueTests(unittest.TestCase):
         self.assertEqual({n: i["state"] for n, i in self.items("--all").items()},
                          {1: "reviewed", 2: "new"})
         self.assertEqual({n: i["state"] for n, i in self.items("--ready").items()}, {2: "new"})
+
+    def test_other_reviewers_leave_out_me_the_author_bots_and_reviews_that_dont_count(self):
+        old = self.push(1)
+        self.push(1)
+        self.queue([
+            {"number": 1, "reviews": [["kris", 1], ["ada", 1], ["grace", old], ["copilot[bot]", 1],
+                                      ["linus", 1, "COMMENTED", ""], ["ken", 1, "DISMISSED"],
+                                      ["barbara", 1, "APPROVED", ""]]},
+            {"number": 2, "reviews": [["kris", 2]]},
+            # An approval pushed out of the last 100 reviews by thread replies.
+            {"number": 3, "reviews": [["grace", 3, "APPROVED", ""]]
+                                     + [["ada", 3, "COMMENTED", ""]] * 100},
+        ])
+        items = self.items()
+        self.assertEqual(items[1]["other_reviewers"], ["barbara", "grace"])
+        self.assertEqual(items[2]["other_reviewers"], [])
+        self.assertEqual(items[3]["other_reviewers"], ["grace"])
 
     def test_exactly_one_mode_is_required(self):
         for args in ([], ["--all", "--ready"]):

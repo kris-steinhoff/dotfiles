@@ -9,6 +9,8 @@ only the new ones.
 A PR is reviewed when one of my recent reviews names its current head commit
 and is an approval, a change request, or a comment with a body. That is read
 from GitHub, not from local state, so a PR pushed since my review is new again.
+Each PR also lists `other_reviewers`: the logins of everyone but me, its author,
+and bots with a review of that kind at any commit.
 
 Exit codes: 0 success; 1 a gh or git call failed (a message on stderr);
 2 a usage error, or a needs_judgment JSON on stdout (such as --repo not being
@@ -26,14 +28,19 @@ import sys
 SEARCH = "is:open -is:draft review-requested:@me -author:@me"
 GH_FIELDS = "number,title,url,author,baseRefName,headRefName,headRefOid,createdAt"
 JIRA_KEY = re.compile(r"\b([A-Z][A-Z0-9]+-[0-9]+)\b")
-# My latest reviews on one PR. gh pr list's reviews field stops at the first
-# 100, oldest first, and every thread reply is a review, so on a busy PR my
-# latest could fall off it; asking for my own last ones sees them.
-MY_REVIEWS_QUERY = """
+# One PR's reviews: my latest ones, to tell whether I've reviewed its head; and
+# everyone's, to tell who else has reviewed it. gh pr list's reviews field stops
+# at the first 100, oldest first, and every thread reply is a review, so on a
+# busy PR my latest could fall off it; asking for my own last ones sees them.
+# Everyone's last 100 could still miss an old review under a flood of replies,
+# so each person's latest approval or change request is asked for as well.
+REVIEWS_QUERY = """
 query($owner: String!, $name: String!, $pr: Int!, $author: String!) {
   repository(owner: $owner, name: $name) {
     pullRequest(number: $pr) {
-      reviews(last: 100, author: $author) { nodes { state body commit { oid } } }
+      mine: reviews(last: 100, author: $author) { nodes { state body commit { oid } } }
+      everyone: reviews(last: 100) { nodes { state body author { login __typename } } }
+      opinionated: latestOpinionatedReviews(first: 100) { nodes { state body author { login __typename } } }
     }
   }
 }
@@ -108,16 +115,35 @@ def counts(review):
         state == "COMMENTED" and (review.get("body") or "").strip() != "")
 
 
-def reviewed_at_head(repo, number, head, me):
+def pr_reviews(repo, number, me):
+    data = gh_json(repo, "api", "graphql", "-f", f"query={REVIEWS_QUERY}",
+                   "-F", "owner={owner}", "-F", "name={repo}", "-F", f"pr={number}",
+                   "-f", f"author={me}")
+    return ((data.get("data") or {}).get("repository") or {}).get("pullRequest") or {}
+
+
+def nodes(pr, field):
+    return (pr.get(field) or {}).get("nodes") or []
+
+
+def reviewed_at_head(pr, head):
     """Whether one of my reviews that counts is at the PR's current head. A
     review's commit is null after a force-push drops it, which counts as not
     at the head."""
-    data = gh_json(repo, "api", "graphql", "-f", f"query={MY_REVIEWS_QUERY}",
-                   "-F", "owner={owner}", "-F", "name={repo}", "-F", f"pr={number}",
-                   "-f", f"author={me}")
-    pr = ((data.get("data") or {}).get("repository") or {}).get("pullRequest") or {}
     return any(counts(review) and head and (review.get("commit") or {}).get("oid") == head
-               for review in (pr.get("reviews") or {}).get("nodes") or [])
+               for review in nodes(pr, "mine"))
+
+
+def other_reviewers(pr, me, author):
+    """The people, not me, the author, or a bot, with a review that counts at
+    any commit."""
+    logins = set()
+    for review in nodes(pr, "everyone") + nodes(pr, "opinionated"):
+        who = review.get("author") or {}
+        login = who.get("login")
+        if counts(review) and login and login not in (me, author) and who.get("__typename") != "Bot":
+            logins.add(login)
+    return sorted(logins)
 
 
 def list_queue(args):
@@ -140,8 +166,10 @@ def list_queue(args):
         item["stacked_on"] = below if below != item["number"] else None
         text = f"{item['title']} {item['head_branch'].upper()}"
         item["jira_keys"] = sorted(set(JIRA_KEY.findall(text)))
-        reviewed = reviewed_at_head(repo, item["number"], item["head_sha"], me)
-        item["state"] = "reviewed" if reviewed else "new"
+        reviews = pr_reviews(repo, item["number"], me)
+        item["state"] = "reviewed" if reviewed_at_head(reviews, item["head_sha"]) else "new"
+        author = (entry.get("author") or {}).get("login")
+        item["other_reviewers"] = other_reviewers(reviews, me, author)
         if args.all or item["state"] == "new":
             items.append(item)
     emit({"items": items})
