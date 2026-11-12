@@ -46,6 +46,7 @@ from rich.align import Align
 from rich.console import Console, Group
 from rich.live import Live
 from rich.measure import Measurement
+from rich.padding import Padding
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
@@ -1015,6 +1016,31 @@ def service_panel(
     )
 
 
+def pace_notes(windows: list[Window]) -> list[Padding]:
+    """One line per window ahead of pace, explaining its yellow or red bar.
+
+    Shown below the service's panel rather than in it, so the table of bars
+    keeps its shape.
+    """
+    now = datetime.now(timezone.utc)
+    lines: list[Padding] = []
+    for w in windows:
+        ahead = ahead_of_pace(w, now)
+        if ahead is None or ahead <= 0 or w.window_seconds is None:
+            continue
+        catch_up = ahead * w.window_seconds
+        when = f"in {humanize(catch_up)}" if catch_up >= 60 else "in under a minute"
+        line = Text(w.label, style=f"bold {severity_color(w)}")
+        line.append(
+            f" is {ahead * 100:.0f}% ahead of pace: at this rate it runs out before it resets. "
+            f"Back on pace {when} with no further use.",
+            style="grey62",
+        )
+        # Indented to the panel's content, wrapped lines included.
+        lines.append(Padding(line, (0, 0, 0, 3)))
+    return lines
+
+
 def build_dashboard(services: list[str], entries: dict[str, Cached], now: float) -> Group:
     labels = [
         window.label
@@ -1023,7 +1049,7 @@ def build_dashboard(services: list[str], entries: dict[str, Cached], now: float)
         for window in WINDOW_BUILDERS[service](entries[service].data)
     ]
     label_width = max((Text(label).cell_len for label in labels), default=None)
-    panels: list[Panel] = []
+    panels: list[Panel | Padding | Text] = []
     for service in services:
         entry = entries[service]
         retry_remaining = (
@@ -1039,6 +1065,10 @@ def build_dashboard(services: list[str], entries: dict[str, Cached], now: float)
         updated_at = datetime.fromtimestamp(entry.fetched_at) if entry.fetched_at is not None else None
         fresh_age = now - entry.fetched_at if entry.fetched_at is not None else None
         panels.append(service_panel(service, entry.account, entry.data, updated_at, fresh_age, label_width, footer))
+        notes = pace_notes(WINDOW_BUILDERS[service](entry.data))
+        if notes:
+            panels.extend(notes)
+            panels.append(Text(""))
     return Group(*panels)
 
 
