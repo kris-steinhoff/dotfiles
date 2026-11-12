@@ -18,13 +18,9 @@ This skill may be invoked directly or by any agent. Both GitHub scripts below, a
 
 The PR's summary is how the user tells which PR is in front of them, so every review opens with it: before reading anything else about the PR, run the `summarize-github-pr` skill and send its output, every line as markdown, as your first message.
 
-## `review <n>`: conduct the review
-
-Run this inline, in the session that invokes it. [Review the PR](#review-the-pr). While the reviewer runs, tell the user in a line or two that it is running, what you asked it to focus on, and the stack the PR sits in, if any, such as `stacked on #41, with #45 and #46 built on it`; the summary that opened the session already describes the PR. When it returns, [triage with the user](#triage-with-the-user) and [post](#post).
-
 ## Review the PR
 
-This is the review itself, up to triage.
+Run `review <n>` inline, in the session that invokes it: review the PR as this section describes, then [triage with the user](#triage-with-the-user) and [post](#post).
 
 A review reads the PR from git's object store rather than a checkout. Start with the head check in [Keep up with the head](#keep-up-with-the-head), which fetches the PR's head and base without touching the working tree and returns `head_sha`, `base_branch`, and `merge_base`, plus `stacked_on` and `stacked_under` for [Stacks](#stacks).
 
@@ -39,6 +35,8 @@ Invoke the shared `review` skill once per head with a self-contained brief; it m
 - the other reviewers' open comments, as context, so it doesn't report what they already raised as if it were new
 - for a stacked PR, the context [Stacks](#stacks) describes
 - an explicit instruction not to report Nits
+
+While the reviewer runs, tell the user in a line or two that it is running, what you asked it to focus on, and the stack the PR sits in, if any, such as `stacked on #41, with #45 and #46 built on it`; the summary that opened the session already describes the PR.
 
 The shared reviewer returns Blockers and Follow-ups without editing, interaction, a verdict, or posting. Preserve its classifications unless discussion with the user supplies new technical evidence. Then take a stance on the other reviewers' comments yourself, as below, from its findings and your own reading of the code.
 
@@ -56,9 +54,11 @@ The review ends with these results, which triage works from:
 
 A stacked PR is one piece of a larger change, and reviewing it alone misreads it: its diff starts from code another open PR introduces, and what it leaves out may be done by the PR above it. `fetch.py` reports both directions.
 
-When `stacked_on` is set, this PR's base is that open PR's branch, so this PR's diff is against code still under review. Fetch the lower PR too (`scripts/fetch.py <lower>`), and give the reviewer its title, body, and diff (`git diff <its merge_base> <its head_sha>`) as context, with a brief that says the base is another open PR. Findings on code the lower PR introduced belong to that PR's review, not this one.
+Read neighbouring PRs only through `gh`, never with `scripts/fetch.py`: its private ref for a PR is what that PR's own review, which may be running in this checkout, relies on to notice a push.
 
-When `stacked_under` is not empty, other open PRs build on this one. Give the reviewer the titles and bodies of up to five of them, the lowest numbers first, and fetch one's diff only when it bears on a finding, so a Follow-up about something missing names the upper PR that already does it instead of asking for it. A PR from a long-lived branch can have dozens built on it; past five, tell the user how many were left unread when you say the reviewer is running.
+When `stacked_on` is set, this PR's base is that open PR's branch, so this PR's diff is against code still under review. Read the lower PR with `gh pr view <lower> --json title,body` and `gh pr diff <lower>`, which is GitHub's diff, and give them to the reviewer as context, with a brief that says the base is another open PR. Its code is already at `head_sha`, since this PR's head contains it; if `gh pr diff` fails on a very large PR, the title, body, and that code are enough. Findings on code the lower PR introduced belong to that PR's review, not this one.
+
+When `stacked_under` is not empty, other open PRs build on this one. Give the reviewer the titles and bodies of up to five of them (`gh pr view <m> --json title,body`), the lowest numbers first, and read one's diff (`gh pr diff <m>`) only when it bears on a finding, so a Follow-up about something missing names the upper PR that already does it instead of asking for it. A PR from a long-lived branch can have dozens built on it; past five, tell the user how many were left unread when you say the reviewer is running.
 
 ### Other reviewers' comments
 
@@ -120,7 +120,7 @@ Set `head_sha` to the head the content was formed against. Run `scripts/post.py 
 
 ## Boundaries
 
-- Do not edit the PR's source in any mode.
+- Do not edit the PR's source.
 - Do not request or report Nits.
 - Do not run more than one reviewer for the same PR in a session.
 - Resolve only threads I started.
