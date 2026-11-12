@@ -11,7 +11,7 @@ window-inherit-working-directory = false
 
 # Override Ghostty's default "performable:copy_to_clipboard" on Cmd-C, which
 # passes the key through when there's no selection (leaking a stray "c" while
-# herdr owns the selection). This always consumes Cmd-C instead.
+# the terminal Herdr owns the selection). This always consumes Cmd-C instead.
 keybind = super+c=copy_to_clipboard
 
 # Drop Ghostty's default Cmd-Enter fullscreen binding, which collides with the
@@ -26,7 +26,7 @@ keybind = super+c=copy_to_clipboard
 keybind = super+enter=text:\r
 
 # Default clipboard-read is "ask", which shows a permission prompt on every
-# OSC 52 paste. Neovim's built-in OSC 52 paste provider (used inside Herdr,
+# OSC 52 paste. Neovim's built-in OSC 52 paste provider (used inside the terminal Herdr,
 # see nvim's init.lua) doesn't reliably detect that prompt's response and
 # hangs on "Waiting for OSC 52 response" until interrupted. Allowing reads
 # outright removes the prompt and the hang.

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """chezmoi modify_ script for ~/.claude/settings.json.
 
-Other tools write into this file: Orca and Herdr install their agent-state
-hooks here, and Claude Code itself adds keys such as accepted-prompt flags. A
-plain template would wipe all of that on every apply, so this script receives
-the live file on stdin and writes back the managed settings
+Other tools write into this file: Orca and the terminal Herdr install their
+agent-state hooks here, and Claude Code itself adds keys such as
+accepted-prompt flags. A plain template would wipe all of that on every apply,
+so this script receives the live file on stdin and writes back the managed settings
 (.chezmoitemplates/claude-settings.json.tmpl) merged over it:
 
 - A managed top-level key replaces the live value wholesale, as the template

@@ -42,6 +42,7 @@ vim.opt.number = true
 vim.opt.signcolumn = "yes"
 vim.opt.clipboard = "unnamedplus"
 if vim.env.HERDR_ENV == "1" and vim.fn.executable("pbcopy") == 0 then
+  -- HERDR_ENV is set only by the terminal Herdr, not the Herdr app.
   -- On a local herdr pane, pbcopy/pbpaste talk to the real macOS clipboard
   -- directly and just work, so leave nvim's default clipboard provider in
   -- place. Only remote/containerized herdr targets lack pbcopy/xclip; there,
@@ -257,6 +258,8 @@ vim.api.nvim_create_autocmd("LspAttach", {
   end,
 })
 
+-- Terminal Herdr only (the Herdr app sets no HERDR_PANE_ID and names panes from
+-- the program it sees running).
 -- Herdr names a pane only when it recognizes a coding agent inside it, so an
 -- nvim split shows a blank border. Label it "nvim" for the session, and hand
 -- the border back on exit. Labeling from here rather than from a shell hook

@@ -43,6 +43,7 @@ Shared configs live under `dot_config/kris-steinhoff/` (deployed to `~/.config/k
 
 - **Shell**: zsh with starship, zsh-autosuggestions, zsh-syntax-highlighting, direnv
 - **Terminal**: Ghostty (ligatures disabled)
+- **Workspace**: the Herdr desktop app (`herdr-app`), whose terminals and agents run in herdr-core (`hc`); see `dot_config/herdr-app/AGENTS.md`. The older terminal Herdr (`herdr`) keeps its config in `dot_config/herdr/` for occasional use
 - **Prompt**: Starship without Nerd Font glyphs, kubernetes module enabled
 - **Git**: push.default=current, pull.rebase, rebase.updateRefs, rebase.autoSquash
 - **Worktrees**: `wt` (add, list, switch, remove) keeps each repo's worktrees in `.worktrees/`; `wta`, `wts`, `wtr`, and `wtl` are zsh wrappers
