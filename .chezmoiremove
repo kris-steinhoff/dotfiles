@@ -242,7 +242,9 @@
 .config/herdr-app/mods/prs
 
 # github-pr's queue moved out of the skill into the github-review-queue command,
-# and the skill kept only fetch.py from queue.py; without these the old script
-# and its test linger and fail on machines that already applied them.
+# and the skill kept only fetch.py from queue.py; without these the old script,
+# its test, and the queue's instructions linger on machines that already applied
+# them.
 .agents/skills/github-pr/scripts/queue.py
 .agents/skills/github-pr/tests/test-queue
+.agents/skills/github-pr/references/queue.md
