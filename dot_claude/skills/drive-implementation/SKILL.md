@@ -18,10 +18,11 @@ A pass: take the tasks that are ready, start them, handle what the running agent
 
 ## Where work happens
 
-Every task that changes code gets its own worktree and its own Claude agent. Use whatever the harness you're running in offers for both, such as worktree-isolated subagents, new sessions, or the workspace tool's own commands, and don't build machinery for it. Small reads you do yourself or give to a plain subagent. What matters is what the result looks like:
+Every task that changes code gets its own worktree and its own Claude agent. Make the worktree yourself with `wt`, as the guide's Branches and worktrees says, then start the agent in it with whatever the harness offers, such as a background subagent told to work in that path, a new session, or the workspace tool's own commands. Don't let the harness make the worktree too, as worktree-isolated subagents or Herdr's New worktree would, since each names and bases it its own way. Small reads you do yourself or give to a plain subagent. What matters is what the result looks like:
 
-- **Its own worktree**, cut from the branch of the PR it lands in (a plan can have several, including stacked ones; each task's PR is on the page) and named the way the repository's instructions say. Record the task's `branch` on the page.
-- **Its own agent**, named for the task, such as `t<n>-<short title>`, and labelled that way wherever the harness shows sessions or worktrees, so what the user sees reads as the plan does and they can open any of it. You must be able to send it follow-up work and receive its report.
+- **The PR's worktree.** Each PR's branch gets a worktree from `wt add <PR branch> --base <its base>` when its first task starts, where its base is the base branch or the branch of the PR it stacks on. Merges, the merged `verify`, and pushes happen there, and it stays until the PR merges or closes.
+- **Its own worktree**, from `wt add <task branch> --base <PR branch>`, named as the guide says. Record the task's `branch` on the page.
+- **Its own agent**, named for the task the way its branch is, without the plan's slug, such as `t3-validation`, and labelled that way wherever the harness shows sessions, so what the user sees reads as the plan does and they can open any of it. You must be able to send it follow-up work and receive its report.
 - **A complete brief.** The task's goal, approach, and verify from the page, with its touches as a hint rather than a limit, its worktree and branch, the PR branch it is based on, and what done looks like. It commits in its worktree and reports back. It never asks the user and never touches the PR, the page, or other tasks' branches. If a choice would change behavior or reach past the task, it asks you. Leave how to build and test to the agent and the repository's instructions.
 - **Tidy afterwards.** Only the task agents still in flight stay around. Clean up each task as it lands (below).
 
@@ -30,8 +31,8 @@ Every task that changes code gets its own worktree and its own Claude agent. Use
 1. **Implement.** The agent builds the task, runs its `verify`, and commits.
 2. **Review.** Every task gets a review by a subagent that didn't write the code, given only the task's intent, its `verify`, and the commits since the PR branch, not this conversation. It looks for correctness problems, fit with the repository's conventions, missing tests, and anything beyond the task, and reports each finding as a Blocker, which must be fixed, or a Follow-up, which needn't be. Never let the implementer review its own work.
 3. **Fix.** Send each Blocker to the implementer as follow-up work, and review again. Journal Follow-ups on the task's `outcome` rather than fixing them, unless the fix is trivial. After three rounds that haven't converged, stop looping: journal what keeps failing and ask the user, since the plan or the task is probably wrong.
-4. **Merge.** Merge the task branch into the PR branch in the PR branch's checkout, the way the repository's conventions say. Where they're silent, use a merge commit, since other tasks were cut from this branch's history and rewriting it would orphan them. Run the task's `verify` on the merged result; a failure goes back to step 3.
-5. **Clean up.** Once the tip is reachable from the PR branch, end the task's agent, remove its worktree if it's clean, and delete the branch with `git branch -d`, which refuses one that isn't fully merged. A dirty worktree or a refused branch stays, with a line on the page saying why. Never `git branch -D` and never delete a remote branch. Mark the task `merged` with an `outcome` saying what changed and where it differs from the plan.
+4. **Merge.** Merge the task branch into the PR branch in the PR's worktree, the way the repository's conventions say. Where they're silent, use a merge commit, since other tasks were cut from this branch's history and rewriting it would orphan them. Run the task's `verify` on the merged result; a failure goes back to step 3.
+5. **Clean up.** Once the tip is reachable from the PR branch, end the task's agent and run `wt remove <task branch>`. It removes a clean worktree but keeps the branch, which is merged into the PR branch rather than the default branch, and exits 2 saying so; then delete the branch with `git branch -d` in the PR's worktree, which refuses one that isn't fully merged. A dirty worktree or a refused branch stays, with a line on the page saying why. Never `git branch -D`, never run the force commands `wt` prints, and never delete a remote branch. Mark the task `merged` with an `outcome` saying what changed and where it differs from the plan.
 
 Push and open each PR as the guide's Delivery says. Only the user merges a PR.
 
@@ -41,8 +42,9 @@ From the time a PR opens, draft or ready, carry it through review as the guide's
 
 - **Questions** go on the plan page, as the guide describes, rather than in the session, and its run is this one: its watches are part of this session's waits.
 - **Replies** post without asking when the PR's `replies` is `auto` or absent. When it's `confirm`, its confirmation is the guide's Post or Edit question.
-- **Code changes** go through the cycle above. Each round of fixes, whether for a reviewer, a failing check, or a conflict that needs more than a clean merge, gets its own worktree and agent, named for the PR and the round (such as `p1-review-2`), a fresh review, and a merge onto the PR branch, which you then push. Journal the round on the page rather than adding a task.
+- **Code changes** go through the cycle above. Each round of fixes, whether for a reviewer, a failing check, or a conflict that needs more than a clean merge, gets its own worktree, branch, and agent, named as the guide says for a round of fixes (an agent such as `api-review-fixes`), a fresh review, and a merge onto the PR branch, which you then push. Journal the round on the page rather than adding a task.
 - **What it waits on** goes in the PR's `waiting_on`.
+- **When it merges or closes**, run `wt remove` on its branch. After a squash merge `wt` keeps the branch, since it isn't an ancestor of the default branch; leave it there. GitHub retargets the PR stacked on it, `drive-pr` merges the new base into that one, and you update the stack line in the remaining PRs' descriptions.
 
 Several PRs are driven at once, each with its own watches.
 
@@ -58,7 +60,7 @@ When the work is stuck because nothing can move without an answer, end your turn
 
 ## Resuming
 
-Run it again with the same URL. Trust the page for the plan, then reconcile it with reality: each `in_progress` task's worktree, whether its agent is still alive, the PR's state, and the branches. Fix the page where reality differs and journal it. Relaunch an agent that died into its existing worktree with a seed that says where the work stands. Re-arm the watches for each PR in review; `watch-pr` counts a review that arrived while nothing watched as unanswered, so nothing is missed.
+Run it again with the same URL. Trust the page for the plan, then reconcile it with reality: each `in_progress` task's worktree (`wt list` shows them; the plan's start with its slug), whether its agent is still alive, the PR's state, and the branches. Fix the page where reality differs and journal it. Relaunch an agent that died into its existing worktree with a seed that says where the work stands. Re-arm the watches for each PR in review; `watch-pr` counts a review that arrived while nothing watched as unanswered, so nothing is missed.
 
 ## Boundaries
 

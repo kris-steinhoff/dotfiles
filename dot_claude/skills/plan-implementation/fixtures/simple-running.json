@@ -19,7 +19,7 @@
       "verify": "Migration applies and rolls back on a copy of last night's dump; inserting two overlapping ranges for one order fails.",
       "status": "merged",
       "depends_on": [],
-      "branch": "feature/standing-order-pause-for-holiday-closures-t1-migration",
+      "branch": "standing-order-pause-t1-migration",
       "outcome": "Migration 0042 landed with a btree_gist exclusion constraint on (standing_order_id, daterange(starts_on, ends_on, '[]')) where cancelled_at is null. Needed CREATE EXTENSION IF NOT EXISTS btree_gist, which the staging role already allowed.",
       "order": 1,
       "pr": "P1"
@@ -39,7 +39,7 @@
         "T1",
         "Q1"
       ],
-      "branch": "feature/standing-order-pause-for-holiday-closures-t2-model-validation",
+      "branch": "standing-order-pause-t2-model-validation",
       "outcome": "Cap is 8 weeks per Q1. Added PauseError.TOO_LATE_FOR_NEXT_DELIVERY as a separate error code; the plan had one generic 'invalid range' error.",
       "order": 2,
       "pr": "P1"
@@ -58,7 +58,7 @@
       "depends_on": [
         "T2"
       ],
-      "branch": "feature/standing-order-pause-for-holiday-closures-t3-generator-skips-pauses",
+      "branch": "standing-order-pause-t3-generator-skips-pauses",
       "outcome": "As planned. The staging run went from 41s to 44s.",
       "order": 3,
       "pr": "P1"
@@ -78,7 +78,7 @@
       "depends_on": [
         "T3"
       ],
-      "branch": "feature/standing-order-pause-for-holiday-closures-t4-pause-endpoints",
+      "branch": "standing-order-pause-t4-pause-endpoints",
       "outcome": "Returns 404 rather than 403 for another café's order, to match the other order endpoints. Early resume regenerates rows inline; measured at 120 ms for a 14-day window.",
       "order": 4,
       "pr": "P1"
@@ -97,7 +97,7 @@
       "depends_on": [
         "T4"
       ],
-      "branch": "feature/standing-order-pause-for-holiday-closures-t5-flag-and-permission",
+      "branch": "standing-order-pause-t5-flag-and-permission",
       "outcome": "Flag is per-café (a list of café ids) instead of global, because Ottoline wants to pilot with three cafés first.",
       "order": 5,
       "pr": "P1"
@@ -117,7 +117,7 @@
       "depends_on": [
         "T5"
       ],
-      "branch": "feature/standing-order-pause-for-holiday-closures-t6-pause-dialog-ui",
+      "branch": "standing-order-pause-t6-pause-dialog-ui",
       "order": 6,
       "pr": "P1"
     },
@@ -136,7 +136,7 @@
       "depends_on": [
         "T5"
       ],
-      "branch": "feature/standing-order-pause-for-holiday-closures-t7-confirmation-and-reminder-emails",
+      "branch": "standing-order-pause-t7-confirmation-and-reminder",
       "order": 7,
       "pr": "P1"
     },
@@ -154,7 +154,7 @@
       "depends_on": [
         "T5"
       ],
-      "branch": "feature/standing-order-pause-for-holiday-closures-t8-production-sheet-footnote",
+      "branch": "standing-order-pause-t8-production-sheet-footnote",
       "order": 8,
       "pr": "P1"
     },
@@ -227,7 +227,8 @@
     "prs/P1": {
       "title": "Pause standing orders for holiday closures",
       "order": 1,
-      "branch": "feature/standing-order-pause-for-holiday-closures",
+      "slug": "holiday-closures",
+      "branch": "standing-order-pause-holiday-closures",
       "base": "main",
       "status": "draft",
       "url": "https://code.marlowestreet.example/wholesale/ordering-site/pull/87",
@@ -394,6 +395,7 @@
       "title": "Standing order pause for wholesale cafés",
       "objective": "Let a wholesale café pause a standing order for a date range, such as a holiday closure, without cancelling it. Paused orders produce no deliveries, no invoice lines, and no bake, and restart on their own.",
       "source": "docs/specs/standing-order-pause.md",
+      "slug": "standing-order-pause",
       "status": "running",
       "approach": "Store pauses in their own table and make the nightly delivery generator the one place that honours them, so the production sheet, invoicing and routes all inherit it from delivery rows.\n\nThe café UI, the emails, and the bakers' footnote are independent of each other once the API and flag exist, so they run side by side. Staff tooling and the end-to-end test come last.",
       "delivery": "One PR into main, opened as a draft after the first merge and marked ready when every task is merged. Rolled out café by café behind a feature flag.",

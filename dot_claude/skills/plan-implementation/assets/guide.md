@@ -16,6 +16,7 @@ The plan page has two kinds of reader. People open it to follow the work and to 
 
 - `title`, and `objective`, the goal in two or three sentences. The page doesn't show the objective; it is for the agents reading the plan.
 - `source`: where the plan came from, such as a spec's path or a tracker key.
+- `slug`: the plan's short name, which every branch it makes starts with (see Branches and worktrees). It is the tracker key in lowercase followed by a few words of its title, such as nxc-162-household-editing, or a few words of the title alone when there is no tracker.
 - `status`: see Status below.
 - `approach`: the plan in plain words, for someone who wants a refresher: what will change, in what order, and why it is built that way, in one or two short paragraphs and under 800 characters. It lists nothing; the detail is on the tasks.
 - `delivery`: how the work reaches the base branch, in a sentence or two (see Delivery).
@@ -23,7 +24,7 @@ The plan page has two kinds of reader. People open it to follow the work and to 
 - `out_of_scope` and `risks`: lists of short sentences.
 - `jira_browse_url` and `epics` (a map of key to title), when the work has a tracker. The page builds a task's epic links from them.
 - `driver`: `{session, since}` for the session working the plan, while one is.
-- `handover`: `{summary, branch, pr_url, look_first, risks}`, written when work is ready for review. `look_first` and `risks` are lists.
+- `handover`: `{summary, look_first, risks}`, written when work is ready for review. `look_first` and `risks` are lists. The PRs and their branches are in `prs`.
 - `started_at`, `updated_at`.
 
 `tasks/T<n>`, numbered in build order, with `order` equal to `n`:
@@ -34,12 +35,13 @@ The plan page has two kinds of reader. People open it to follow the work and to 
 - `blocked_on`: while a task is `blocked`, what it waits on, in a sentence a person could act on, such as who has to do what. Remove it when the task moves on.
 - `depends_on`: ids of tasks, which the page draws in the graph, and of questions, which it lists on the task.
 - `epics` (a list of keys), and `pr`, the id of the pull request the task lands in.
-- `branch` and `outcome`, filled in as the task moves. `outcome` says what actually changed and where that differs from the plan.
+- `branch`, set when the task starts and named as Branches and worktrees says, and `outcome`, filled in when it merges. `outcome` says what actually changed and where that differs from the plan.
 
 `prs/P<n>`, the pull requests the plan lands as:
 
 - `title`, `summary`, `order`.
-- `branch`, and `base`, which is the base branch or the id of the PR this one stacks on.
+- `slug`, a few words naming the PR, and `branch`, the plan's slug and the PR's slug joined by a hyphen (see Branches and worktrees).
+- `base`: the base branch for the first PR, and for each later one the id of the PR it stacks on (see Delivery).
 - `status`: `planned`, `draft`, `open`, `merged`, or `closed`. `url` once it's open.
 - `replies`: `auto` or `confirm`, whether replies to the PR's reviewers post without asking the user first (see PRs in review). Absent means `auto`.
 - `waiting_on`: while the PR is draft or open, what it waits on, in a sentence a person could act on, such as whose review it needs or which failing check needs someone. It is for people, like a task's `blocked_on`. Remove it when the PR merges or closes.
@@ -72,15 +74,29 @@ Build only while `status` is `running`.
 
 ## Delivery
 
-Unless `delivery` says otherwise, the plan lands as one PR. When you start and there are no `prs`, create `prs/P1`, with `status: planned`, a branch name you've confirmed with the user, and `pr: "P1"` on every task.
+Unless `delivery` says otherwise, the plan lands as one PR. When you start and there are no `prs`, create `prs/P1` with `status: planned`, a `slug`, its `branch`, and `pr: "P1"` on every task.
 
-Watch for reasons to split: finished work would sit for a long time behind tasks waiting on something outside the repository, the PR is growing past what one review can hold, or part of it needs a different reviewer or an earlier deploy. Propose a split as a question. Create, split, or merge PRs, or move tasks between them, only on a yes.
+When the plan lands as several PRs, they form one stack in build order: the first is based on the base branch, and each later one on the PR before it. A task lands in the same PR as the tasks it depends on, or in one above them, never below. That way work that comes up while earlier PRs wait for review always has a base. Base a PR directly on the base branch only when the user asks, such as for a fix that has to deploy first.
+
+Watch for reasons to split: finished work would sit for a long time behind tasks waiting on something outside the repository, the PR is growing past what one review can hold, or part of it needs a different reviewer or an earlier deploy. Propose a split as a question. Create, split, or merge PRs, or move tasks between them, only on a yes. When the user adds work after the PRs it builds on have opened, propose where it lands in the same question, recommending a new PR at the top of the stack.
+
+When there is more than one PR, each one's description opens with where it sits in the stack: the PR it stacks on and the PR that stacks on it, by number. Keep that line current as PRs open, merge, and close.
+
+## Branches and worktrees
+
+Every branch this plan makes starts with `run/main.slug`, so a person can list the whole plan with one pattern:
+
+- A PR's branch is the plan's slug and the PR's slug, such as nxc-162-household-editing-api. PR branches are the only ones pushed.
+- A task's branch is the plan's slug, the task's id in lowercase, and a few words of its title, such as nxc-162-household-editing-t3-validation.
+- A round of fixes on an open PR is the PR's branch and a few words naming the round, such as nxc-162-household-editing-api-review-fixes.
+
+Every branch is checked out in its own worktree, made with `wt add` from the repository's main checkout, and never in the main checkout itself. A PR's worktree is cut from its base, the base branch or the branch of the PR it stacks on, when its first task starts, and lasts until the PR merges or closes: tasks merge into it there, and its pushes go from there. A task's or a round's worktree is cut from its PR's branch with `wt add <branch> --base <PR branch>`, and is removed once it merges. When the repository's instructions name another way to make worktrees, follow them, keeping these names.
 
 ## Working the tasks
 
 A task is ready when it is `pending`, every task in its `depends_on` is `merged` or `dropped`, and every question in it is answered. Take ready tasks in `order`.
 
-Each task gets its own branch off its PR's branch, in its own worktree, by the repository's instructions. Move its `status` as it goes: `in_progress` from the start of the work until review passes, then `merged` with an `outcome`. Nobody reviews their own work.
+Each task gets its own branch off its PR's branch, in its own worktree, as Branches and worktrees says. Move its `status` as it goes: `in_progress` from the start of the work until review passes, then `merged` with an `outcome`. Nobody reviews their own work.
 
 Push a PR's branch and open it as a draft when its first task merges, and mark it ready for review when its tasks are all merged and its checks pass. If you aren't allowed to mark it ready, that is a person's step (see Questions and decisions), and the PR stays in review meanwhile. Only the user merges a PR.
 

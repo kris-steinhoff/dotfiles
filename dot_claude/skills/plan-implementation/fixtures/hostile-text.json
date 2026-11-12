@@ -10,6 +10,7 @@
       "title": "Title with <img src=x onerror=\"window.__pwned=1\">, `backticks`, README.md, and <script>window.__pwned=1</script>",
       "objective": "A plan whose text is hostile to the page: markup that would act if parsed, backticks that don't pair, and words that nearly look like paths.",
       "source": "fixtures/README.md",
+      "slug": "hostile",
       "status": "running",
       "approach": "Bare <img src=x onerror=\"window.__pwned=1\"> and <script>window.__pwned=1</script>. Inside backticks `<img src=x onerror=\"window.__pwned=1\">` and `<script>window.__pwned=1</script>`.\n\nA single stray ` backtick. A pair split `across\na line` break. An empty `` pair. A pair `   ` holding only spaces. A line of three:\n```\nThe end.\n\nPaths to find: dot_claude/skills/x/SKILL.md, README.md, ~/.claude/settings.json, ../y/z.py, /usr/bin/python3, a/b.md:42, fixtures/, .chezmoiignore, and (fixtures/README.md) too.\n\nNear misses: and/or, read/write, CI/CD, T1/T2/T3, TCP/IP/UDP, 50/50, 24/7, 10/31/2026, n/a, j/k/m/b, e.g., v1.2, https://plan.example/a/b.md, and git@host.example:o/r.git.\n\nKnown wrong matches: before/after/during and Node.js.\n\nA long path: `dot_claude/segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_xx.md`.",
       "delivery": "Bare <img src=x onerror=\"window.__pwned=1\"> and <script>window.__pwned=1</script>. Inside backticks `<img src=x onerror=\"window.__pwned=1\">` and `<script>window.__pwned=1</script>`.\n\nA single stray ` backtick. A pair split `across\na line` break. An empty `` pair. A pair `   ` holding only spaces. A line of three:\n```\nThe end.\n\nPaths to find: dot_claude/skills/x/SKILL.md, README.md, ~/.claude/settings.json, ../y/z.py, /usr/bin/python3, a/b.md:42, fixtures/, .chezmoiignore, and (fixtures/README.md) too.\n\nNear misses: and/or, read/write, CI/CD, T1/T2/T3, TCP/IP/UDP, 50/50, 24/7, 10/31/2026, n/a, j/k/m/b, e.g., v1.2, https://plan.example/a/b.md, and git@host.example:o/r.git.\n\nKnown wrong matches: before/after/during and Node.js.\n\nA long path: `dot_claude/segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_xx.md`.",
@@ -51,8 +52,6 @@
       },
       "handover": {
         "summary": "Bare <img src=x onerror=\"window.__pwned=1\"> and <script>window.__pwned=1</script>. Inside backticks `<img src=x onerror=\"window.__pwned=1\">` and `<script>window.__pwned=1</script>`.\n\nA single stray ` backtick. A pair split `across\na line` break. An empty `` pair. A pair `   ` holding only spaces. A line of three:\n```\nThe end.\n\nPaths to find: dot_claude/skills/x/SKILL.md, README.md, ~/.claude/settings.json, ../y/z.py, /usr/bin/python3, a/b.md:42, fixtures/, .chezmoiignore, and (fixtures/README.md) too.\n\nNear misses: and/or, read/write, CI/CD, T1/T2/T3, TCP/IP/UDP, 50/50, 24/7, 10/31/2026, n/a, j/k/m/b, e.g., v1.2, https://plan.example/a/b.md, and git@host.example:o/r.git.\n\nKnown wrong matches: before/after/during and Node.js.\n\nA long path: `dot_claude/segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_xx.md`.",
-        "branch": "hostile/`branch`",
-        "pr_url": "https://plan.example/pr/1",
         "look_first": [
           "Bare <img src=x onerror=\"window.__pwned=1\"> and <script>window.__pwned=1</script>. Inside backticks `<img src=x onerror=\"window.__pwned=1\">` and `<script>window.__pwned=1</script>`.",
           "A single stray ` backtick. A pair split `across\na line` break. An empty `` pair. A pair `   ` holding only spaces. A line of three:\n```\nThe end.",
@@ -89,7 +88,7 @@
       "status": "merged",
       "depends_on": [],
       "pr": "P1",
-      "branch": "hostile/`branch`",
+      "branch": "hostile-t1-`branch`",
       "outcome": "Bare <img src=x onerror=\"window.__pwned=1\"> and <script>window.__pwned=1</script>. Inside backticks `<img src=x onerror=\"window.__pwned=1\">` and `<script>window.__pwned=1</script>`.\n\nA single stray ` backtick. A pair split `across\na line` break. An empty `` pair. A pair `   ` holding only spaces. A line of three:\n```\nThe end.\n\nPaths to find: dot_claude/skills/x/SKILL.md, README.md, ~/.claude/settings.json, ../y/z.py, /usr/bin/python3, a/b.md:42, fixtures/, .chezmoiignore, and (fixtures/README.md) too.\n\nNear misses: and/or, read/write, CI/CD, T1/T2/T3, TCP/IP/UDP, 50/50, 24/7, 10/31/2026, n/a, j/k/m/b, e.g., v1.2, https://plan.example/a/b.md, and git@host.example:o/r.git.\n\nKnown wrong matches: before/after/during and Node.js.\n\nA long path: `dot_claude/segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_xx.md`.",
       "order": 1
     },
@@ -114,7 +113,8 @@
       "title": "Title with <img src=x onerror=\"window.__pwned=1\">, `backticks`, README.md, and <script>window.__pwned=1</script>",
       "summary": "Bare <img src=x onerror=\"window.__pwned=1\"> and <script>window.__pwned=1</script>. Inside backticks `<img src=x onerror=\"window.__pwned=1\">` and `<script>window.__pwned=1</script>`.\n\nA single stray ` backtick. A pair split `across\na line` break. An empty `` pair. A pair `   ` holding only spaces. A line of three:\n```\nThe end.\n\nPaths to find: dot_claude/skills/x/SKILL.md, README.md, ~/.claude/settings.json, ../y/z.py, /usr/bin/python3, a/b.md:42, fixtures/, .chezmoiignore, and (fixtures/README.md) too.\n\nNear misses: and/or, read/write, CI/CD, T1/T2/T3, TCP/IP/UDP, 50/50, 24/7, 10/31/2026, n/a, j/k/m/b, e.g., v1.2, https://plan.example/a/b.md, and git@host.example:o/r.git.\n\nKnown wrong matches: before/after/during and Node.js.\n\nA long path: `dot_claude/segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_xx.md`.",
       "order": 1,
-      "branch": "hostile/`branch`",
+      "slug": "`branch`",
+      "branch": "hostile-`branch`",
       "base": "main",
       "status": "draft",
       "url": "https://plan.example/pr/1"

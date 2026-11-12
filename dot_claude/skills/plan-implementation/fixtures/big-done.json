@@ -26,7 +26,7 @@
       "depends_on": [],
       "order": 1,
       "pr": "P1",
-      "branch": "oakhollow/t1-service-skeleton-and-ci-pipeline",
+      "branch": "cat-88-catalogue-migration-t1-service-skeleton",
       "outcome": "Done as planned. Added a make doctor target that checks Postgres and Go versions because two people lost an afternoon to Postgres 14 locally."
     },
     "tasks/T2": {
@@ -46,7 +46,7 @@
       ],
       "order": 2,
       "pr": "P1",
-      "branch": "oakhollow/t2-migration-framework",
+      "branch": "cat-88-catalogue-migration-t2-migration-framework",
       "outcome": "Runner takes an advisory lock so two workers can't race. Schema diff check landed with a normaliser that strips comments, otherwise pg_dump noise made it flaky."
     },
     "tasks/T3": {
@@ -65,7 +65,7 @@
       ],
       "order": 3,
       "pr": "P1",
-      "branch": "oakhollow/t3-branch-config-loader",
+      "branch": "cat-88-catalogue-migration-t3-branch-config-loader",
       "outcome": "As planned. Config for the 40 branches is generated from the legacy export in T6 rather than typed by hand."
     },
     "tasks/T4": {
@@ -84,7 +84,7 @@
       ],
       "order": 4,
       "pr": "P1",
-      "branch": "oakhollow/t4-staff-oauth-login",
+      "branch": "cat-88-catalogue-migration-t4-staff-oauth-login",
       "outcome": "Done. Session key rotation reads two keys so a rotation doesn't log everyone out."
     },
     "tasks/T5": {
@@ -102,7 +102,7 @@
       ],
       "order": 5,
       "pr": "P1",
-      "branch": "oakhollow/t5-audit-log",
+      "branch": "cat-88-catalogue-migration-t5-audit-log",
       "outcome": "Partitioned by month from the start after Ibrahim pointed out we expect ~30M events a year. Partition creation is a worker job."
     },
     "tasks/T6": {
@@ -122,7 +122,7 @@
       ],
       "order": 6,
       "pr": "P1",
-      "branch": "oakhollow/t6-branch-and-location-reference-data",
+      "branch": "cat-88-catalogue-migration-t6-branch-and-location",
       "outcome": "Found 9 shelving locations with the same code at different branches that the legacy system treated as one. Split them; list is in the PR description."
     },
     "tasks/T7": {
@@ -143,7 +143,7 @@
       ],
       "order": 7,
       "pr": "P1",
-      "branch": "oakhollow/t7-staff-roles-and-permissions",
+      "branch": "cat-88-catalogue-migration-t7-staff-roles",
       "outcome": "Waiving fines is split into fine.waive_small (under $5) and fine.waive_any after the circulation managers asked for it."
     },
     "tasks/T8": {
@@ -162,7 +162,7 @@
       ],
       "order": 8,
       "pr": "P1",
-      "branch": "oakhollow/t8-metrics-and-tracing-baseline",
+      "branch": "cat-88-catalogue-migration-t8-metrics-and-tracing",
       "outcome": "Done. Dropped the patron_id label we had planned on metrics because it blows up cardinality; it stays in traces only."
     },
     "tasks/T9": {
@@ -184,7 +184,7 @@
         "CAT-88"
       ],
       "pr": "P2",
-      "branch": "oakhollow/t9-bibliographic-record-schema",
+      "branch": "cat-88-catalogue-migration-t9-bibliographic-record-schema",
       "outcome": "As planned. isbn is stored normalised to ISBN-13 with the original kept in the raw record."
     },
     "tasks/T10": {
@@ -207,7 +207,7 @@
         "CAT-112"
       ],
       "pr": "P2",
-      "branch": "oakhollow/t10-item-and-copy-schema",
+      "branch": "cat-88-catalogue-migration-t10-item-and-copy",
       "outcome": "Legacy data had 1,380 duplicate barcodes across branches (mostly reused label stock). Added barcode_conflicts report; Tadeusz's team cleared them before the pilot."
     },
     "tasks/T11": {
@@ -229,7 +229,7 @@
         "CAT-88"
       ],
       "pr": "P2",
-      "branch": "oakhollow/t11-marc-import-reader",
+      "branch": "cat-88-catalogue-migration-t11-marc-import-reader",
       "outcome": "Implemented a MARC-8 to UTF-8 table lookup ourselves because the available libraries all failed on diacritics in Vietnamese records."
     },
     "tasks/T12": {
@@ -252,7 +252,7 @@
         "CAT-88"
       ],
       "pr": "P2",
-      "branch": "oakhollow/t12-record-dedupe-matcher",
+      "branch": "cat-88-catalogue-migration-t12-record-dedupe-matcher",
       "outcome": "Hit 93% recall with zero false merges at the 0.94 threshold. Large print and audiobook editions share ISBN stems with the print book and needed a format guard."
     },
     "tasks/T13": {
@@ -274,7 +274,7 @@
         "CAT-88"
       ],
       "pr": "P2",
-      "branch": "oakhollow/t13-authority-headings-table",
+      "branch": "cat-88-catalogue-migration-t13-authority-headings-table",
       "outcome": "Resolved 97.4%. The rest land in an unresolved_headings table that cataloguers can work through."
     },
     "tasks/T14": {
@@ -296,7 +296,7 @@
         "CAT-88"
       ],
       "pr": "P2",
-      "branch": "oakhollow/t14-subject-and-series-normalisation",
+      "branch": "cat-88-catalogue-migration-t14-subject-and-series",
       "outcome": "Diacritic folding is sort-key only. Folding in the display form made Zoë into Zoe in the public site and drew a complaint in the pilot."
     },
     "tasks/T15": {
@@ -318,7 +318,7 @@
         "CAT-88"
       ],
       "pr": "P2",
-      "branch": "oakhollow/t15-search-index-mapping",
+      "branch": "cat-88-catalogue-migration-t15-search-index-mapping",
       "outcome": "Built as planned. Added a trigram index for the title prefix box; the tsvector alone was poor for as-you-type."
     },
     "tasks/T16": {
@@ -340,7 +340,7 @@
         "CAT-112"
       ],
       "pr": "P2",
-      "branch": "oakhollow/t16-copy-level-availability-view",
+      "branch": "cat-88-catalogue-migration-t16-copy-level-availability",
       "outcome": "Done. Refresh lag p99 is about 1.2 seconds in staging load tests."
     },
     "tasks/T17": {
@@ -363,7 +363,7 @@
         "CAT-88"
       ],
       "pr": "P2",
-      "branch": "oakhollow/t17-bulk-import-job-runner",
+      "branch": "cat-88-catalogue-migration-t17-bulk-import-job",
       "outcome": "Chunk size 2,000 after trying 500 and 10,000; the larger size held locks long enough to stall the staging indexer."
     },
     "tasks/T18": {
@@ -386,7 +386,7 @@
         "CAT-88"
       ],
       "pr": "P2",
-      "branch": "oakhollow/t18-dedupe-review-queue-for-cataloguers",
+      "branch": "cat-88-catalogue-migration-t18-dedupe-review-queue",
       "outcome": "Added keyboard shortcuts (j/k/m/b) at Tadeusz's request; cataloguers work through hundreds of pairs per sitting."
     },
     "tasks/T19": {
@@ -408,7 +408,7 @@
         "CAT-88"
       ],
       "pr": "P2",
-      "branch": "oakhollow/t19-search-indexer-worker",
+      "branch": "cat-88-catalogue-migration-t19-search-indexer-worker",
       "outcome": "Full rebuild takes 62 minutes on staging. Builder skips records with status = suppressed, which wasn't in the plan; cataloguers use it for hidden drafts."
     },
     "tasks/T20": {
@@ -432,7 +432,7 @@
         "CAT-88"
       ],
       "pr": "P2",
-      "branch": "oakhollow/t20-record-edit-api-with-audit",
+      "branch": "cat-88-catalogue-migration-t20-record-edit-api",
       "outcome": "Done. Validation rules are data in internal/bib/rules.yaml so cataloguers can propose changes by PR."
     },
     "tasks/T21": {
@@ -473,7 +473,7 @@
         "CAT-88"
       ],
       "pr": "P2",
-      "branch": "oakhollow/t22-pilot-import-of-three-branches",
+      "branch": "cat-88-catalogue-migration-t22-pilot-import",
       "outcome": "Found 14 distinct problems, all fixed (list in the PR). Sign-off from all three branches came on 22 September."
     },
     "tasks/T23": {
@@ -495,7 +495,7 @@
         "CAT-112"
       ],
       "pr": "P3",
-      "branch": "oakhollow/t23-patron-schema",
+      "branch": "cat-88-catalogue-migration-t23-patron-schema",
       "outcome": "As planned. Added preferred_language after the Spanish-language branches asked about notices."
     },
     "tasks/T24": {
@@ -518,7 +518,7 @@
         "CAT-112"
       ],
       "pr": "P3",
-      "branch": "oakhollow/t24-patron-import-with-card-number-remap",
+      "branch": "cat-88-catalogue-migration-t24-patron-import",
       "outcome": "Collisions came to 3,112 numbers, not the estimated 400. Reissue letters handled by Zoë's team via the export in tools/legacypatrons/reissue.csv."
     },
     "tasks/T25": {
@@ -538,7 +538,7 @@
       ],
       "order": 25,
       "pr": "P3",
-      "branch": "oakhollow/t25-patron-privacy-and-retention",
+      "branch": "cat-88-catalogue-migration-t25-patron-privacy",
       "outcome": "Anonymise by nulling patron_id and keeping the rest for statistics. Dry-run mode prints counts only."
     },
     "tasks/T26": {
@@ -556,7 +556,7 @@
       ],
       "order": 26,
       "pr": "P3",
-      "branch": "oakhollow/t26-card-number-check-digit-and-lookup",
+      "branch": "cat-88-catalogue-migration-t26-card-number-check",
       "outcome": "Done. Lookup by phone number was not in the plan; staff asked for it and it is behind patron.lookup_phone."
     },
     "tasks/T27": {
@@ -577,7 +577,7 @@
         "CAT-112"
       ],
       "pr": "P3",
-      "branch": "oakhollow/t27-household-and-guardian-links",
+      "branch": "cat-88-catalogue-migration-t27-household-and-guardian",
       "outcome": "As planned. Child accounts lose the guardian link automatically at 16 unless renewed."
     },
     "tasks/T28": {
@@ -601,7 +601,7 @@
         "CAT-112"
       ],
       "pr": "P3",
-      "branch": "oakhollow/t28-patron-api",
+      "branch": "cat-88-catalogue-migration-t28-patron-api",
       "outcome": "Done. The matrix test is generated from roles.yaml, so it fails when a role changes without a matching test decision."
     },
     "tasks/T29": {
@@ -621,7 +621,7 @@
       ],
       "order": 29,
       "pr": "P3",
-      "branch": "oakhollow/t29-staff-patron-search",
+      "branch": "cat-88-catalogue-migration-t29-staff-patron-search",
       "outcome": "Used trigram indexes on a lower-cased name column. Mononyms and O'Brien style names needed explicit fixtures."
     },
     "tasks/T30": {
@@ -644,7 +644,7 @@
         "CAT-112"
       ],
       "pr": "P3",
-      "branch": "oakhollow/t30-cross-branch-borrowing-rules",
+      "branch": "cat-88-catalogue-migration-t30-cross-branch-borrowing",
       "outcome": "Encoded 58 of 60; two cases in the agreement contradict each other (appendix B and section 4.2). Nguyễn Thị Hạnh ruled for appendix B; journalled."
     },
     "tasks/T31": {
@@ -667,7 +667,7 @@
         "CAT-112"
       ],
       "pr": "P4",
-      "branch": "oakhollow/t31-loan-and-checkout-model",
+      "branch": "cat-88-catalogue-migration-t31-loan-and-checkout",
       "outcome": "Done. Due dates roll to the next open day per branch config, which turned out to matter: 11 branches close Mondays."
     },
     "tasks/T32": {
@@ -690,7 +690,7 @@
         "CAT-112"
       ],
       "pr": "P4",
-      "branch": "oakhollow/t32-holds-queue-model",
+      "branch": "cat-88-catalogue-migration-t32-holds-queue-model",
       "outcome": "Limit of 25 for adults, 10 for under 13s, enforced in the service rather than a constraint so staff overrides leave an audit event."
     },
     "tasks/T33": {
@@ -712,7 +712,7 @@
         "CAT-112"
       ],
       "pr": "P4",
-      "branch": "oakhollow/t33-hold-placement-api",
+      "branch": "cat-88-catalogue-migration-t33-hold-placement-api",
       "outcome": "As planned. Freeze cap is a config value."
     },
     "tasks/T34": {
@@ -735,7 +735,7 @@
         "CAT-112"
       ],
       "pr": "P4",
-      "branch": "oakhollow/t34-hold-fulfilment-pick-list",
+      "branch": "cat-88-catalogue-migration-t34-hold-fulfilment-pick",
       "outcome": "Added a tie-break on copy age so older copies circulate first. Replay test uses a recorded night from the pilot branches."
     },
     "tasks/T35": {
@@ -758,7 +758,7 @@
         "CAT-112"
       ],
       "pr": "P4",
-      "branch": "oakhollow/t35-transfers-between-branches",
+      "branch": "cat-88-catalogue-migration-t35-transfers-between-branches",
       "outcome": "Done. Lost-in-transit flag threshold is per courier route in config/couriers.yaml."
     },
     "tasks/T36": {
@@ -781,7 +781,7 @@
         "CAT-112"
       ],
       "pr": "P4",
-      "branch": "oakhollow/t36-courier-manifest-export",
+      "branch": "cat-88-catalogue-migration-t36-courier-manifest-export",
       "outcome": "CSV only; the courier dropped the PDF requirement once they saw the CSV. Packing slips remain for libraries to print."
     },
     "tasks/T37": {
@@ -802,7 +802,7 @@
         "CAT-112"
       ],
       "pr": "P4",
-      "branch": "oakhollow/t37-renewals",
+      "branch": "cat-88-catalogue-migration-t37-renewals",
       "outcome": "Done. Reasons are codes plus message templates in internal/circ/messages.yaml so Zoë's team can reword them."
     },
     "tasks/T38": {
@@ -824,7 +824,7 @@
         "CAT-112"
       ],
       "pr": "P4",
-      "branch": "oakhollow/t38-check-in-and-shelf-ready-flow",
+      "branch": "cat-88-catalogue-migration-t38-check",
       "outcome": "Done. Damaged-return button added after the Pell Street review; it sets in_repair and notifies the cataloguers."
     },
     "tasks/T39": {
@@ -845,7 +845,7 @@
         "CAT-112"
       ],
       "pr": "P4",
-      "branch": "oakhollow/t39-hold-expiry-job",
+      "branch": "cat-88-catalogue-migration-t39-hold-expiry-job",
       "outcome": "As planned. Used the pickup branch's time zone; the consortium spans two."
     },
     "tasks/T40": {
@@ -868,7 +868,7 @@
         "CAT-112"
       ],
       "pr": "P5",
-      "branch": "oakhollow/t40-fine-accrual-engine",
+      "branch": "cat-88-catalogue-migration-t40-fine-accrual-engine",
       "outcome": "Reproduced legacy fines on 99.6% of loans. The rest are legacy rounding bugs; Nguyễn Thị Hạnh approved the new figures."
     },
     "tasks/T41": {
@@ -891,7 +891,7 @@
         "CAT-112"
       ],
       "pr": "P5",
-      "branch": "oakhollow/t41-fine-free-for-under-18s",
+      "branch": "cat-88-catalogue-migration-t41-fine-free",
       "outcome": "Waived 41,870 existing fines totalling $52,310. Finance accepted the tool's dry-run report as the record."
     },
     "tasks/T42": {
@@ -913,7 +913,7 @@
         "CAT-112"
       ],
       "pr": "P5",
-      "branch": "oakhollow/t42-record-payments-at-the-desk",
+      "branch": "cat-88-catalogue-migration-t42-record-payments-at",
       "outcome": "Done. Part payments are allowed; Q&A with finance settled that over-payment is refused rather than credited."
     },
     "tasks/T43": {
@@ -937,7 +937,7 @@
         "CAT-112"
       ],
       "pr": "P5",
-      "branch": "oakhollow/t43-notices-overdue-and-hold-ready",
+      "branch": "cat-88-catalogue-migration-t43-notices-overdue",
       "outcome": "Added a 3-day pre-due reminder because every branch asked. Opt-in only."
     },
     "tasks/T44": {
@@ -960,7 +960,7 @@
         "CAT-88"
       ],
       "pr": "P5",
-      "branch": "oakhollow/t44-public-search-api",
+      "branch": "cat-88-catalogue-migration-t44-public-search-api",
       "outcome": "Done. Query parsing supports quoted phrases and author: / subject: fields; other fields are plain text."
     },
     "tasks/T45": {
@@ -983,7 +983,7 @@
         "CAT-88"
       ],
       "pr": "P5",
-      "branch": "oakhollow/t45-public-search-site-pages",
+      "branch": "cat-88-catalogue-migration-t45-public-search-site",
       "outcome": "Search subdomain went live in staging once Ibrahim applied the DNS change in Q10. Lighthouse accessibility score 98."
     },
     "tasks/T46": {
@@ -1006,7 +1006,7 @@
         "CAT-112"
       ],
       "pr": "P5",
-      "branch": "oakhollow/t46-patron-account-pages",
+      "branch": "cat-88-catalogue-migration-t46-patron-account-pages",
       "outcome": "PIN lockout after 5 failures for 15 minutes, which wasn't specified."
     },
     "tasks/T47": {
@@ -1047,7 +1047,7 @@
         "CAT-112"
       ],
       "pr": "P6",
-      "branch": "oakhollow/t48-desk-client-offline-mode",
+      "branch": "cat-88-catalogue-migration-t48-desk-client-offline",
       "outcome": "Done. Replay is idempotent through the same keys as T31."
     },
     "tasks/T49": {
@@ -1092,7 +1092,7 @@
         "CAT-112"
       ],
       "pr": "P6",
-      "branch": "oakhollow/t50-cutover-rehearsal-tooling",
+      "branch": "cat-88-catalogue-migration-t50-cutover-rehearsal-tooling",
       "outcome": "Rehearsal two took 9h40m. The slowest step is the patron delta import; moving it before the freeze with a catch-up pass saved 2 hours."
     },
     "tasks/T51": {
@@ -1111,7 +1111,7 @@
       ],
       "order": 51,
       "pr": "P6",
-      "branch": "oakhollow/t51-runbook-and-staff-training-material",
+      "branch": "cat-88-catalogue-migration-t51-runbook-and-staff",
       "outcome": "Walkthrough with circulation leads on 29 October produced 11 edits, all applied."
     },
     "tasks/T52": {
@@ -1129,7 +1129,7 @@
       ],
       "order": 52,
       "pr": "P6",
-      "branch": "oakhollow/t52-legacy-read-only-switch",
+      "branch": "cat-88-catalogue-migration-t52-legacy-read-only",
       "outcome": "Done. Banner text is plain HTML dropped into the legacy login page template."
     },
     "questions/Q1": {
@@ -1490,7 +1490,8 @@
     "prs/P1": {
       "title": "Foundations: service skeleton, migrations, branch config, staff login, audit log, roles",
       "order": 1,
-      "branch": "oakhollow/p1-foundations-skeleton-auth-audit-roles",
+      "slug": "foundations-skeleton-auth",
+      "branch": "cat-88-catalogue-migration-foundations-skeleton-auth",
       "base": "main",
       "status": "merged",
       "url": "https://code.oakhollow.example/consortium/catalogued/pull/412",
@@ -1499,7 +1500,8 @@
     "prs/P2": {
       "title": "Catalogue records, import, dedupe and search index",
       "order": 2,
-      "branch": "oakhollow/p2-bibliographic-records-import-dedupe-search-index",
+      "slug": "bibliographic-records-import",
+      "branch": "cat-88-catalogue-migration-bibliographic-records-import",
       "base": "P1",
       "status": "merged",
       "url": "https://code.oakhollow.example/consortium/catalogued/pull/419"
@@ -1507,7 +1509,8 @@
     "prs/P3": {
       "title": "Patron accounts, privacy and cross-branch borrowing rules",
       "order": 3,
-      "branch": "oakhollow/p3-patron-accounts-privacy-borrowing-rules",
+      "slug": "patron-accounts-privacy",
+      "branch": "cat-88-catalogue-migration-patron-accounts-privacy",
       "base": "P2",
       "status": "merged",
       "url": "https://code.oakhollow.example/consortium/catalogued/pull/431",
@@ -1516,7 +1519,8 @@
     "prs/P4": {
       "title": "Circulation: checkout, holds, transfers, renewals, check-in",
       "order": 4,
-      "branch": "oakhollow/p4-circulation-holds-transfers-checkin",
+      "slug": "circulation-holds-transfers",
+      "branch": "cat-88-catalogue-migration-circulation-holds-transfers",
       "base": "P3",
       "status": "merged",
       "url": "https://code.oakhollow.example/consortium/catalogued/pull/440",
@@ -1525,15 +1529,17 @@
     "prs/P5": {
       "title": "Fines, payments, notices, and the public search site",
       "order": 5,
-      "branch": "oakhollow/p5-fines-payments-notices-public-search-site",
-      "base": "main",
+      "slug": "fines-payments-notices",
+      "branch": "cat-88-catalogue-migration-fines-payments-notices",
+      "base": "P4",
       "status": "merged",
       "url": "https://code.oakhollow.example/consortium/catalogued/pull/452"
     },
     "prs/P6": {
       "title": "Desk offline mode, cutover rehearsal tooling, runbook, legacy read-only switch",
       "order": 6,
-      "branch": "oakhollow/p6-desk-offline-cutover-tooling-runbook",
+      "slug": "desk-offline-cutover",
+      "branch": "cat-88-catalogue-migration-desk-offline-cutover",
       "base": "P5",
       "status": "merged",
       "url": "https://code.oakhollow.example/consortium/catalogued/pull/455",
@@ -2215,9 +2221,10 @@
       "title": "Oakhollow catalogue platform migration",
       "objective": "Move all forty Oakhollow Library Consortium branches from their separate legacy systems to one shared catalogue platform: bibliographic records, patron accounts, holds and transfers, overdue fines, the public search site, and the staff circulation desks, cut over in three waves.",
       "source": "CAT-88, CAT-112 and docs/migration/brief.md",
+      "slug": "cat-88-catalogue-migration",
       "status": "done",
       "approach": "Build one modular Go service on Postgres, in six stacked PRs, each reviewable alone.\n\nRecords and patrons are imported by repeatable chunked jobs that resume after failure, so the rehearsals can be run as many times as needed. Search uses the database's own full-text search, as the team chose. Circulation rules are data, resolved in one place, so branches override only where the consortium agreement allows.\n\nCutover is rehearsed with tooling, in three waves of branches, with the legacy system switched read-only at each wave.",
-      "delivery": "Six stacked PRs. The first four are reviewed and merged by Ibrahim Kessel-Dahl or Marguerite; the last two are open for review. Only people merge. Branch names use the oakhollow/ prefix.",
+      "delivery": "Six stacked PRs. The first four are reviewed and merged by Ibrahim Kessel-Dahl or Marguerite; the last two are open for review. Only people merge. Every branch starts with the plan's short name.",
       "done_check": [
         {
           "text": "Every one of the 40 branches' reference data (locations, hours, loan periods) loads from config and validates",
@@ -2310,8 +2317,6 @@
       },
       "handover": {
         "summary": "All 52 tasks are done except three that were dropped on purpose (cover images, voice search, and a printer and scanner driver layer). The platform covers the full scope in the brief: records import with dedupe and search, 1.4M patrons with their card numbers kept where possible, checkout, holds, transfers and renewals, fines with the under-18 waiver, the public site, an offline desk client, and the tooling for a three-wave cutover.\n\nP1 to P4 are merged. P5 (fines, payments, notices, public site) and P6 (desk offline mode, cutover tooling, runbook) are open and stacked: P6 on P5.\n\nTwo cutover rehearsals ran inside the 14-hour window, at 9h40m and 9h55m. Fourteen done-checks were verified and all are met. Every decision that was a person's is in the questions; the sixteen of them are all answered or withdrawn.\n\nWhat I am least sure of is production, not staging: the real patron delta may be bigger than the one we rehearsed with, and the first wave should be watched closely.",
-        "branch": "oakhollow/p6-desk-offline-cutover-tooling-runbook",
-        "pr_url": "https://code.oakhollow.example/consortium/catalogued/pull/455",
         "look_first": [
           "internal/circ/checkout.go: the transaction that locks a copy and resolves the due date. Everything in circulation depends on it.",
           "internal/fines/accrue.go: integer cents, idempotent per loan and date. The 0.4% difference from legacy fines is explained in T40's outcome.",

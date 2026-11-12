@@ -16,6 +16,7 @@
       "title": "Electronic customs declarations through the Kestrel gateway",
       "objective": "Let Halcyon Freightways file import declarations electronically with the national customs gateway straight from a confirmed booking, with tariff classification, duty estimates, broker review, and carrier manifests all in the same flow. The legacy EDI mailbox closes on 31 December, so cutover has to be staged lane by lane and finished before then.",
       "source": "docs/specs/customs-efiling-2026.md (CUST-77 and its sibling epics)",
+      "slug": "cust-77-customs-efiling",
       "status": "running",
       "approach": "Build bottom-up in stacked pull requests, so each can be reviewed on its own. Foundations come first: the schema, a gateway client that retries safely, the tariff import and feature flags. Then the declaration builder, duty and the broker portal; then duty rules, classification review and amendments; and last, carrier manifests, the sandbox run and cutover.\n\nEverything that can reach the customs gateway stays behind flags that default off, and a dry run checks a declaration without sending it. Work that doesn't need the real gateway is finished against a fake one.\n\nDuty is calculated from dated tariff rows, so any declaration can be recomputed against the schedule in force when it was filed.",
       "delivery": "Five stacked PRs, each based on the one before. Only people merge. The first two hold what must be in place before anyone can file, the third is the duty, classification and portal work, the fourth is carrier manifests and the sandbox run, and the fifth is the cutover runbook. Branches are cut from the PR branch they land in.",
@@ -91,7 +92,7 @@
         "CUST-77"
       ],
       "pr": "P1",
-      "branch": "cust-77-declaration-tables-and-migrations",
+      "branch": "cust-77-customs-efiling-t1-declaration-tables",
       "outcome": "Landed as planned, plus a partial unique index on (`booking_id`, `lane_code`) where state is not withdrawn, so a booking cannot hold two live declarations for one lane."
     },
     "tasks/T2": {
@@ -111,7 +112,7 @@
         "CUST-77"
       ],
       "pr": "P1",
-      "branch": "cust-77-gateway-client-signing-and-transport",
+      "branch": "cust-77-customs-efiling-t2-gateway-client-signing",
       "outcome": "Done. The spec's test vectors had one typo in the canonical-request example (a trailing newline); we followed the prose and noted it in `client/README.md`."
     },
     "tasks/T3": {
@@ -131,7 +132,7 @@
         "CUST-81"
       ],
       "pr": "P1",
-      "branch": "cust-81-tariff-schedule-import-job",
+      "branch": "cust-77-customs-efiling-t3-tariff-schedule-import",
       "outcome": "Done. Chapters 98 and 99 (special provisions) have a different column layout, so they got their own parser rather than a branch inside the main one."
     },
     "tasks/T4": {
@@ -150,7 +151,7 @@
         "CUST-92"
       ],
       "pr": "P1",
-      "branch": "cust-92-carrier-feed-envelope-parser",
+      "branch": "cust-77-customs-efiling-t4-carrier-feed-envelope",
       "outcome": "Done as planned."
     },
     "tasks/T5": {
@@ -170,7 +171,7 @@
         "CUST-85"
       ],
       "pr": "P1",
-      "branch": "cust-77-efiling-feature-flags",
+      "branch": "cust-77-customs-efiling-t5-efiling-feature-flags",
       "outcome": "Done. Added a fourth flag, `customs.efiling.dry_run`, which builds and validates a declaration without submitting; T12 needed it."
     },
     "tasks/T6": {
@@ -191,7 +192,7 @@
         "CUST-77"
       ],
       "pr": "P1",
-      "branch": "cust-77-booking-to-declaration-mapper",
+      "branch": "cust-77-customs-efiling-t6-booking-to-declaration",
       "outcome": "Done. LCL consolidations map to one declaration per consignee, not per booking; the plan had assumed one per booking."
     },
     "tasks/T7": {
@@ -212,7 +213,7 @@
         "CUST-77"
       ],
       "pr": "P1",
-      "branch": "cust-77-gateway-retries-and-idempotency-keys",
+      "branch": "cust-77-customs-efiling-t7-gateway-retries",
       "outcome": "Done. The 24-hour window is enforced in the client: past it, `Submit` returns `ErrKeyExpired` instead of silently creating a duplicate."
     },
     "tasks/T8": {
@@ -234,7 +235,7 @@
         "CUST-81"
       ],
       "pr": "P1",
-      "branch": "cust-81-hs-code-lookup-service",
+      "branch": "cust-77-customs-efiling-t8-hs-code-lookup",
       "outcome": "Done."
     },
     "tasks/T9": {
@@ -256,7 +257,7 @@
         "CUST-92"
       ],
       "pr": "P1",
-      "branch": "cust-92-brightwater-maritime-feed-normaliser",
+      "branch": "cust-77-customs-efiling-t9-brightwater-maritime-feed",
       "outcome": "Done. The check-digit test caught 14 containers with typos in the sample week, which is why failures are flagged rather than rejected."
     },
     "tasks/T10": {
@@ -278,7 +279,7 @@
         "CUST-77"
       ],
       "pr": "P1",
-      "branch": "cust-77-declaration-document-attachments",
+      "branch": "cust-77-customs-efiling-t10-declaration-document-attachments",
       "outcome": "Done. Retention is a per-document `retain_until` computed at attach time from the Q3 answer."
     },
     "tasks/T11": {
@@ -299,7 +300,7 @@
         "CUST-85"
       ],
       "pr": "P2",
-      "branch": "cust-85-portal-route-shell-and-scopes",
+      "branch": "cust-77-customs-efiling-t11-portal-route-shell",
       "outcome": "Done. Chose 404 over 403 for customer users so the route's existence is not disclosed."
     },
     "tasks/T12": {
@@ -324,7 +325,7 @@
         "CUST-77"
       ],
       "pr": "P2",
-      "branch": "cust-77-declaration-builder-and-pre-submission-validation",
+      "branch": "cust-77-customs-efiling-t12-declaration-builder",
       "outcome": "Done. Declarant block files as Halcyon with the broker as indirect representative (Q1). 9 validation rules instead of the planned 6: gross >= net weight, packages > 0 and ISO country codes were added after the first review pass."
     },
     "tasks/T13": {
@@ -346,7 +347,7 @@
         "CUST-81"
       ],
       "pr": "P2",
-      "branch": "cust-81-classification-suggestions",
+      "branch": "cust-77-customs-efiling-t13-classification-suggestions",
       "outcome": "Done. Agreement on auto-applied lines was 98.6% at the 0.85 threshold from Q4; the margin rule was added after two near-ties on chapter 85 goods."
     },
     "tasks/T14": {
@@ -369,7 +370,7 @@
         "CUST-81"
       ],
       "pr": "P2",
-      "branch": "cust-81-duty-and-vat-calculation-core",
+      "branch": "cust-77-customs-efiling-t14-duty-and-vat",
       "outcome": "Done. Rounding per line instead of per declaration moved three of the 60 examples by 1 cent; per-line is what the examples do."
     },
     "tasks/T16": {
@@ -392,7 +393,7 @@
         "CUST-85"
       ],
       "pr": "P2",
-      "branch": "cust-85-portal-declaration-list-and-detail-view",
+      "branch": "cust-77-customs-efiling-t16-portal-declaration-list",
       "outcome": "Done."
     },
     "tasks/T17": {
@@ -413,7 +414,7 @@
         "CUST-77"
       ],
       "pr": "P2",
-      "branch": "cust-77-submission-workflow-state-machine",
+      "branch": "cust-77-customs-efiling-t17-submission-workflow-state",
       "outcome": "Done. Added a submitting interim state so a crash mid-send is distinguishable from a declaration that was never sent."
     },
     "tasks/T19": {
@@ -436,7 +437,7 @@
         "CUST-85"
       ],
       "pr": "P3",
-      "branch": "cust-81-portal-classification-review-screen",
+      "branch": "cust-77-customs-efiling-t19-portal-classification-review",
       "outcome": "Done. The tariff text pane truncates at 2,000 characters with an expander; some chapter notes run to 11,000."
     },
     "tasks/T24": {
@@ -458,7 +459,7 @@
         "CUST-77"
       ],
       "pr": "P3",
-      "branch": "cust-77-gateway-response-polling-and-status-mapping",
+      "branch": "cust-77-customs-efiling-t24-gateway-response-polling",
       "outcome": "Done. The fake gateway needed a scripted-delay mode; that lives in `testing/fakegateway`."
     },
     "tasks/T18": {
@@ -482,7 +483,7 @@
         "CUST-81"
       ],
       "pr": "P3",
-      "branch": "cust-81-preferential-origin-and-trade-agreement-rates"
+      "branch": "cust-77-customs-efiling-t18-preferential-origin"
     },
     "tasks/T22": {
       "title": "Customs value: incoterm and freight apportionment",
@@ -525,7 +526,7 @@
         "CUST-85"
       ],
       "pr": "P3",
-      "branch": "cust-85-broker-amendment-and-resubmission-with-revision-diff"
+      "branch": "cust-77-customs-efiling-t23-broker-amendment"
     },
     "tasks/T26": {
       "title": "Reconcile estimated duty with the gateway's assessment",
@@ -694,7 +695,8 @@
       "title": "Customs e-filing foundations",
       "summary": "Schema, signed gateway client with retries and idempotency, tariff import and lookup, carrier envelope and the first normaliser, document attachment, flags.",
       "order": 1,
-      "branch": "cust-77-efiling-foundations",
+      "slug": "efiling-foundations",
+      "branch": "cust-77-customs-efiling-efiling-foundations",
       "base": "main",
       "status": "merged",
       "url": "https://code.halcyon-freight.example/platform/bookings/pull/1184"
@@ -703,7 +705,8 @@
       "title": "Declaration builder, workflow and duty core",
       "summary": "Builds and validates the gateway payload, the submission state machine, duty and VAT calculation, classification suggestions, and the portal shell with list and detail.",
       "order": 2,
-      "branch": "cust-77-declaration-builder-workflow-and-duty-core",
+      "slug": "declaration-builder-workflow",
+      "branch": "cust-77-customs-efiling-declaration-builder-workflow",
       "base": "P1",
       "status": "open",
       "url": "https://code.halcyon-freight.example/platform/bookings/pull/1197",
@@ -713,7 +716,8 @@
     "prs/P3": {
       "title": "Duty rules, classification review and amendment",
       "order": 3,
-      "branch": "cust-81-preference-rates-classification-review-and-amendment-flow",
+      "slug": "preference-rates-classification",
+      "branch": "cust-77-customs-efiling-preference-rates-classification",
       "base": "P2",
       "status": "draft",
       "url": "https://code.halcyon-freight.example/platform/bookings/pull/1203"
@@ -722,14 +726,16 @@
       "title": "Carrier manifests and sandbox conformance",
       "summary": "Manifest generation, Brightwater reconciliation, rejection guidance, and the E2E run against the gateway sandbox.",
       "order": 4,
-      "branch": "cust-92-carrier-manifests-and-sandbox-conformance",
+      "slug": "carrier-manifests",
+      "branch": "cust-77-customs-efiling-carrier-manifests",
       "base": "P3",
       "status": "planned"
     },
     "prs/P5": {
       "title": "Cutover runbook and lane enablement",
       "order": 5,
-      "branch": "cust-77-cutover-runbook",
+      "slug": "cutover-runbook",
+      "branch": "cust-77-customs-efiling-cutover-runbook",
       "base": "P4",
       "status": "planned"
     },

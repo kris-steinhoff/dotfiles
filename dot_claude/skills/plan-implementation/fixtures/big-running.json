@@ -545,7 +545,8 @@
       "title": "Foundation, receiving, and the inventory ledger",
       "summary": "Schema, service skeleton, outbox, auth, the lot and ledger model, ASN ingest, blind receipts, and dock appointments. Everything else builds on this.",
       "order": 1,
-      "branch": "wms-rewrite/foundation-receiving-and-inventory-ledger",
+      "slug": "foundation-receiving",
+      "branch": "wms-401-inventory-rewrite-foundation-receiving",
       "base": "main",
       "status": "merged",
       "url": "https://code.fennimore.example/warehouse/inventory-service/pull/118"
@@ -553,8 +554,9 @@
     "prs/P2": {
       "title": "Slotting recommender and directed putaway",
       "order": 2,
-      "branch": "wms-rewrite/slotting-recommender-and-directed-putaway",
-      "base": "main",
+      "slug": "slotting-recommender",
+      "branch": "wms-401-inventory-rewrite-slotting-recommender",
+      "base": "P1",
       "status": "open",
       "url": "https://code.fennimore.example/warehouse/inventory-service/pull/131",
       "waiting_on": "Review from Oluwaseun"
@@ -563,7 +565,8 @@
       "title": "Picking, allocation, and cycle counts",
       "summary": "Pick lists and waves, FEFO allocation with store shelf-life floors, lot holds, and the whole cycle-count flow.\n\nStacked on P2: it uses the capacity and recommender code from there.",
       "order": 3,
-      "branch": "wms-rewrite/picking-allocation-and-cycle-counts-with-quarantine-holds",
+      "slug": "picking-allocation",
+      "branch": "wms-401-inventory-rewrite-picking-allocation",
       "base": "P2",
       "status": "draft",
       "url": "https://code.fennimore.example/warehouse/inventory-service/pull/142"
@@ -571,16 +574,18 @@
     "prs/P4": {
       "title": "Replenishment and store transfers",
       "order": 4,
-      "branch": "wms-rewrite/replenishment-and-store-transfers",
-      "base": "main",
+      "slug": "replenishment-transfers",
+      "branch": "wms-401-inventory-rewrite-replenishment-transfers",
+      "base": "P3",
       "status": "planned"
     },
     "prs/P5": {
       "title": "Handheld scanner app",
       "summary": "The Android app for the rugged fleet and the sync API it talks to. Lands last, so it can use every flow's final API.",
       "order": 5,
-      "branch": "wms-rewrite/handheld-scanner-app-sync-api-and-screens-for-the-rugged-fleet",
-      "base": "main",
+      "slug": "handheld-scanner-app",
+      "branch": "wms-401-inventory-rewrite-handheld-scanner-app",
+      "base": "P4",
       "status": "planned"
     },
     "questions/Q1": {
@@ -971,9 +976,10 @@
       "title": "Rewrite the Fennimore warehouse inventory service: receiving, slotting, picking, counts, replenishment, transfers, and the handheld app",
       "objective": "Replace the co-op's 14-year-old warehouse inventory system with a service built around an append-only ledger by item, lot, and location. It must support FEFO allocation to stores, cycle counting, replenishment, store transfers, and a new handheld app, and cut over from the legacy database in one weekend window.",
       "source": "docs/specs/wms-rewrite-v2.md in warehouse/inventory-service, tracker epics WMS-401, WMS-402, WMS-403",
+      "slug": "wms-401-inventory-rewrite",
       "status": "running",
       "approach": "Everything goes through one ledger. Receiving, putaway, picking, counts, replenishment, and transfers each post signed movements with a reason, and nothing else is allowed to change a balance. That lets the nightly verify job prove the books and gives recalls a single place to look.\n\nWork lands in five PRs by area, in the order the warehouse will adopt it: foundation and receiving, slotting and putaway, picking and counts, replenishment and transfers, then the handheld app. Picking is stacked on slotting because it reuses the capacity and recommender code.\n\nThe handheld app is last on purpose, so it is written against final APIs, but its sync contract and scan abstraction are planned early because they depend on outside parties (the DBA team and the scanner vendor).",
-      "delivery": "Five PRs by area, each reviewed and merged by people in order. Picking is stacked on slotting; the rest are based on main. A PR is opened as a draft when its first task merges and marked ready when all its tasks are merged and checks pass. The cutover and decommissioning of the legacy system are a separate plan.",
+      "delivery": "Five PRs by area, each reviewed and merged by people in order. Each stacks on the one before, starting from main. A PR is opened as a draft when its first task merges and marked ready when all its tasks are merged and checks pass. The cutover and decommissioning of the legacy system are a separate plan.",
       "done_check": [
         {
           "text": "A vendor ASN and blind receipt post balanced ledger movements end to end, and ledger verify reports zero drift.",
@@ -1047,7 +1053,7 @@
         "db/schema/README.md"
       ],
       "verify": "Migration applies to an empty database and to a copy of the staging snapshot; make db-diff shows no drift against the checked-in schema dump.",
-      "branch": "wms-401/schema-baseline-warehouse-location-item-lot-tables",
+      "branch": "wms-401-inventory-rewrite-t1-schema-baseline-warehouse",
       "outcome": "Landed as planned, with two additions. location_code is unique per warehouse rather than globally, because the Dunmore cross-dock reuses codes with the main building. And item.sku is text with a check constraint, not varchar(12): legacy SKUs run to 14 characters for private-label lines.",
       "depends_on": [],
       "epics": [
@@ -1067,7 +1073,7 @@
         "internal/legacy/testdata/locations_small.csv"
       ],
       "verify": "Run twice against the staging replica; the second run reports zero changes.",
-      "branch": "wms-401/legacy-item-and-location-importer",
+      "branch": "wms-401-inventory-rewrite-t10-legacy-item",
       "outcome": "Found 311 legacy locations with no parent aisle (old overflow cages). They import under a synthetic LEGACY-UNMAPPED zone and the report lists them; Oluwaseun will clean them up by hand.",
       "depends_on": [
         "T5",
@@ -1091,7 +1097,7 @@
         "db/migrations/0005_ledger.sql"
       ],
       "verify": "Property test: after 10,000 random movements, balances equal the sum of movements for every (item, lot, location), and no balance goes negative unless the reason is adjust_found.",
-      "branch": "wms-401/inventory-ledger-append-only-movements",
+      "branch": "wms-401-inventory-rewrite-t11-inventory-ledger-append",
       "outcome": "Balances table is written by Go, not a trigger, as planned, but we added a nightly ledger verify job that recomputes balances and alerts on any mismatch. Negative balances are allowed only for adjust_found and staging bins.",
       "depends_on": [
         "T1",
@@ -1114,7 +1120,7 @@
         "internal/httpx/routes_test.go"
       ],
       "verify": "The route-table test fails on a route added without a policy.",
-      "branch": "wms-401/per-endpoint-authorization-middleware",
+      "branch": "wms-401-inventory-rewrite-t12-per-endpoint-authorization",
       "outcome": "Supervisors inherit counter and picker permissions; the spec listed these separately, which would have meant every supervisor holding three role claims.",
       "depends_on": [
         "T2",
@@ -1177,7 +1183,7 @@
         "api/openapi/receiving.yaml"
       ],
       "verify": "Replay the 40 sample ASNs from the bridge's test fixtures; the 3 with unknown SKUs fail with usable messages.",
-      "branch": "wms-401/advance-ship-notice-ingest",
+      "branch": "wms-401-inventory-rewrite-t15-advance-ship-notice",
       "outcome": "Whole-ASN rejection was too strict in the sample data: 6 of the 40 had one stale SKU. We now accept the ASN with the bad lines held in asn_line_error and flagged for the buyer. This is a change from the plan.",
       "depends_on": [
         "T7",
@@ -1201,7 +1207,7 @@
         "internal/receiving/receipt_test.go"
       ],
       "verify": "Receipts within, at, and beyond tolerance produce the expected movements and discrepancy rows; a duplicate POST with the same idempotency key is a no-op.",
-      "branch": "wms-401/blind-receipt-against-purchase-orders",
+      "branch": "wms-401-inventory-rewrite-t16-blind-receipt-against",
       "outcome": "Receiving posts to the RECEIVING-STAGE bin, not the final location; putaway moves it. Tolerance is stored on the vendor class table rather than hard-coded.",
       "depends_on": [
         "T7",
@@ -1225,7 +1231,7 @@
         "db/migrations/0006_velocity.sql"
       ],
       "verify": "Run against last quarter's history; the top 300 SKUs match the ops team's hand-made list to within 15 items.",
-      "branch": "wms-401/velocity-classes-from-13-week-pick-history",
+      "branch": "wms-401-inventory-rewrite-t17-velocity-classes-from",
       "outcome": "Used pick lines rather than units for the first cut, since one 40-case pallet pick skewed units badly. Switched to a blend: 70% lines, 30% units. Ops agreed the output looks right.",
       "depends_on": [
         "T10",
@@ -1247,7 +1253,7 @@
         "internal/slotting/capacity_test.go"
       ],
       "verify": "Fits tests for a mixed bin, a full bin, and an item with no recorded dimensions (treated as not fitting, with a reason).",
-      "branch": "wms-401/bin-capacity-model-cube-and-weight-limits",
+      "branch": "wms-401-inventory-rewrite-t18-bin-capacity-model",
       "outcome": "Items with no recorded dimensions are 1,870 of 14,200. The function returns a typed ErrNoDimensions and the recommender treats those items as manual-slot.",
       "depends_on": [
         "T8",
@@ -1270,7 +1276,7 @@
         "db/migrations/0007_picking.sql"
       ],
       "verify": "State-machine test enumerates every transition; illegal ones return a typed error.",
-      "branch": "wms-402/pick-list-model-wave-task-line",
+      "branch": "wms-401-inventory-rewrite-t19-pick-list-model",
       "outcome": "Added pick_task.cart_id after talking to Oluwaseun: pickers build multi-store carts, and the cart is how the packing station knows what belongs together.",
       "depends_on": [
         "T7",
@@ -1295,7 +1301,7 @@
         "internal/httpx/health.go"
       ],
       "verify": "go test ./... passes; the container starts with only the required variables and reports ready within 3 seconds against a local Postgres.",
-      "branch": "wms-401/service-skeleton-config-and-health-endpoints",
+      "branch": "wms-401-inventory-rewrite-t2-service-skeleton-config",
       "outcome": "As planned. Readiness also reports the migration version, which the deploy pipeline now asserts on.",
       "depends_on": [],
       "epics": [
@@ -1315,7 +1321,7 @@
         "db/migrations/0009_lot_hold.sql"
       ],
       "verify": "A held lot is invisible to allocation; releasing it makes it visible on the next wave without a restart.",
-      "branch": "wms-402/lot-quarantine-holds-logical-and-physical",
+      "branch": "wms-401-inventory-rewrite-t20-lot-quarantine-holds",
       "depends_on": [
         "T9",
         "T11"
@@ -1338,7 +1344,7 @@
         "db/migrations/0010_counting.sql"
       ],
       "verify": "A counter-role token requesting a task never receives system_qty in any response, including error bodies.",
-      "branch": "wms-402/count-tasks-and-blind-count-entry",
+      "branch": "wms-401-inventory-rewrite-t21-count-tasks",
       "depends_on": [
         "T11",
         "T8",
@@ -1361,7 +1367,7 @@
         "db/migrations/0011_transfers.sql"
       ],
       "verify": "Every legal transition covered; cancelling an order in in_transit is refused with a pointer to the receipt flow.",
-      "branch": "wms-403/store-transfer-order-model-and-in-transit-ownership",
+      "branch": "wms-401-inventory-rewrite-t22-store-transfer-order",
       "depends_on": [
         "T7",
         "T8",
@@ -1404,7 +1410,7 @@
         "internal/receiving/doors.go"
       ],
       "verify": "Two carriers requesting the same door and window: the second gets the next compatible door, or a clear refusal.",
-      "branch": "wms-401/dock-appointments-and-door-assignment",
+      "branch": "wms-401-inventory-rewrite-t24-dock-appointments",
       "outcome": "Built as advisory per the answer on Q4. The hard-require code path was left out entirely rather than behind a flag.",
       "depends_on": [
         "T8",
@@ -1428,7 +1434,7 @@
         "internal/slotting/recommend_test.go"
       ],
       "verify": "Replay 500 historical putaways; the recommender's first choice matches or beats the human's bin on travel distance in at least 70%.",
-      "branch": "wms-401/slotting-recommender-score-candidate-bins",
+      "branch": "wms-401-inventory-rewrite-t25-slotting-recommender-score",
       "outcome": "Replay showed 74% matched or beat the human. Adjacency bonus was dropped to 0.2 weight after it clustered all of a vendor's items in one aisle, which jammed the picker flow in the simulation.",
       "depends_on": [
         "T17",
@@ -1452,7 +1458,7 @@
         "db/migrations/0008_allocation.sql"
       ],
       "verify": "Two concurrent waves over the same SKU never over-reserve (run 200 times); a store with 7-day minimum is never allocated a lot with 5 days left.",
-      "branch": "wms-402/fefo-allocation-against-store-order-lines-with-shelf-life-floor",
+      "branch": "wms-401-inventory-rewrite-t26-fefo-allocation-against",
       "depends_on": [
         "T9",
         "T11",
@@ -1474,7 +1480,7 @@
         "internal/picking/route_cutoff.go"
       ],
       "verify": "Given three routes with staggered cutoffs and a known pick rate, the planner produces waves that all complete 20 minutes before cutoff.",
-      "branch": "wms-402/wave-planning-by-store-route-cutoff",
+      "branch": "wms-401-inventory-rewrite-t27-wave-planning-by",
       "depends_on": [
         "T19",
         "T8"
@@ -1497,7 +1503,7 @@
         "api/openapi/picking.yaml"
       ],
       "verify": "Two pickers racing for one task: exactly one wins. A picker whose lease expired between scan and confirm gets a 409 and no movement is posted.",
-      "branch": "wms-402/pick-task-claim-and-confirm-endpoints-with-lease-renewal",
+      "branch": "wms-401-inventory-rewrite-t28-pick-task-claim",
       "depends_on": [
         "T19",
         "T12"
@@ -1519,7 +1525,7 @@
         "internal/counting/schedule_test.go"
       ],
       "verify": "Over a simulated quarter, each A location is scheduled 3 times (+/-0) and no day exceeds the cap on any shift.",
-      "branch": "wms-402/cycle-count-scheduling-by-abc-class-per-shift-cap",
+      "branch": "wms-401-inventory-rewrite-t29-cycle-count-scheduling",
       "depends_on": [
         "T17",
         "T8"
@@ -1542,7 +1548,7 @@
         "docs/events/ordering.md"
       ],
       "verify": "Kill the relay mid-batch in the integration test and confirm no event is lost and none is published twice with a different payload.",
-      "branch": "wms-401/event-outbox-table-and-relay-worker",
+      "branch": "wms-401-inventory-rewrite-t3-event-outbox-table",
       "outcome": "Delivery is at-least-once, not exactly-once as the spec's wording suggested; duplicates carry the same id so consumers can dedupe. Documented in docs/events/ordering.md.",
       "depends_on": [],
       "epics": [
@@ -1563,7 +1569,7 @@
         "db/migrations/0012_replen_params.sql"
       ],
       "verify": "Derived defaults for 100 sampled forward bins match ops's spreadsheet to within one case.",
-      "branch": "wms-403/min-max-and-reorder-parameters-per-forward-pick-bin",
+      "branch": "wms-401-inventory-rewrite-t30-min-max",
       "depends_on": [
         "T7",
         "T8",
@@ -1628,7 +1634,7 @@
         "api/openapi/putaway.yaml"
       ],
       "verify": "Confirm to the recommended bin, to another bin with a reason, and to a bin that does not fit (rejected with the capacity reason).",
-      "branch": "wms-401/directed-putaway-tasks",
+      "branch": "wms-401-inventory-rewrite-t33-directed-putaway-tasks",
       "outcome": "A scan of a bin outside the pallet's temperature zone is refused outright, a rule we hadn't written down. Supervisors can override with a reason code.",
       "depends_on": [
         "T25",
@@ -1771,7 +1777,7 @@
         "internal/auth/claims.go"
       ],
       "verify": "Table-driven tests for expired, wrong-audience, and unknown-key tokens; a token signed by a rotated key verifies after the JWKS refresh.",
-      "branch": "wms-401/auth-device-tokens-and-role-claims",
+      "branch": "wms-401-inventory-rewrite-t4-auth-device-tokens",
       "outcome": "As planned. The identity team renamed the claim from roles to wms_roles mid-task, so the verifier accepts both until their cutover.",
       "depends_on": [],
       "epics": [
@@ -1989,7 +1995,7 @@
         "internal/legacy/reader_fake.go"
       ],
       "verify": "Reader streams 1.2M balance rows from the staging replica in under 4 minutes without holding a transaction open longer than 30 seconds.",
-      "branch": "wms-401/legacy-inventory-read-only-reader",
+      "branch": "wms-401-inventory-rewrite-t5-legacy-inventory-read",
       "outcome": "The replica is Postgres-compatible after all, so no separate driver was needed. Page size defaults to 5000 because larger pages tripped the replica's statement timeout.",
       "depends_on": [],
       "epics": [
@@ -2172,7 +2178,7 @@
         "Makefile"
       ],
       "verify": "A deliberately broken migration on a scratch branch fails the pipeline; a clean branch passes in under 9 minutes.",
-      "branch": "wms-401/ci-lint-migrations-integration",
+      "branch": "wms-401-inventory-rewrite-t6-ci-lint-migrations",
       "outcome": "Integration job is 7 minutes on the shared runners. Added a nightly job that replays the migrations from 0001 to catch ordering mistakes.",
       "depends_on": [],
       "epics": [
@@ -2192,7 +2198,7 @@
         "api/openapi/catalog.yaml"
       ],
       "verify": "OpenAPI contract test passes; a case of 12 with an inner pack of 6 converts correctly in both directions.",
-      "branch": "wms-401/item-and-unit-of-measure-catalog-api",
+      "branch": "wms-401-inventory-rewrite-t7-item-and-unit",
       "outcome": "Added shelf_life_days and temp_zone to the item payload. The lot and slotting tasks needed them and it was cheaper to put them here than to add a second endpoint.",
       "depends_on": [
         "T1",
@@ -2215,7 +2221,7 @@
         "db/migrations/0003_location_path.sql"
       ],
       "verify": "Move an aisle with 600 bins and confirm every descendant's path updates in a single transaction under 400 ms.",
-      "branch": "wms-401/location-hierarchy-api-aisle-bay-level-bin",
+      "branch": "wms-401-inventory-rewrite-t8-location-hierarchy-api",
       "outcome": "Done as planned. A subtree move takes about 180 ms for 600 bins in the test database.",
       "depends_on": [
         "T1",
@@ -2237,7 +2243,7 @@
         "internal/lots/fefo.go"
       ],
       "verify": "Unit tests for tie-breaking: same best-before, different received_on; and a lot without a date on an ambient item.",
-      "branch": "wms-401/lot-and-best-before-model-with-fefo-ordering",
+      "branch": "wms-401-inventory-rewrite-t9-lot-and-best",
       "outcome": "As planned. The view includes days_remaining computed in the warehouse's time zone, since the Dunmore building is one hour ahead and a lot expiring 'today' was flipping early.",
       "depends_on": [
         "T1"

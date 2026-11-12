@@ -12,9 +12,10 @@
       "title": "CSV export of print-on-demand orders",
       "objective": "Add a CSV export of print-on-demand orders to the order-tracking app so the warehouse stops retyping them into the label printer software. Warehouse staff pick a date range and download one file.",
       "source": "specs/pod-order-csv-export.md",
+      "slug": "pod-orders",
       "status": "running",
       "approach": "Write the CSV in one small module that streams rows from a single query, so a month of orders never sits in memory. The download endpoint and the button both sit on top of it. The whole feature stays behind a feature flag until the warehouse has tried it.",
-      "delivery": "One PR, feature/pod-order-csv-export, into main. The owner merges.",
+      "delivery": "One PR, pod-orders-csv-export, into main. The owner merges.",
       "done_check": [
         {
           "text": "A warehouse user can download a CSV of orders for a date range from the orders page",
@@ -58,7 +59,7 @@
         "orders/export/csv_writer.py",
         "orders/export/columns.py"
       ],
-      "branch": "feature/pod-order-csv-export-t1-csv-writer",
+      "branch": "pod-orders-t1-csv-writer",
       "outcome": "Added CsvWriter and columns.py. Prefixes any cell starting with =, +, - or @ with a quote, which the plan didn't mention.",
       "pr": "P1"
     },
@@ -69,7 +70,7 @@
       "status": "merged",
       "order": 2,
       "depends_on": [],
-      "branch": "feature/pod-order-csv-export-t2-flag",
+      "branch": "pod-orders-t2-flag",
       "outcome": "Flag lives in settings/flags.py, default off. Staging override set in deploy/staging.env.",
       "pr": "P1"
     },
@@ -89,7 +90,7 @@
         "orders/urls.py",
         "tests/orders/test_export_view.py"
       ],
-      "branch": "feature/pod-order-csv-export-t3-export-endpoint",
+      "branch": "pod-orders-t3-export-endpoint",
       "pr": "P1"
     },
     "tasks/T4": {
@@ -106,7 +107,7 @@
         "orders/export/address.py",
         "orders/export/columns.py"
       ],
-      "branch": "feature/pod-order-csv-export-t4-address-columns",
+      "branch": "pod-orders-t4-address-columns",
       "pr": "P1"
     },
     "tasks/T5": {
@@ -123,7 +124,7 @@
         "orders/models/export_run.py",
         "orders/migrations/0042_order_export_runs.py"
       ],
-      "branch": "feature/pod-order-csv-export-t5-audit-log",
+      "branch": "pod-orders-t5-audit-log",
       "pr": "P1"
     },
     "tasks/T6": {
@@ -137,7 +138,7 @@
         "T1"
       ],
       "approach": "Waits on warehouse IT creating the SFTP account for the app and sending the host key (asked by Tomás, no date yet). Once we have it the job is a few lines in jobs/nightly_export.py.",
-      "branch": "feature/pod-order-csv-export-t6-nightly-drop",
+      "branch": "pod-orders-t6-nightly-drop",
       "pr": "P1"
     },
     "tasks/T7": {
@@ -175,7 +176,8 @@
     "prs/P1": {
       "title": "CSV export of print-on-demand orders",
       "order": 1,
-      "branch": "feature/pod-order-csv-export",
+      "slug": "csv-export",
+      "branch": "pod-orders-csv-export",
       "base": "main",
       "status": "draft",
       "url": "https://code.quillmere.example/press/orders/pull/212"

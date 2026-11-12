@@ -11,6 +11,7 @@
       "title": "Late-return reminders for the Tidewater lending app",
       "objective": "Send borrowers an automatic reminder before and after a tool's due date, so volunteers at the desk stop phoning people by hand. Reminders go by email first, with the channel and timing settled by the questions on this plan page.",
       "source": "https://tracker.tidewatertools.example/browse/TTL-41",
+      "slug": "ttl-41-late-return-reminders",
       "status": "pending",
       "started_at": "2026-10-13T14:05:00Z",
       "updated_at": "2026-10-13T16:20:00Z"

@@ -159,6 +159,9 @@ a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outli
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .card.ask { border-color: var(--attn); background: var(--attn-soft); }
 .card.pr { padding: 8px 14px; gap: 6px; }
+.pr-chain { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; margin: 0; font-size: 13px; color: var(--muted); }
+.pr-chain .sep { color: var(--muted); }
+#prs a.gone { color: var(--muted); }
 .card-top { display: flex; gap: 8px 12px; align-items: baseline; justify-content: space-between; flex-wrap: wrap; }
 .card-top .left { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; min-width: 0; }
 .label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; }
@@ -909,13 +912,49 @@ details[open] > summary { margin-bottom: 10px; }
     dl.appendChild(dd);
   }
 
-  // A plan lands as one or more PRs. Each lists its branch, what it's based on, its tasks and its link.
+  // How a PR is named where another refers to it: its number once it has one, else its title.
+  const prName = (p) => prNumber(p) || p.title || p.id;
+  function prRef(p) {
+    const a = el("a", p.status === "merged" || p.status === "closed" ? "gone" : null, prName(p));
+    a.href = "#pr-" + p.id;
+    if (p.title) a.title = p.title;
+    return a;
+  }
+
+  // Several PRs stack in build order. When they form one chain from the base branch, show it whole,
+  // since that chain is what a reader needs to see what to review or merge next.
+  function prChain(prs) {
+    if (prs.length < 2) return null;
+    const byId = new Map(prs.map((p) => [p.id, p]));
+    const roots = prs.filter((p) => !byId.has(p.base));
+    if (roots.length !== 1 || !roots[0].base) return null;
+    const chain = [roots[0]];
+    for (;;) {
+      const next = prs.filter((p) => p.base === chain[chain.length - 1].id);
+      if (next.length !== 1) break;
+      chain.push(next[0]);
+    }
+    if (chain.length !== prs.length) return null;
+    const line = el("p", "pr-chain");
+    line.setAttribute("aria-label", "Stack, from the base branch up");
+    line.appendChild(el("span", "mono", roots[0].base));
+    for (const p of chain) {
+      line.appendChild(el("span", "sep", "←"));
+      line.appendChild(prRef(p));
+    }
+    return line;
+  }
+
+  // A plan lands as one or more PRs. Each lists its branch and what it's based on.
   function renderPrs() {
     const prs = [...state.prs].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     $("plan-prs").hidden = prs.length === 0;
     $("pr-count").textContent = prs.length > 1 ? String(prs.length) : "";
     const wrap = $("prs");
     wrap.replaceChildren();
+    const chain = prChain(prs);
+    if (chain) wrap.appendChild(chain);
+    const byId = new Map(prs.map((p) => [p.id, p]));
     for (const p of prs) {
       const card = el("article", "card pr");
       card.id = "pr-" + p.id;
@@ -937,6 +976,19 @@ details[open] > summary { margin-bottom: 10px; }
         ul.appendChild(el("li", null, p.waiting_on));
         waits.appendChild(ul);
         card.appendChild(waits);
+      }
+      if (p.branch || p.base) {
+        const foot = el("div", "card-foot");
+        if (p.branch) foot.appendChild(el("span", "mono", p.branch));
+        const below = byId.get(p.base);
+        if (below) {
+          const on = el("span", null, "stacks on ");
+          on.appendChild(prRef(below));
+          foot.appendChild(on);
+        } else if (p.base) {
+          foot.appendChild(metaItem("based on", p.base, true));
+        }
+        card.appendChild(foot);
       }
       wrap.appendChild(card);
     }

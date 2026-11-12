@@ -12,6 +12,7 @@
       "title": "Add --json output to every tessel subcommand",
       "objective": "Every tessel subcommand accepts --json and then writes machine-readable output to stdout only, with progress and logs on stderr and errors as JSON with a stable exit code. Scripts and CI jobs stop scraping the human tables.",
       "source": "docs/proposals/0007-json-output.md",
+      "slug": "json-output",
       "status": "done",
       "approach": "Add one output layer that every command talks to, instead of each printing for itself. Without --json a command prints what it prints today; with --json it writes one versioned JSON document to stdout. The flag works before or after the subcommand.\n\nCommands are converted one at a time, simplest first, so each task is a small reviewable diff and the golden-output tests grow with them. Long-running commands report progress on stderr, and the final document still goes to stdout.\n\nThe schema is written down once, and the tests check every command's output against it, so the docs cannot drift from the code.",
       "delivery": "One PR off main on branch json-output-all-subcommands, tasks landed onto it in order. The collective requires one maintainer review and green CI before merge; nobody here merges their own PR.",
@@ -54,8 +55,6 @@
       ],
       "handover": {
         "summary": "All six subcommands take --json. Output goes through one Emitter in tessel/output.py, wrapped in a versioned envelope, validated against docs/json-schema/envelope.schema.json. Errors are JSON on stderr with exit codes 2 (usage), 3 (input unreadable), 4 (projection mismatch) and 5 (internal). Human output is unchanged.",
-        "branch": "json-output-all-subcommands",
-        "pr_url": "https://code.tessellate-collective.example/tessel/tessel/pull/318",
         "look_first": [
           "tessel/output.py, since every command now depends on Emitter",
           "tessel/commands/tile.py: the NDJSON progress events on stderr",
@@ -82,7 +81,7 @@
       "order": 1,
       "depends_on": [],
       "pr": "P1",
-      "branch": "json-output/t1-emitter-and-envelope",
+      "branch": "json-output-t1-emitter-and-envelope",
       "outcome": "Added tessel/output.py (Emitter, OutputMode) and 9 unit tests. Keys are sorted and separators are (\",\", \":\") so golden files diff cleanly. Decimals are not supported yet because no command returns one."
     },
     "tasks/T2": {
@@ -101,7 +100,7 @@
         "T1"
       ],
       "pr": "P1",
-      "branch": "json-output/t2-global-flag-and-stderr-routing",
+      "branch": "json-output-t2-global-flag",
       "outcome": "Root flag plus json_option decorator done. Progress bars now always draw on stderr in both modes (a tiny change to human mode: previously a piped tessel tile | cat mixed bar redraws into the pipe). Added tests/cli/test_flag_placement.py."
     },
     "tasks/T3": {
@@ -121,7 +120,7 @@
         "T2"
       ],
       "pr": "P1",
-      "branch": "json-output/t3-info-and-projections",
+      "branch": "json-output-t3-info-and-projections",
       "outcome": "Both commands converted. bounds is null for a PNG with no georeferencing rather than omitted, so consumers see a stable key set. 6 golden files added."
     },
     "tasks/T4": {
@@ -142,7 +141,7 @@
         "Q1"
       ],
       "pr": "P1",
-      "branch": "json-output/t4-tile-ndjson-progress-events-and-final-summary",
+      "branch": "json-output-t4-tile-ndjson-progress",
       "outcome": "Implemented as in Q1: tessel tile in.tif out/ --zoom 0-4 --json 2>events.ndjson >summary.json. Added Emitter.event(). Found that --resume double-counted skipped tiles in the human summary; fixed in the same PR since the JSON would have exposed it (2-line change in tile.py)."
     },
     "tasks/T5": {
@@ -161,7 +160,7 @@
         "T4"
       ],
       "pr": "P1",
-      "branch": "json-output/t5-combine-overlap-and-blend",
+      "branch": "json-output-t5-combine-overlap",
       "outcome": "Converted. Rounding of overlap_px is documented in the schema description. The two inputs having different CRS now raises ProjectionMismatch before any work starts, which T6 maps to exit code 4."
     },
     "tasks/T6": {
@@ -181,7 +180,7 @@
         "T5"
       ],
       "pr": "P1",
-      "branch": "json-output/t6-json-errors-exit-codes-crop-verify",
+      "branch": "json-output-t6-json-errors-exit",
       "outcome": "Added tessel/errors.py. crop --box 10,10,200,200 --json and verify --json converted. verify reports {ok, problems:[{tile, reason}]} and exits 1 when ok is false, as before. Click's own Missing argument messages needed the ctx.fail override; without it they bypassed the wrapper."
     },
     "tasks/T7": {
@@ -201,13 +200,14 @@
         "T6"
       ],
       "pr": "P1",
-      "branch": "json-output/t7-schema-docs-and-stdout-purity-test",
+      "branch": "json-output-t7-schema-docs",
       "outcome": "Schema, docs page and purity test added; ci/pipeline.yml gained a json-contract job that takes about 40 s. Checked by deleting tiles_skipped from the tile summary locally: schema test failed as expected."
     },
     "prs/P1": {
       "title": "Add --json output to every subcommand",
       "summary": "Adds a global --json flag, an Emitter all commands use, a versioned envelope, JSON errors with documented exit codes, and a published JSON Schema. Human output is unchanged.",
       "order": 1,
+      "slug": "all-subcommands",
       "branch": "json-output-all-subcommands",
       "base": "main",
       "status": "merged",

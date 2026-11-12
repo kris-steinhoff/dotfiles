@@ -23,21 +23,21 @@ CHECK_STATES = {"unchecked", "met", "unmet"}
 
 TOP_KEYS = {"about", "now", "viewer", "people", "docs"}
 RUN_KEYS = {
-    "title", "objective", "source", "status", "approach", "delivery", "done_check", "out_of_scope",
+    "title", "objective", "source", "slug", "status", "approach", "delivery", "done_check", "out_of_scope",
     "risks", "jira_browse_url", "epics", "driver", "handover", "started_at", "updated_at",
 }
 TASK_KEYS = {
     "title", "goal", "approach", "touches", "verify", "status", "blocked_on", "depends_on", "epics", "pr", "branch",
     "outcome", "order",
 }
-PR_KEYS = {"title", "summary", "order", "branch", "base", "status", "url", "replies", "waiting_on"}
+PR_KEYS = {"title", "summary", "order", "slug", "branch", "base", "status", "url", "replies", "waiting_on"}
 PR_REPLIES = {"auto", "confirm"}
 QUESTION_KEYS = {
     "title", "context", "options", "recommendation", "blocks", "task", "status", "asked_at", "answered_at",
     "answered_by", "answer",
 }
 JOURNAL_KEYS = {"at", "text", "by", "questions"}
-HANDOVER_KEYS = {"summary", "branch", "pr_url", "look_first", "risks"}
+HANDOVER_KEYS = {"summary", "look_first", "risks"}
 
 # Text written for people names no files, code identifiers, or ids. These catch the common slips, not every one.
 FOR_PEOPLE = [
@@ -138,7 +138,7 @@ class Fixture:
 
     def check_run(self) -> None:
         run = self.run
-        self.keys("run/main", run, RUN_KEYS, {"title", "objective", "source", "status", "started_at", "updated_at"})
+        self.keys("run/main", run, RUN_KEYS, {"title", "objective", "source", "slug", "status", "started_at", "updated_at"})
         if run.get("status") not in RUN_STATUSES:
             self.problem(f"run/main: bad status {run.get('status')!r}")
         for check in run.get("done_check", []):
@@ -187,6 +187,10 @@ class Fixture:
                 self.problem(f"{where}: pending with a branch or an outcome")
             for dep in task.get("depends_on", []):
                 self.check_dependency(where, task_id, status, dep)
+            # Every branch starts with the plan's slug; a task's adds its id, then a few words.
+            branch, slug = task.get("branch"), self.run.get("slug", "")
+            if branch and not branch.startswith(f"{slug}-{task_id.lower()}-"):
+                self.problem(f"{where}: branch {branch!r} does not start with {slug}-{task_id.lower()}-")
             if task.get("pr") and task["pr"] not in self.prs:
                 self.problem(f"{where}: pr {task['pr']} does not exist")
             if not isinstance(task.get("touches", []), list):
@@ -216,7 +220,10 @@ class Fixture:
             self.problem("two PRs share an order")
         for pr_id, pr in self.prs.items():
             where = f"prs/{pr_id}"
-            self.keys(where, pr, PR_KEYS, {"title", "order", "branch", "base", "status"})
+            self.keys(where, pr, PR_KEYS, {"title", "order", "slug", "branch", "base", "status"})
+            expected = f"{self.run.get('slug', '')}-{pr.get('slug', '')}"
+            if pr.get("branch") != expected:
+                self.problem(f"{where}: branch {pr.get('branch')!r} is not the plan's slug and the PR's, {expected!r}")
             status = pr.get("status")
             if status not in PR_STATUSES:
                 self.problem(f"{where}: bad status {status!r}")
@@ -412,8 +419,8 @@ class Fixture:
             if not checks or any(c.get("state") != "met" or not c.get("note") for c in checks):
                 self.problem("done stage: every done-check needs state met and a note")
             handover = run.get("handover") or {}
-            if not handover.get("look_first") or not handover.get("branch"):
-                self.problem("done stage: handover needs branch and look_first")
+            if not handover.get("look_first"):
+                self.problem("done stage: handover needs look_first")
             if run.get("driver"):
                 self.problem("done stage: driver not cleared")
             if pr_statuses - {"merged", "closed"}:

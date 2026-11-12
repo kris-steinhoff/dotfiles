@@ -16,6 +16,7 @@
       "title": "Account-based ticketing for Northgale Transit",
       "objective": "Replace stored-value cards with account-based ticketing across the fare engine, rider app, bus and gate validators, reconciliation and support tools. Riders keep their existing cards, linked to accounts, and are charged at the best fare through capping. The legacy card system is retired after a route-by-route cutover.",
       "source": "FARE-205 and docs/specs/account-based-ticketing.md",
+      "slug": "fare-205-account-based-ticketing",
       "status": "pending",
       "approach": "The work splits into a small shared foundation and a wide fan-out. The foundation is the ledger, the fare catalog and the tap event contract. Everything else builds on them, and they can be built side by side.\n\nThe fare engine prices trips, rebuilds journeys from taps and applies fare caps. Validators hold taps offline for up to 48 hours, so every step must give the same answer when the same taps arrive twice, and the engine only proposes adjustments for the ledger to apply.\n\nValidator firmware is the slowest part to change, so the tap contract and the offline buffer come first. Cutover goes route by route, with the legacy system running alongside. Later tasks wait on open questions.",
       "delivery": "Provisionally one PR per epic, stacked, but the validator firmware may need to land separately because of the freeze.",

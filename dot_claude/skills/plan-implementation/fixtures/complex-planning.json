@@ -393,14 +393,16 @@
       "title": "Meter data foundation",
       "summary": "Interval schema, head-end reader, ingestion, legacy layouts, and premise mapping. Nothing here changes a bill.",
       "order": 1,
-      "branch": "mtr-512-meter-data-foundation-ingest-and-premise-mapping",
+      "slug": "meter-data-foundation",
+      "branch": "mtr-510-interval-billing-meter-data-foundation",
       "base": "main",
       "status": "planned"
     },
     "prs/P2": {
       "title": "Validation, estimation and backfill",
       "order": 2,
-      "branch": "mtr-512-validation-estimation-backfill",
+      "slug": "validation-estimation-backfill",
+      "branch": "mtr-510-interval-billing-validation-estimation-backfill",
       "base": "P1",
       "status": "planned"
     },
@@ -408,14 +410,16 @@
       "title": "Tariffs, rate engine and bill run",
       "summary": "Everything needed to calculate a bill from validated usage. Depends on P2 for validated readings.",
       "order": 3,
-      "branch": "mtr-518-rate-engine-and-bill-calculation",
+      "slug": "rate-engine",
+      "branch": "mtr-510-interval-billing-rate-engine",
       "base": "P2",
       "status": "planned"
     },
     "prs/P4": {
       "title": "Parallel run and legacy export",
       "order": 4,
-      "branch": "mtr-524-parallel-run-and-legacy-print-export",
+      "slug": "parallel-run",
+      "branch": "mtr-510-interval-billing-parallel-run",
       "base": "P3",
       "status": "planned"
     },
@@ -650,6 +654,7 @@
       "title": "Smart-meter interval billing",
       "objective": "Replace monthly estimated billing with billing from smart-meter interval data for power and water customers, through ingestion, validation and estimation, a rate engine, and a bill run, then cut over from the legacy mainframe batch with a parallel run first. The portal shows customers their interval usage and regulator reporting is produced from the new system.",
       "source": "MTR-510, spec at docs/billing-modernization/interval-billing-spec-v3.md",
+      "slug": "mtr-510-interval-billing",
       "status": "pending",
       "approach": "Three layers, built bottom up. First, a data layer that lands head-end files exactly once into a UTC interval table and maps meters to premises. Second, validation and estimation that mark every read as actual or estimated and never overwrite a value. Third, a pure rating function and a resumable bill run on top, with a parallel-run harness comparing new bills to the mainframe's before cutover.\n\nThe rate engine is a pure function so the same code serves the bill run, the parallel run, and the portal's bill-to-date projection. Quality flags travel with every reading all the way to the bill, since the commission's quarterly report counts estimated bills.",
       "delivery": "Four stacked PRs, each reviewable on its own and based on the one before: the meter data foundation; validation, estimation and backfill; tariffs, the rate engine and the bill run; and the parallel run with the legacy export. The portal, the regulator report, rebilling and the cutover are not placed yet: they wait on open questions, the portal's design, and what the bill run stores.",
