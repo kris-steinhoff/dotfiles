@@ -534,35 +534,43 @@ def ahead_of_pace(w: Window, now: datetime) -> float | None:
     return w.pct / 100 - elapsed
 
 
-def severity_color(w: Window) -> str:
-    """Color a window by pace: on track to run out before the reset is the
-    warning, not a high percent, since 70% of a week with a day left is fine
-    while 40% of five hours after twenty minutes is not. A window without pace
-    falls back to the provider's own severity, then to the raw percent."""
+def level(w: Window, ahead: float | None) -> str:
+    """How worrying a window is: ok, warn, high, or danger. It goes by pace,
+    since being on track to run out before the reset is the warning, not a
+    high percent: 70% of a week with a day left is fine while 40% of five
+    hours after twenty minutes is not. A window without pace falls back to
+    the provider's own severity, then to the raw percent. `--json windows`
+    reports it, so the Herdr mod colors by the same rule as the bars here."""
     if w.pct >= 100:
-        return "red"
-    ahead = ahead_of_pace(w, datetime.now(timezone.utc))
+        return "danger"
     if ahead is not None:
         if ahead >= FAR_AHEAD:
-            return "red"
-        return "yellow" if ahead > 0 else "green"
+            return "danger"
+        return "warn" if ahead > 0 else "ok"
     if w.severity:
         return {
-            "normal": "green",
-            "low": "green",
-            "warning": "yellow",
-            "elevated": "yellow",
-            "high": "dark_orange",
-            "critical": "red",
-        }.get(w.severity, "green")
+            "normal": "ok",
+            "low": "ok",
+            "warning": "warn",
+            "elevated": "warn",
+            "high": "high",
+            "critical": "danger",
+        }.get(w.severity, "ok")
     p = w.pct
     if p >= 90:
-        return "red"
+        return "danger"
     if p >= 75:
-        return "dark_orange"
+        return "high"
     if p >= 50:
-        return "yellow"
-    return "green"
+        return "warn"
+    return "ok"
+
+
+LEVEL_COLORS = {"ok": "green", "warn": "yellow", "high": "dark_orange", "danger": "red"}
+
+
+def severity_color(w: Window) -> str:
+    return LEVEL_COLORS[level(w, ahead_of_pace(w, datetime.now(timezone.utc)))]
 
 
 def bar(w: Window, width: int) -> Text:
@@ -1122,8 +1130,8 @@ def windows_json(service: str, entry: Cached) -> dict:
     `status` is `ok`, `stale` (an older payload kept after a failed fetch),
     `error` (no payload at all), or `signed_out`. A consumer can tell a
     service that is not set up from one whose usage is merely unknown.
-    Each window's `ahead_of_pace` is measured at the time of the call, not
-    the fetch, so it stays current while the cached payload ages.
+    Each window's `ahead_of_pace` and `level` are measured at the time of the
+    call, not the fetch, so they stay current while the cached payload ages.
     """
     if entry.error is not None and entry.error.credentials_missing:
         status = "signed_out"
@@ -1145,6 +1153,7 @@ def windows_json(service: str, entry: Cached) -> dict:
                 "window_seconds": w.window_seconds,
                 "resets_at": w.resets_at,
                 "ahead_of_pace": round(ahead, 4) if ahead is not None else None,
+                "level": level(w, ahead),
             })
     return {
         "status": status,

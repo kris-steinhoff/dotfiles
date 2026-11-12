@@ -1,6 +1,8 @@
 // AI service usage at the right end of the bottom bar, from the `ai-usage`
 // script in ~/.local/bin. That script keeps a shared cache with its own fetch
-// interval, so polling it here never adds requests to the providers.
+// interval, so polling it here never adds requests to the providers. The mod
+// also re-reads whenever that cache changes, so a fetch made by the live view
+// (or its Ctrl-R) shows here at once rather than up to a minute later.
 //
 // Each service is one glyph of nested rings, one ring per limit window, the
 // longest window innermost. A ring fills with the share used. Its color goes
@@ -8,7 +10,7 @@
 // of five hours after twenty minutes is not.
 import { View, div, PathBuilder } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { exec, home, layout, run, spaces, theme } from "herdr";
+import { exec, home, layout, run, spaces, theme, watchFolder } from "herdr";
 
 const BLOCK_ID = "ai-usage";
 const POLL_MS = 60_000;
@@ -18,10 +20,8 @@ const MAX_RINGS = 3;
 const LIVE_TAB = "AI usage";
 const NAMES = { claude: "Claude", chatgpt: "ChatGPT", openrouter: "OpenRouter" };
 
-// A ring ahead of pace is yellow, and red once it is this far ahead, as a
-// share of the window's length (half an hour of a 5-hour window). The
-// `ai-usage` terminal view colors its bars with the same threshold.
-const FAR_AHEAD = 0.1;
+// The script's cache, where every caller's fetches land.
+const cacheDir = () => `${home()}/.local/state/ai-usage`;
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -38,14 +38,10 @@ function find(node, id) {
 // has no fixed length or reset time.
 const ahead = (w) => w.ahead_of_pace ?? null;
 
-// "danger" at the limit or far ahead of pace, "warn" when ahead of pace at
-// all. Windows without pace fall back to the raw percent.
-function level(w) {
-  if (w.used_percent >= 100) return "danger";
-  const a = ahead(w);
-  if (a === null) return w.used_percent >= 90 ? "danger" : w.used_percent >= 75 ? "warn" : "ok";
-  return a >= FAR_AHEAD ? "danger" : a > 0 ? "warn" : "ok";
-}
+// ok, warn, high, or danger, from `ai-usage`, which colors its own bars by
+// the same rule (see `level` there). The theme has no orange, so a ring
+// shows high in the warning color.
+const level = (w) => w.level ?? "ok";
 
 function duration(ms) {
   const mins = Math.round(ms / 60_000);
@@ -98,12 +94,29 @@ export default class AiUsage extends View {
     this.services = null; // [{ id, name, status, error, windows }]
     this.failure = null;
     this.refresh(cx);
+    // The timer keeps pace current and lets the script fetch when it's due.
     cx.timer.every(POLL_MS, (cx) => this.refresh(cx));
+    cx.spawn(async (cx) => {
+      try {
+        for (;;) {
+          await watchFolder(cacheDir());
+          this.refresh(cx);
+        }
+      } catch (e) {
+        console.log(`ai-usage: can't watch the cache, polling only: ${e?.message ?? e}`);
+      }
+    });
   }
 
+  // A refresh asked for while one runs (a cache write it caused, or a click)
+  // runs again after it, so the last change is never missed.
   refresh(cx) {
-    if (this.busy) return;
+    if (this.busy) {
+      this.again = true;
+      return;
+    }
     this.busy = true;
+    this.again = false;
     cx.spawn(async (cx) => {
       try {
         const r = await exec(`${home()}/.local/bin/ai-usage`, ["--json", "windows"], { timeout: 120_000 });
@@ -119,6 +132,7 @@ export default class AiUsage extends View {
         this.busy = false;
       }
       cx.notify();
+      if (this.again) this.refresh(cx);
     });
   }
 
@@ -167,7 +181,7 @@ export default class AiUsage extends View {
   glyph(t, s, now) {
     const ws = this.ringWindows(s);
     const { stroke, radii } = rings(ws.length);
-    const colors = { ok: t.accent, warn: t.ansi3, danger: t.ansi1 };
+    const colors = { ok: t.accent, warn: t.ansi3, high: t.ansi3, danger: t.ansi1 };
 
     const track = radii.reduce((b, r) => circle(b, r), PathBuilder.stroke(stroke)).build();
     const layers = [layer(track, t.border)];
@@ -212,7 +226,10 @@ export default class AiUsage extends View {
 
     return h_flex().id("root").size_full().px(PAD_X).justify_end().items_center()
       .bg(t.chrome).border_t(1).border_color(t.border).text_size(11.8).cursor_pointer()
-      .on_click(() => this.openLive())
+      .on_click((_e, cx) => {
+        this.refresh(cx);
+        this.openLive();
+      })
       .child(h_flex().id("content").flex_none().gap(12).items_center()
         .on_size_change((size, cx) => this.fitBlock(size.width, cx))
         .children(content));
