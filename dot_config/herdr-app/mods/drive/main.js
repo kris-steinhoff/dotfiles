@@ -4,26 +4,21 @@
 //   asks for a plan page's link or a PR number, then starts its driver or shows
 //   the one already running. `space` is where to find the repo (default: the
 //   focused space).
-// - no props: for now a plain list of plans. The panel comes later.
+// - no props: the panel (panel.js). In a plan's or a PR's space it shows that one
+//   in detail; anywhere else it lists every plan and driven PR.
 //
-// The model (model.js) and the launching (launch.js) hold no rendering.
+// The model (model.js), the launching (launch.js) and what the panel works out
+// (view.js) hold no rendering.
 import { View, div } from "gpui-kit";
 import { h_flex, v_flex, InputState, Input } from "gpui-base";
-import { closeOverlay, focused, props, spaces, terminals, theme } from "herdr";
+import { closeOverlay, focused, props, spaces, theme } from "herdr";
 import { launchPR, launchPlan, parseArtifact } from "./launch.js";
-import { groupPlans } from "./model.js";
+import { Panel } from "./panel.js";
 
-// Test data: true lists made-up plans instead of the real ones, for trying the
-// interface. Launching is real either way.
+// Test data: true shows the made-up plans and PRs of demo.js, with a row of chips
+// to switch between the views, instead of the real ones. Launching from the
+// dialogs is real either way; the panel's own buttons only say what they would do.
 const DEMO = false;
-
-function demoPlans() {
-  const agent = (address, running, status) => ({ address, name: null, running, status: running ? status : null, labels: {} });
-  return [
-    { id: "a1b2c3d4-demo", key: "a1b2c3d4", url: null, title: "Rate limit headers", record: null, driver: agent("t1", true, "working"), agents: [agent("t2", true, "idle")] },
-    { id: "e5f6a7b8-demo", key: "e5f6a7b8", url: null, title: null, record: null, driver: null, agents: [] },
-  ];
-}
 
 const DIALOGS = {
   plan: {
@@ -44,7 +39,11 @@ export default class Drive extends View {
     this.busy = false;
     this.error = "";
     this.text = "";
-    if (!this.kind) return;
+    if (!this.kind) {
+      this.panel = new Panel(DEMO);
+      this.panel.init(cx);
+      return;
+    }
     this.input = InputState.new({ value: "", placeholder: DIALOGS[this.kind].placeholder });
     this.input.on("change", (_e, cx) => { this.text = this.input.value(); this.error = ""; cx.notify(); });
     this.input.on("submit", (_e, cx) => this.go(cx));
@@ -116,11 +115,6 @@ export default class Drive extends View {
   }
 
   render() {
-    if (this.kind) return this.renderDialog();
-    const t = theme();
-    const plans = DEMO ? demoPlans() : groupPlans(terminals()).plans;
-    return v_flex().size_full().p(12).gap(6).bg(t.surface).text_size(13).text_color(t.foreground)
-      .when(plans.length === 0, (el) => el.child(div().text_color(t.dim).child("No plans")))
-      .children(plans.map((p) => div().id(`plan-${p.id}`).truncate().child(p.title ?? p.id)));
+    return this.kind ? this.renderDialog() : this.panel.render();
   }
 }
