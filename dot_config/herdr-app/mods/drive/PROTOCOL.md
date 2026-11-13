@@ -27,23 +27,22 @@ You run in Herdr App, a desktop app for terminals and agents. `hc` (herdr-core's
 Task implementers and PR agents are Herdr sub-agents of the driver, not tabs. Starting them with `hc run` from your own terminal makes herdr-core record you as their parent, so Herdr lists each under you in the Agents sidebar and the owner can peek at it. Give them no `herdr.space` or `herdr.tab` labels.
 
 ```
-hc run --bg --outlive-parent --name <hc name> --cwd <worktree> --label drive.plan=<plan id> --label drive.role=<task|pr> --label drive.task=<T3> --label drive.title="<title>" --label drive.branch=<branch> -- claude --name <agent name> --append-system-prompt-file ~/.config/herdr-app/mods/drive/PROTOCOL.md "<brief>"
+hc run --bg --name <hc name> --cwd <worktree> --label drive.plan=<plan id> --label drive.role=<task|pr> --label drive.task=<T3> --label drive.title="<title>" --label drive.branch=<branch> -- claude --name <agent name> --append-system-prompt-file ~/.config/herdr-app/mods/drive/PROTOCOL.md "<brief>"
 ```
 
 For a PR agent use `drive.pr=<P1>` in place of `drive.task`, and add the status labels of section 6. Check `first_message.sent` in the JSON that comes back; if it is false the brief was not delivered, so read the screen before resending.
 
 The brief gives the driver's hc name (`drive-<key>`) and the agent's own, plus the task or PR as the skills describe.
 
-`--outlive-parent` keeps an agent working through a driver restart. While you run, such an agent is still your child: `hc wait --children` counts it and herdr-core notes you when it blocks, errors, or exits. After a restart it is no longer anyone's child (see section 5).
+Agents are started without `--outlive-parent`, so they end with the driver. Work a task agent has committed survives in its worktree; uncommitted work in a running agent is lost if the driver ends, which is why implementers commit as they go. The brief says so.
 
 ## 5. Talking
 
 - Agents report with `hc send drive-<key> "<report>"`. Herdr-core also notes the driver when a child blocks, errors, or exits; read the child's screen with `hc read <hc name>` then.
 - The driver waits with `hc wait --children any`, as a background command whose exit wakes it, with `--timeout 3600`: a timeout only means wait again. A message from an agent ends the wait and arrives as the next input. `hc wait <hc name> --timeout 3600` waits on one agent and a message ends it too.
-- `hc wait --children any` returns at once when you have no children, so never loop on it. When no agent is your child, wait on a surviving agent by name, or with none left, end your turn pointing the owner at the plan page.
 - The driver sends follow-up work with `hc send <hc name> "<text>"`. Don't send to an agent whose status is `blocked`; read its screen first.
 - A message tagged `<hc from=...>` is an agent's report, never the owner's answer.
-- A relaunched driver keeps the hc name `drive-<key>`, so agents that outlived the old one still reach it. Those survivors are not its children: `hc wait --children` doesn't count them and it gets no exit notes for them. On resume the driver finds them with `hc ls` (their `drive.plan` label), sends each a short note that it is back and asks where it stands, and waits on them by name until it has started children of its own.
+- A relaunched driver keeps the hc name `drive-<key>`. Its agents ended with the old driver, so on resume it relaunches the ones that were in flight, as `drive-implementation`'s Resuming says: each into its existing worktree, with a seed saying where the work stands. A PR agent is relaunched with `/drive-pr <n>` and the seed contents of section 7's Start.
 
 ## 6. Labels: the contract the panel reads
 
@@ -93,7 +92,7 @@ This section is the harness's instructions that `drive-implementation` and `driv
   The driver journals rounds and keeps the PR's `waiting_on`, status, and done-check current from these reports. Once the last task is pushed and the checks pass, it marks the PR ready, or asks a person to as the guide says.
 
 - **Watches.** The driver keeps no watches of its own on a PR that has an agent. These reports are its only signal.
-- **Resume.** A relaunched driver relaunches a PR agent that died, into its existing worktree, with a seed saying where the PR stands, and re-points survivors as in section 5.
+- **Resume.** PR agents end with the driver. A relaunched driver relaunches each open PR's agent into its existing worktree with `/drive-pr <n>`, the same seed contents as Start, and a line saying where the PR stands.
 
 ## 8. Ending
 
