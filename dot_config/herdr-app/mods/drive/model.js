@@ -68,6 +68,7 @@ export function entry(t) {
   return {
     address: t.address,
     name: t.name ?? null,
+    live: t.state === "live",
     running,
     status: running ? (t.status ?? "idle") : null, // working, blocked, idle, or done
     labels: t.labels ?? {},
@@ -104,7 +105,7 @@ export function groupPlans(terms = [], records = plansRecord()) {
     if (role === "driver") {
       plan.url ??= labels[L.url] ?? null;
       // A running driver replaces an ended one; otherwise the first seen stays.
-      if (!plan.driver || (e.running && !plan.driver.running)) plan.driver = e;
+      if (!plan.driver || (e.live && !plan.driver.live)) plan.driver = e;
     } else if (role === "task" || role === "pr") {
       plan.agents.push(e);
     }
@@ -113,15 +114,16 @@ export function groupPlans(terms = [], records = plansRecord()) {
   return { plans: [...plans.values()], prs };
 }
 
-// A plan's running driver, or null.
+// A plan's live driver, or null. Live, not `running`: one still starting has no
+// agent yet, and a second launch then would start a duplicate.
 export function runningDriver(id, terms) {
   const driver = groupPlans(terms, {}).plans.find((p) => p.id === id)?.driver;
-  return driver?.running ? driver : null;
+  return driver?.live ? driver : null;
 }
 
-// A lone PR's running agent, or null.
+// A lone PR's live terminal, or null.
 export function runningPR(repo, number, terms) {
-  return groupPlans(terms, {}).prs.find((e) => e.running
+  return groupPlans(terms, {}).prs.find((e) => e.live
     && e.labels[L.repo] === repo && e.labels[L.prNumber] === String(number)) ?? null;
 }
 
