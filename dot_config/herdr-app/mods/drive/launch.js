@@ -217,7 +217,19 @@ export async function launchPR(number, fromSpace) {
   const space = typeof fromSpace === "string" ? spaceById(fromSpace) : fromSpace;
   const repo = await repoOf(space);
   if (!repo.full) throw new Error("This repo's origin isn't on GitHub.");
+  return drivePR(n, repo);
+}
 
+// Starts a single PR's agent again from its record, in the repo the record names
+// (never one found from a space).
+export async function relaunchPR(record) {
+  if (!record?.repo || !record.repo_root) throw new Error("No record of that PR's repo.");
+  const name = record.repo_name ?? record.repo.split("/").pop();
+  return drivePR(String(record.number), { root: record.repo_root, name, full: record.repo });
+}
+
+// `repo` is { root, name, full }.
+async function drivePR(n, repo) {
   const running = runningPR(repo.full, n, terminals());
   if (running) {
     revealLive(running, `PR ${n}'s agent`);
@@ -248,11 +260,11 @@ export async function launchPR(number, fromSpace) {
   const address = await startTab({
     name: hcName(`pr-${n}`, repo.name, liveNames(terminals())), cwd: worktree, command, space: target,
     newSpaceId: spaceId, spaceName: shorten(`#${n} ${title}`, 40),
-    labels: { [L.role]: "pr", [L.repo]: repo.full, [L.prNumber]: n, [L.title]: String(title).slice(0, 120) },
+    labels: { [L.role]: "pr", [L.repo]: repo.full, [L.prNumber]: n, [L.title]: String(title).slice(0, 120), "drive.branch": headRefName },
     record: (id) => setShared(PRS_KEY, {
       ...prsRecord(),
       [key]: {
-        repo: repo.full, repo_root: repo.root, repo_name: repo.name, number: Number(n), worktree,
+        repo: repo.full, repo_root: repo.root, repo_name: repo.name, number: Number(n), worktree, branch: headRefName,
         space_id: id, started_at: new Date().toISOString(),
       },
     }),

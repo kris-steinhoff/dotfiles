@@ -3,13 +3,12 @@
 import { div } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { exec, focused, notify, openOverlay, spaces, theme } from "herdr";
-import { launchPR, relaunchPlan } from "./launch.js";
+import { relaunchPR, relaunchPlan } from "./launch.js";
 import { L } from "./model.js";
 import { LB, closePR, derive, goTo, inSpace, live, peek, planName, prFinished, prune, show } from "./view.js";
 import { demo } from "./demo.js";
 
 const PRUNE_MS = 60_000;
-const STATUS_COLORS = { working: "working", blocked: "blocked", done: "done", idle: "idle" };
 
 // What a phase or PR status looks like: label color and whether it needs the owner.
 function tone(t, value) {
@@ -76,7 +75,7 @@ export class Panel {
 
   // A colored dot, pulsing while the agent works. Ended agents are dim.
   dot(t, e) {
-    const color = !e?.live ? t.dim : t[STATUS_COLORS[e.status] ?? "idle"];
+    const color = !e?.live ? t.dim : (t[e.status] ?? t.idle);
     return div().flex_none().size(7).rounded(4).bg(color)
       .when(e?.live && e.status === "working", (el) => el.loop("opacity", { from: 0.35, to: 1, period: 1200 }));
   }
@@ -114,7 +113,7 @@ export class Panel {
   // --- Overview -----------------------------------------------------------------
 
   spaceId() {
-    return focused()?.space ?? spaces().find((s) => s.active)?.id;
+    return spaces().find((s) => s.active)?.id ?? focused()?.space;
   }
 
   dialog(kind) {
@@ -136,7 +135,7 @@ export class Panel {
     const resumeKey = `resume-${item.key}`;
     const resume = plan
       ? (cx) => this.run(cx, resumeKey, "Resume plan", () => relaunchPlan(item.id))
-      : (cx) => this.run(cx, resumeKey, "Resume PR", () => launchPR(item.number, this.resumeSpace(item)));
+      : (cx) => this.run(cx, resumeKey, "Resume PR", () => relaunchPR(item.record));
     return this.rowBase(t, `row-${item.key}`, item.space ? (cx) => this.goTo(item, cx) : null)
       .child(this.dot(t, plan ? item.driver : item.term))
       .child(v_flex().flex_1().min_w(0).gap(1)
@@ -147,14 +146,6 @@ export class Panel {
         .when(Boolean(facts), (el) => el.child(div().truncate().text_size(11.5).text_color(t.dim).child(facts)))
         .when(Boolean(item.needs), (el) => el.child(div().truncate().text_size(11.5).text_color(t.blocked).child(item.needs))))
       .when(item.stopped, (el) => el.child(this.button(t, `resume-btn-${item.key}`, "Resume", resume, { busy: this.busy.has(resumeKey) })));
-  }
-
-  // A stopped PR is started again from the space its record names, else one in its checkout.
-  resumeSpace(item) {
-    const id = item.record?.space_id;
-    return spaces().find((s) => s.id === id)
-      ?? spaces().find((s) => s.folder === item.record?.worktree || s.folder === item.record?.repo_root)
-      ?? this.spaceId();
   }
 
   renderOverview(t, data) {
@@ -184,7 +175,7 @@ export class Panel {
           (cx) => this.run(cx, resumeKey, "Resume plan", () => relaunchPlan(p.id)), { primary: true, busy: this.busy.has(resumeKey) })))
         .when(p.phase === "done" && Boolean(p.space), (el) => el.child(this.button(t, "close-plan", "Close plan",
           () => (this.demoOn ? notify({ title: "Demo", body: "Would open the remove-worktree dialog." })
-            : openOverlay({ mod: "worktree", kind: "dialog", width: 460, height: 280, props: { space: p.space.id, action: "remove" } })),
+            : openOverlay({ mod: "worktree", kind: "dialog", width: 440, height: 260, props: { space: p.space.id, action: "remove" } })),
           { primary: true }))));
   }
 
@@ -200,8 +191,8 @@ export class Panel {
       .child(v_flex().flex_1().min_w(0).gap(1)
         .child(h_flex().min_w(0).gap(6).items_center()
           .when(Boolean(id) && !isPR, (el) => el.child(div().flex_none().text_color(t.muted).child(id)))
-          .when(isPR && Boolean(lb[L.prNumber] ?? lb["drive.pr_number"]), (el) => el.child(
-            this.prLink(t, `num-${e.address}`, lb["drive.pr_number"], lb[LB.prUrl])))
+          .when(isPR && Boolean(lb[L.prNumber]), (el) => el.child(
+            this.prLink(t, `num-${e.address}`, lb[L.prNumber], lb[LB.prUrl])))
           .child(div().flex_1().min_w(0).truncate().text_color(e.live ? t.foreground : t.muted).child(name))
           .when(Boolean(status), (el) => el.child(this.tag(e.live ? tone(t, status) : t.dim, e.live ? status : "ended"))))
         .when(Boolean(second), (el) => el.child(div().truncate().text_size(11.5).text_color(t.dim).child(second))));
@@ -236,7 +227,7 @@ export class Panel {
       .child(h_flex().gap(6).flex_wrap()
         .when(Boolean(p.url), (el) => el.child(this.button(t, "open-pr", "Open PR", () => this.open(p.url))))
         .when(p.stopped, (el) => el.child(this.button(t, "resume-pr", "Resume",
-          (cx) => this.run(cx, resumeKey, "Resume PR", () => launchPR(p.number, this.resumeSpace(p))), { busy: this.busy.has(resumeKey) })))
+          (cx) => this.run(cx, resumeKey, "Resume PR", () => relaunchPR(p.record)), { busy: this.busy.has(resumeKey) })))
         .when(finished, (el) => el.child(this.button(t, "close-pr", "Close",
           (cx) => this.run(cx, closeKey, "Close PR", () => closePR(p)), { primary: true, busy: this.busy.has(closeKey) }))));
   }
@@ -265,7 +256,7 @@ export class Panel {
     const data = this.data();
     const active = this.demoOn
       ? [...data.plans, ...data.prs].find((i) => i.key === this.demoView) ?? null
-      : inSpace(data, spaces().find((s) => s.active)?.id);
+      : inSpace(data, this.spaceId());
     const body = !active ? this.renderOverview(t, data) : active.kind === "plan" ? this.renderPlan(t, active) : this.renderPR(t, active);
     return v_flex().id("drive-panel").size_full().p(12).gap(10).bg(t.surface).text_size(12.5).text_color(t.foreground)
       .overflow_y_scrollbar()

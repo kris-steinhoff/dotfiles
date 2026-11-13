@@ -63,7 +63,7 @@ Update these whenever the plan page changes.
 
 **A PR driven on its own** (started from the panel, no plan):
 
-- The mod sets `drive.role=pr`, `drive.repo` (`owner/name`), `drive.pr_number`, and `drive.title`.
+- The mod sets `drive.role=pr`, `drive.repo` (`owner/name`), `drive.pr_number`, `drive.title`, and `drive.branch` (the PR's head branch, which the panel's Close needs).
 - The agent keeps `drive.status`, `drive.pr_url`, and `drive.waiting_on` current.
 - It has a space of its own, shaped like a plan's: the mod finds or makes a `wt` worktree of the PR's head branch and a Herdr space on it, with the PR agent as the first tab. There is no driver, so the agent asks its questions in its own session.
 

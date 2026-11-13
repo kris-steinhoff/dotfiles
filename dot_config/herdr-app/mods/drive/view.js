@@ -77,7 +77,9 @@ export function derive(terms, planRecords, prRecords, spaceOf = homeSpace) {
       space: spaceOf(term?.live ? term : null, record, record?.worktree),
     };
   });
-  return { plans: planItems, prs: prItems };
+  // A stopped one with no record can't be started again, so it isn't listed.
+  const startable = (i) => !i.stopped || i.record;
+  return { plans: planItems.filter(startable), prs: prItems.filter(startable) };
 }
 
 export const live = () => derive(terminals(), plansRecord(), prsRecord());
@@ -112,16 +114,21 @@ const wtCommand = () => `${home()}/.local/bin/wt`;
 const lastLines = (s, n = 3) => (s ?? "").trim().split("\n").slice(-n).join("\n");
 
 // Ends a single PR's agent, then removes its worktree with wt, which never
-// forces: a dirty worktree stays, and wt says so. Returns { ok, message }.
+// forces: a dirty worktree stays, and wt says so. When the worktree folder is
+// already gone, only the agent and the record go. Returns { ok, message }.
 export async function closePR(item) {
-  const root = item.record?.repo_root;
+  const record = item.record;
+  const root = record?.repo_root;
   if (!root) throw new Error("No record of this PR's repo, so its worktree can't be found.");
-  let branch = item.branch;
-  if (!branch && item.record.worktree) {
-    const r = await exec("git", ["-C", item.record.worktree, "branch", "--show-current"]).catch(() => null);
+  const gone = await missing(record.worktree);
+
+  // The recorded head branch first, then the agent's label, then what the folder is on.
+  let branch = record.branch ?? item.branch;
+  if (!gone && !branch && record.worktree) {
+    const r = await exec("git", ["-C", record.worktree, "branch", "--show-current"]).catch(() => null);
     branch = r?.code === 0 ? r.stdout.trim() : null;
   }
-  if (!branch) throw new Error("Can't tell which branch this PR's worktree is on.");
+  if (!gone && !branch) throw new Error("Can't tell which branch this PR's worktree is on.");
 
   const address = item.term?.address;
   if (address) {
@@ -133,12 +140,17 @@ export async function closePR(item) {
     if (rm.code !== 0 && !/no such|not found/i.test(rm.stderr)) throw new Error(lastLines(rm.stderr, 1) || `hc rm exited ${rm.code}`);
   }
 
-  const wt = await exec(wtCommand(), ["remove", branch], { cwd: root, timeout: 120_000 });
-  const message = lastLines(`${wt.stdout}\n${wt.stderr}`) || `wt remove exited ${wt.code}`;
-  if (wt.code === 0) {
+  const dropRecord = () => {
     const { [item.key]: _gone, ...rest } = prsRecord();
     setShared(PRS_KEY, rest);
+  };
+  if (gone) {
+    dropRecord();
+    return { ok: true, message: "Ended the agent; its worktree was already gone." };
   }
+  const wt = await exec(wtCommand(), ["remove", branch], { cwd: root, timeout: 120_000 });
+  const message = lastLines(`${wt.stdout}\n${wt.stderr}`) || `wt remove exited ${wt.code}`;
+  if (wt.code === 0) dropRecord();
   return { ok: wt.code === 0, message };
 }
 
@@ -155,7 +167,13 @@ async function missing(folder) {
   }
 }
 
+// Shared by every copy of the panel, so the check runs at most once a minute.
+let lastPrune = 0;
+const PRUNE_EVERY_MS = 55_000;
+
 export async function prune() {
+  if (Date.now() - lastPrune < PRUNE_EVERY_MS) return;
+  lastPrune = Date.now();
   const planFolders = Object.entries(plansRecord()).map(([id, r]) => [id, r.checkout]);
   const prFolders = Object.entries(prsRecord()).map(([key, r]) => [key, r.worktree]);
   const gonePlans = new Set();
