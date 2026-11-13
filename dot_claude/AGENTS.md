@@ -21,6 +21,10 @@ A `chezmoi apply` diff on this file should therefore only mean a real value chan
 
 The partial is a template for one reason: a machine can add its own sandbox write paths. A list named `claudeSandboxAllowWrite` under `[data]` in the machine's chezmoi config is appended to `sandbox.filesystem.allowWrite`. This is how a work project's paths reach the sandbox without being written into these dotfiles, for example a beads database in a project folder that sessions in every clone and worktree need to lock. User settings are the right level for that rather than a project's `.claude/settings.local.json`, because a worktree session loads its own checkout's settings, not its clone's. `.chezmoi.toml.tmpl` carries the list forward, so a later `chezmoi init` doesn't drop it.
 
+## Sandbox-excluded commands
+
+`sandbox.excludedCommands` lets a few tools run outside the sandbox when called bare. The Xcode tools are there because builds and simulators need paths the sandbox can't grant. Herdr's two command-line tools, `hc` and `herdr-app`, are there because the Herdr drive mod's agents open tabs and set terminal labels with them, and inside the sandbox both fail with `Operation not permitted`: `hc` can't open its core lock under `~/.local/state/herdr-core`, and `herdr-app` can't reach `~/.config/herdr-app/herdr-app.sock` (`herdr-app check` hangs rather than failing). Excluding them means a session can start any program outside the sandbox through `hc run` or `herdr-app do`. I accepted that, since auto mode still reviews each call.
+
 ## Herdr's agent-state hook
 
 The Herdr app needs no hook here: agents report their status to herdr-core through the terminal itself (OSC 7501, per the app's own `~/.config/herdr-app/AGENTS.md`), so this machine has neither the hook file nor its `settings.json` entry. The rest of this section is about the terminal Herdr.
