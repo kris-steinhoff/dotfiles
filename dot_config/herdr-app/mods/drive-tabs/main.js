@@ -16,27 +16,32 @@ export default class Tabs extends View {
     this.pressed = null;
     this.scroll = ScrollHandle.new();
     this.panels = JSON.parse(localStorage.getItem("panels") ?? "{}");
-    this.asks = null; // driver address -> its drive.needs_you, as of the last render
+    this.asks = new Map(); // driver address -> its drive.needs_you when last seen
     // `drive-tabs.show-<driver address>`, from a notification: select the tab holding that terminal.
     cx.spawn(async () => {
       for (;;) {
         const m = /^show-(.+)$/.exec((await nextCommand()) ?? "");
-        const pane = m && panes().find(p => p.terminal === m[1]);
+        if (!m) continue;
+        // A remote terminal's address and its pane's terminal may differ by the machine prefix.
+        const bare = a => String(a ?? "").split("/").pop();
+        const pane = panes().find(p => p.terminal && bare(p.terminal) === bare(m[1]));
         const space = pane && spaces().find(s => s.tabs.some(tab => tab.id === pane.tab));
         if (space) { run("space.select", { id: space.id }); run("tab.select", { id: pane.tab }); }
+        else { run("layout.select", { stack: "panel-body", child: "drive" }); run("layout.show", { id: "panel" }); }
       }
     });
   }
 
   // Live drivers with something waiting on the owner. A notification goes out
-  // when one starts waiting; the first render only records what's already there.
+  // when one seen before with no ask starts waiting. A driver first seen already
+  // asking isn't announced, and one missing from a render keeps its last value.
   watchDrivers(cx) {
-    const asks = new Map();
+    const live = new Map();
     const drivers = terminals().filter(x => x.state === "live" && x.labels?.["drive.role"] === "driver");
-    for (const term of drivers) asks.set(term.address, term.labels["drive.needs_you"] || "");
+    for (const term of drivers) live.set(term.address, term.labels["drive.needs_you"] || "");
     for (const term of drivers) {
-      const ask = asks.get(term.address);
-      if (this.asks && ask && !this.asks.get(term.address)) {
+      const ask = live.get(term.address);
+      if (this.asks.has(term.address) && ask && !this.asks.get(term.address)) {
         cx.spawn(async () => notify({
           title: `${term.labels["drive.title"] ?? term.name ?? "A driver"} needs you`,
           body: ask,
@@ -45,8 +50,8 @@ export default class Tabs extends View {
         }));
       }
     }
-    this.asks = asks;
-    return [...asks.values()].some(Boolean);
+    for (const [address, ask] of live) this.asks.set(address, ask);
+    return [...live.values()].some(Boolean);
   }
 
   // The side panel is remembered per space: switching shows that space's choice
