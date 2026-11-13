@@ -94,7 +94,7 @@
           },
           "window_drag": true,
           "content": {
-            "mod": "tabs"
+            "mod": "drive-tabs"
           }
         },
         {
@@ -159,6 +159,13 @@
                       "type": "block",
                       "content": {
                         "mod": "changes"
+                      }
+                    },
+                    {
+                      "id": "drive",
+                      "type": "block",
+                      "content": {
+                        "mod": "drive"
                       }
                     }
                   ]
