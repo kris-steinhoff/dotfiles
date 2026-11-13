@@ -23,7 +23,7 @@ The partial is a template for one reason: a machine can add its own sandbox writ
 
 ## Sandbox-excluded commands
 
-`sandbox.excludedCommands` lets a few tools run outside the sandbox when called bare. The Xcode tools are there because builds and simulators need paths the sandbox can't grant. Herdr's two command-line tools, `hc` and `herdr-app`, are there because the Herdr drive mod's agents open tabs and set terminal labels with them, and inside the sandbox both fail with `Operation not permitted`: `hc` can't open its core lock under `~/.local/state/herdr-core`, and `herdr-app` can't reach `~/.config/herdr-app/herdr-app.sock` (`herdr-app check` hangs rather than failing). Excluding them means a session can start any program outside the sandbox through `hc run` or `herdr-app do`. I accepted that, since auto mode still reviews each call.
+`sandbox.excludedCommands` lets a few tools run outside the sandbox when called bare. Herdr's two command-line tools, `hc` and `herdr-app`, are there because the Herdr drive mod's agents open tabs and set terminal labels with them, and inside the sandbox both fail with `Operation not permitted`: `hc` can't open its core lock under `~/.local/state/herdr-core`, and `herdr-app` can't reach `~/.config/herdr-app/herdr-app.sock` (`herdr-app check` hangs rather than failing). Excluding them means a session can start any program outside the sandbox through `hc run` or `herdr-app do`. I accepted that, since sessions default to auto mode (`permissions.defaultMode` in the partial), which still reviews each call.
 
 ## Herdr's agent-state hook
 
