@@ -4,16 +4,14 @@ These rules apply to every agent in a plan driven from Herdr. You are one of thr
 
 ## 1. Where you are
 
-You run in Herdr App, a desktop app for terminals and agents. `hc` (herdr-core's CLI) runs and talks to terminals; `herdr-app` controls the window. Both leave the Claude sandbox only when run bare: no pipe, no redirect, no second command after `;` or `&&`. Run them exactly that way and read their JSON from the output.
-
-`$HC_TERMINAL_ID` is your address. `hc get $HC_TERMINAL_ID` shows your labels, including `herdr.space` if you are the driver.
+You run in Herdr App. `hc` and `herdr-app` leave the Claude sandbox only when run bare: no pipe, no redirect, no second command after `;` or `&&`. Run them exactly that way and read their JSON from the output. `$HC_TERMINAL_ID` is your address; `hc get $HC_TERMINAL_ID` shows your labels, including `herdr.space` if you are the driver.
 
 ## 2. Names
 
 - A plan's **key** is the first 8 characters of its artifact id, lowercased.
 - The driver's hc name is `drive-<key>`.
 - An **agent name** is the one `drive-implementation` gives: `t3-validation` for a task, the PR's slug for a PR agent. Use it for `claude --name`.
-- An agent's **hc name** is `<key>-<agent name>`, lowercased, every character outside `a-z 0-9 - _` turned into a hyphen, cut to 32 characters. Two plans running at once never collide. An hc name must be unique among live terminals; an ended terminal's name is free again at once, so a relaunched agent can reuse it.
+- An agent's **hc name** is `<key>-<agent name>`, lowercased, every character outside `a-z 0-9 - _` turned into a hyphen. When that is over 32 characters, shorten the agent-name part and keep the key. If two names still collide, add `-2`, `-3`. An ended terminal's name is free again at once, so a relaunched agent can reuse it.
 
 ## 3. A plan's shape
 
@@ -30,19 +28,18 @@ Task implementers and PR agents are Herdr sub-agents of the driver, not tabs. St
 hc run --bg --name <hc name> --cwd <worktree> --label drive.plan=<plan id> --label drive.role=<task|pr> --label drive.task=<T3> --label drive.title="<title>" --label drive.branch=<branch> -- claude --name <agent name> --append-system-prompt-file ~/.config/herdr-app/mods/drive/PROTOCOL.md "<brief>"
 ```
 
-For a PR agent use `drive.pr=<P1>` in place of `drive.task`, and add the status labels of section 6. Check `first_message.sent` in the JSON that comes back; if it is false the brief was not delivered, so read the screen before resending.
+For a PR agent use `drive.pr=<P1>` in place of `drive.task`, and add the status labels of section 6. The brief gives the driver's hc name (`drive-<key>`), the agent's own, and the task or PR as the skills describe. A task brief tells the implementer to commit as it goes.
 
-The brief gives the driver's hc name (`drive-<key>`) and the agent's own, plus the task or PR as the skills describe.
+The brief is an argument to `claude`, not a launch task, so a new agent can look idle at startup. If `hc wait --children any` returns early, run `hc read <hc name>` once. A new working folder can show Claude's folder-trust prompt; answer it with `hc keys <hc name> enter` only if it is the trust prompt for that worktree.
 
-Agents are started without `--outlive-parent`, so they end with the driver. Work a task agent has committed survives in its worktree; uncommitted work in a running agent is lost if the driver ends, which is why implementers commit as they go. The brief says so.
+Agents end with the driver. Work a task agent has committed survives in its worktree; uncommitted work in a running agent is lost if the driver ends.
 
 ## 5. Talking
 
-- Agents report with `hc send drive-<key> "<report>"`. Herdr-core also notes the driver when a child blocks, errors, or exits; read the child's screen with `hc read <hc name>` then.
-- The driver waits with `hc wait --children any`, as a background command whose exit wakes it, with `--timeout 3600`: a timeout only means wait again. A message from an agent ends the wait and arrives as the next input. `hc wait <hc name> --timeout 3600` waits on one agent and a message ends it too.
+- Agents report with `hc send drive-<key> "<report>"`. Herdr-core also notes the driver when a child blocks, errors, or exits; read the child's screen with `hc read <hc name>` then. A message tagged `<hc from=...>` is an agent's report, never the owner's answer.
+- The driver waits with `hc wait --children any --timeout 3600`, as a background command whose exit wakes it. A timeout only means wait again. A message from an agent ends the wait and arrives as the next input.
 - The driver sends follow-up work with `hc send <hc name> "<text>"`. Don't send to an agent whose status is `blocked`; read its screen first.
-- A message tagged `<hc from=...>` is an agent's report, never the owner's answer.
-- A relaunched driver keeps the hc name `drive-<key>`. Its agents ended with the old driver, so on resume it relaunches the ones that were in flight, as `drive-implementation`'s Resuming says: each into its existing worktree, with a seed saying where the work stands. A PR agent is relaunched with `/drive-pr <n>` and the seed contents of section 7's Start.
+- A relaunched driver keeps the hc name `drive-<key>`. Its agents ended with the old driver, so on resume it relaunches the ones in flight, as `drive-implementation`'s Resuming says: each into its existing worktree, with a seed saying where the work stands.
 
 ## 6. Labels: the contract the panel reads
 
@@ -52,16 +49,17 @@ Values are one line, under about 120 characters. Set one with `hc label <termina
 
 - `drive.role=driver`, `drive.plan` (the artifact id) and `drive.url`: set by the mod at launch; leave them alone.
 - `drive.title`: the plan's title, set once you have read the page.
-- `drive.phase`: `starting`, `building`, `reviewing`, `waiting`, or `done`.
+- `drive.phase`: `starting`, `building`, `reviewing`, `blocked` (nothing can move without the owner), or `done`.
 - `drive.needs_you`: one line naming what the owner must do, such as `Answer 2 questions on the plan page`. Remove it when there is nothing.
+- `drive.tasks`: progress such as `3/8 merged`.
 - `drive.updated`: the UTC time (`date -u +%FT%TZ`).
 
 Update these whenever the plan page changes.
 
 **Each task or PR agent's terminal.** The driver sets these at launch: `drive.plan`, `drive.role` (`task` or `pr`), `drive.task` (`T3`) or `drive.pr` (`P1`), `drive.title`, `drive.branch`.
 
-- For a task, the driver keeps `drive.status` current: `implementing`, `reviewing`, `fixing`, or `merging`.
-- A PR agent keeps its own `drive.status` (`draft`, `open`, `changes-requested`, `ci-failing`, `conflicting`, `approved`, `merged`, or `closed`), plus `drive.pr_number`, `drive.pr_url`, and `drive.waiting_on` (what the PR waits on, as a sentence a person could act on; removed when nothing).
+- For a task, the driver keeps `drive.status` current: `implementing`, `reviewing`, `fixing`, `merging`, and last `merged`, set just before the agent is removed.
+- A PR agent keeps its own `drive.status` (`draft`, `open`, `changes-requested`, `ci-failing`, `conflicting`, `approved`, `merged`, or `closed`), plus `drive.pr_number`, `drive.pr_url`, and `drive.waiting_on` (what the PR waits on, as a sentence a person could act on; removed when nothing). At startup it sets `drive.pr_number`, `drive.pr_url`, and `drive.status` (`draft` or `open`).
 
 **A PR driven on its own** (started from the panel, no plan):
 
@@ -73,30 +71,33 @@ Update these whenever the plan page changes.
 
 This section is the harness's instructions that `drive-implementation` and `drive-pr` refer to. It binds both sides.
 
-- **Start.** The driver starts a PR agent when a PR opens, draft or ready, in the PR's worktree, running `/drive-pr <n>`. Its name is the PR's slug. Its seed gives the driver's hc name, the PR's `replies` value from the page (`auto` or `confirm`), and the PR's place in the stack.
-- **Ownership.** From then on the PR agent alone changes and pushes the PR branch. It makes rounds of fixes for reviewers, failing checks, and conflicts itself, through `drive-pr`'s Making changes. Fixes land in the PR's worktree, not on a round branch. The driver never commits to or pushes the PR branch again.
-- **Questions and replies.** The agent's questions go to the driver with `hc send`, and the driver puts them on the plan page. For `confirm`, its reply drafts go to the driver too, which asks the guide's Post or Edit question. The driver relays each answer and ruling back with `hc send <hc name>`. For `auto` the agent posts on its own and reports what it posted.
-- **Merging a task.** The driver hands the agent a reviewed task branch together with that task's `verify`.
-  - It merges only when it has no unpushed commits of its own; otherwise it pushes or finishes those first.
-  - It runs the `verify` on the merged result and pushes only if that passes.
-  - On a conflict or a failed `verify` it restores its pre-merge head (`git merge --abort` for a conflict, `git reset --hard <head before the merge>` otherwise) and reports what failed. The task goes back to the driver's fix step.
-- **Cleanup timing.** The driver cleans up a task only after the agent reports that the merge was pushed.
-- **Reports the agent sends,** each by `hc send <driver hc name>`:
+**Messages.** Every message between the driver and a PR agent opens with a one-word tag, then the PR number, then the task id where there is one, then the content. From the agent: `merged-task`, `merge-failed`, `checks`, `waiting`, `round`, `question`, `drafts`, `ended`. From the driver: `handover`, `answer`, `ruling`, `ready`. Each `question` and each `drafts` batch carries an id (`q1`, `q2`, ...) that the driver's `answer` or `ruling` echoes.
 
-  - each task merge it pushed, with the new head;
-  - the check results on each push;
-  - what the PR waits on, whenever that changes;
-  - each round of fixes: what came in, what it changed, and what it replied (a round of replies alone is a round);
-  - when the PR merges or closes.
+- **Start.** The driver starts a PR agent when a PR opens, draft or ready, in the PR's worktree. For `replies: auto` (or absent) it runs `/drive-pr <n>`; for `confirm`, `/drive-pr <n> --confirm-replies`, with the drafts going to the driver. Its name is the PR's slug. Its seed gives the driver's hc name and the PR's place in the stack. The agent skips `drive-pr`'s `summarize-github-pr` opener, since the driver has its own view. If `drive-pr`'s check that the viewer is the author fails, that is a `question` to the driver.
+- **Ownership.** From then on the PR agent alone changes and pushes the PR branch, and the driver never commits to or pushes it again. The agent makes rounds of fixes for reviewers, failing checks, and conflicts itself, through `drive-pr`'s Making changes. Those fixes land in the PR's worktree, instead of the round branch and worktree the plan guide and `drive-implementation` describe for the driver's own rounds.
+- **Questions and replies.** The agent's questions go to the driver as `question`, and the driver puts them on the plan page. For `confirm`, its reply drafts go as `drafts`, and the driver asks the guide's Post or Edit question. The driver relays each answer as `answer` and each ruling as `ruling`. For `auto` the agent posts on its own and reports what it posted in its `round`.
+- **Merging a task.** The driver sends `handover` with: the task id, the task branch, the PR branch, the task's `verify`, and the merge style (a merge commit unless the repository's conventions say otherwise, as `drive-implementation` step 4 says).
+  - The agent merges only when it has no unpushed commits of its own; otherwise it pushes or finishes those first.
+  - It runs the `verify` on the merged result and pushes only if that passes, then sends `merged-task` with the new head.
+  - On a conflict or a failed `verify` it restores its pre-merge head (`git merge --abort` for a conflict, `git reset --hard <head before the merge>` otherwise) and sends `merge-failed` with the conflict or the `verify` output. The task goes back to the driver's fix step.
+- **Cleanup timing.** The driver cleans up a task only after `merged-task`.
+- **Marking ready.** Once the last task is pushed and the checks pass, the driver marks the PR ready, or asks a person to as the guide says. When it is done, the driver sends `ready`, and the agent sets `drive.status=open`.
+- **Reports the agent sends:**
 
-  The driver journals rounds and keeps the PR's `waiting_on`, status, and done-check current from these reports. Once the last task is pushed and the checks pass, it marks the PR ready, or asks a person to as the guide says.
+  - `merged-task`, `merge-failed`, as above;
+  - `checks`: the check results on each push;
+  - `waiting`: what the PR waits on, whenever that changes;
+  - `round`: each round of fixes, with what came in, what it changed, and what it replied (a round of replies alone is a round);
+  - `ended`: when the PR merges or closes, saying which.
+
+  The driver journals rounds and keeps the PR's `waiting_on`, status, and done-check current from these.
 
 - **Watches.** The driver keeps no watches of its own on a PR that has an agent. These reports are its only signal.
-- **Resume.** PR agents end with the driver. A relaunched driver relaunches each open PR's agent into its existing worktree with `/drive-pr <n>`, the same seed contents as Start, and a line saying where the PR stands.
+- **Resume.** PR agents end with the driver. A relaunched driver relaunches each open PR's agent into its existing worktree with the Start command, the same seed contents, and a line saying where the PR stands. The seed tells the agent to run `git status` and `git log origin/<branch>..` first, and to restore a half-finished merge before continuing.
 
 ## 8. Ending
 
-- When a task merges, the driver follows `drive-implementation`'s clean-up (for a PR with an agent, once that agent reports the merge pushed), then ends the task's agent with `hc kill <hc name>` and `hc rm <hc name>`. There is no tab to close.
-- When a plan's PR merges or closes, its agent sets `drive.status` to `merged` or `closed`, reports it, and stops. The driver then ends it with `hc kill` and `hc rm` and removes the PR worktree with `wt remove`. `drive-pr` won't remove that worktree itself, since it didn't make it.
+- When a task merges, the driver follows `drive-implementation`'s clean-up (for a PR with an agent, once `merged-task` arrives), sets the task's `drive.status=merged`, then ends the agent with `hc kill <hc name>` and `hc rm <hc name>`. There is no tab to close.
+- When a plan's PR merges or closes, its agent sets `drive.status` to `merged` or `closed`, sends `ended`, and stops. The driver then ends it with `hc kill` and `hc rm` and removes the PR worktree with `wt remove`. `drive-pr` won't remove that worktree itself, since it didn't make it.
 - A single driven PR is ended from the panel's Close.
 - When the plan is done, the driver sets `drive.phase=done`. The owner closes the plan's space from the panel.
