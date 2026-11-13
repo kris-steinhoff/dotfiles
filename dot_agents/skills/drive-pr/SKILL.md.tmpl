@@ -16,7 +16,7 @@ The modes:
 - `<n> --confirm-replies` drives it the same way, but each batch of replies waits for the user's confirmation, as in Confirming replies below.
 - `respond <n>` is one pass with no code changes and no watching. It drafts replies to what's unanswered, confirms them with the user, and posts them.
 
-A caller such as `/drive-implementation` may run this for a PR it opened. It can say where questions go, whether replies need confirming, and how code changes are made, and what it says wins over the defaults here. Otherwise questions go to the user in this session.
+A caller such as `/drive-implementation` may run this for a PR it opened, itself or as a separate agent. It can say where questions and reply drafts go, whether replies need confirming, and how code changes are made, and it may hand you reviewed branches to merge onto the PR branch without reviewing them again, with any check to run before pushing. What the caller says wins over the defaults here. Otherwise questions go to the user in this session.
 
 The posting schema is in [references/posting.md](references/posting.md); read it before reading the PR's threads or posting. `scripts/feedback.py` and `scripts/post.py` are the same scripts `github-pr` uses. Waits use the `watch-pr` skill.
 
