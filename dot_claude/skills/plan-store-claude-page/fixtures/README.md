@@ -7,7 +7,7 @@ Plans for trying out `assets/plan-page.html` across plan shapes and stages. The 
 From the repository root:
 
 ```bash
-dot_claude/skills/plan-implementation/fixtures/executable_view big-running
+dot_claude/skills/plan-store-claude-page/fixtures/executable_view big-running
 ```
 
 That serves the fixtures on localhost and opens that one in a browser. `/` lists them in a grid of shape by stage, and `/?fixture=<name>` renders one, so run it with no name to start from the list. For responsiveness, use the browser's dev tools. The page is `assets/plan-page.html` as it stands, inside the wrapper the Artifact tool publishes pages in, with `stand-in.js` loaded ahead of it to play the artifact runtime, so a change to the page shows on reload. Pass `--no-open` to only print the URL, and `--port` to choose the port.
@@ -35,11 +35,11 @@ It returns `warnings`, then the status the page shows, its scroll and client wid
 `--page <path>` serves another copy of the page. Use it for before numbers and to break the page on purpose without touching the repository:
 
 ```bash
-git show <commit>:dot_claude/skills/plan-implementation/assets/plan-page.html > "$TMPDIR/before.html"
-dot_claude/skills/plan-implementation/fixtures/executable_view --page "$TMPDIR/before.html" --no-open --port 8738
+git show <commit>:dot_claude/skills/plan-store-claude-page/assets/plan-page.html > "$TMPDIR/before.html"
+dot_claude/skills/plan-store-claude-page/fixtures/executable_view --page "$TMPDIR/before.html" --no-open --port 8738
 ```
 
-The page was `assets/board.html` before the rename, so a commit that old needs that path instead.
+Before plans got a local store, the page lived in the `plan-implementation` skill, at `dot_claude/skills/plan-implementation/assets/plan-page.html`, and before that at `assets/board.html` there, so an older commit needs that path instead.
 
 ## The shapes and stages
 
@@ -64,7 +64,7 @@ The guide once told writers to leave backticks out, and plans written then have 
 
 ## The format
 
-A fixture is one JSON file. `docs` maps each database path to its document, exactly as `assets/guide.md` defines them, and the rest is what the stand-in needs to know about the viewer:
+A fixture is one JSON file. `docs` maps each database path to its document, exactly as the plan guide (`dot_agents/skills/plan-implementation/assets/guide.md`) defines them, and the rest is what the stand-in needs to know about the viewer:
 
 ```json
 {
@@ -84,13 +84,13 @@ A fixture is one JSON file. `docs` maps each database path to its document, exac
 
 `people` holds every id that `by` or `answered_by` uses, and a `null` name shows as "someone", which is how the page treats an id with no profile. `viewer` is one of them.
 
-`executable_check` reads every fixture, or those it's given, and reports anything that breaks the guide, contradicts itself, or falls short of its shape and stage. Run it after changing one, and when adding a fixture, name it `<shape>-<stage>` or add its rules there.
+`executable_check` reads every fixture, or those it's given, and reports anything that breaks the guide, contradicts itself, or falls short of its shape and stage. The guide's own rules are `plan-store check`'s, which it loads from `dot_local/bin/executable_plan-store` in this source tree, or from `plan-store` on `PATH`; this adds the rules only a fixture has. Run it after changing one, and when adding a fixture, name it `<shape>-<stage>` or add its rules there.
 
 ## Capturing a live plan page
 
 `docs` is the database's own layout, so a fixture can be taken from a live plan page. A session with the ArtifactData tool does this:
 
-1. For each of `run`, `tasks`, `prs`, `questions`, and `journal`, run `list` with the page's `url`, `query: {"limit": 1000}`, and `out_dir` set to one folder outside this repository. Each document lands at `<collection>/<doc_id>.json`, holding only its fields.
+1. For each of `run`, `tasks`, `prs`, `questions`, and `journal`, run `list` with the page's `url`, `query: {"limit": 1000}`, and `out_dir` set to one folder outside this repository. Each document lands at `<collection>/<doc_id>.json`, holding only its fields. That folder is laid out the way a local plan is, so `plan-store check <folder>` checks the page's data as it stands.
 2. Run `executable_capture <folder> --out <file.json>`. It freezes `now` at the plan's last activity and prints the person ids it has no name for.
 3. For real names, call `profiles` with those ids, 64 at a time, write the result to a file mapping id to name, and run the capture again with `--people <file>`. Without names, those people show as "someone".
 4. View it: `executable_view <name>` for a capture written to this folder, or `executable_view <file.json>` for one anywhere else.

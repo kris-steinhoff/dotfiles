@@ -1,0 +1,212 @@
+#!/usr/bin/env python3
+"""Check fixtures against the plan guide, against themselves, and against what their shape and stage promise.
+
+    check [fixture ...]
+
+Checks every fixture when none is named, prints each one's figures and problems, and exits 1 on any problem.
+The guide's own rules come from plan-store's checker; this adds what only a fixture promises.
+"""
+from __future__ import annotations
+
+import importlib.machinery
+import importlib.util
+import json
+import re
+import shutil
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+
+
+def load_plan_store():
+    """plan-store from this source tree when run from it, else the one on PATH."""
+    candidates = [HERE.parents[3] / "dot_local" / "bin" / "executable_plan-store"] if len(HERE.parents) > 3 else []
+    on_path = shutil.which("plan-store")
+    if on_path:
+        candidates.append(Path(on_path))
+    for path in candidates:
+        if path.is_file():
+            loader = importlib.machinery.SourceFileLoader("plan_store", str(path))
+            spec = importlib.util.spec_from_loader("plan_store", loader)
+            module = importlib.util.module_from_spec(spec)
+            loader.exec_module(module)
+            return module
+    sys.exit("check: can't find plan-store, which holds the guide's rules")
+
+
+plan_store = load_plan_store()
+
+TOP_KEYS = {"about", "now", "viewer", "people", "docs"}
+URL = re.compile(r"https?://([^/\s\"')]+)")
+REAL_NAMES = re.compile(
+    r"\b(GitHub|GitLab|Bitbucket|Jira|Atlassian|AWS|Amazon|Google|GCP|Azure|Microsoft|Stripe|Twilio|"
+    r"Slack|Salesforce|Shopify|Datadog|PagerDuty|Sentry|Okta|Auth0|Cloudflare|Vercel|Heroku|SendGrid|PayPal)\b"
+)
+TASK_STATUSES, ACTIVE = plan_store.TASK_STATUSES, plan_store.ACTIVE
+
+
+class Fixture(plan_store.Plan):
+    def __init__(self, name: str, data: dict):
+        self.data = data
+        super().__init__(name, data.get("docs", {}), data.get("now", ""), data.get("people", {}))
+        match = re.fullmatch(r"(small|big|simple|complex)-(planning|running|done)", name)
+        # A name outside <shape>-<stage> is a capture: only the guide's rules and its own consistency apply.
+        self.shape, self.stage = match.groups() if match else ("", "")
+
+    def check_top(self) -> None:
+        self.keys("fixture", self.data, TOP_KEYS, TOP_KEYS)
+        self.stamp("now", self.data.get("now"))
+        if self.data.get("viewer") not in self.data.get("people", {}):
+            self.problem("viewer is not in people")
+
+    def check_invented(self) -> None:
+        def walk(value: object, where: str) -> None:
+            if isinstance(value, dict):
+                for key, item in value.items():
+                    walk(item, f"{where}.{key}")
+            elif isinstance(value, list):
+                for index, item in enumerate(value):
+                    walk(item, f"{where}[{index}]")
+            elif isinstance(value, str):
+                for host in URL.findall(value):
+                    if not host.endswith(".example"):
+                        self.problem(f"{where}: URL host {host} is not under .example")
+                real = REAL_NAMES.search(value)
+                if real:
+                    self.problem(f"{where}: names {real.group(0)}, a real company or product")
+
+        walk(self.data, "fixture")
+
+    def check_stage(self) -> None:
+        run, tasks, questions = self.run, self.tasks.values(), self.questions.values()
+        statuses = {t.get("status") for t in tasks}
+        open_questions = [q for q in questions if q.get("status") == "open"]
+        answered = [q for q in questions if q.get("status") == "answered"]
+        checks = run.get("done_check", [])
+        pr_statuses = {p.get("status") for p in self.prs.values()}
+        if self.stage == "planning":
+            if run.get("status") != "pending":
+                self.problem("planning stage: run status is not pending")
+            if statuses - {"pending", "dropped"}:
+                self.problem(f"planning stage: tasks have started: {sorted(statuses)}")
+            if not open_questions:
+                self.problem("planning stage: no open question")
+            if any(c.get("state") != "unchecked" for c in checks):
+                self.problem("planning stage: a done-check has been judged")
+            if pr_statuses - {"planned"}:
+                self.problem("planning stage: a PR is past planned")
+            if run.get("handover"):
+                self.problem("planning stage: has a handover")
+            if any(t.get("pr") for t in tasks) and not self.prs:
+                self.problem("planning stage: tasks name PRs that don't exist")
+            parts = ("approach", "delivery", "done_check", "out_of_scope", "risks")
+            sparse = any(not t.get(k) for t in tasks for k in ("approach", "touches", "verify"))
+            if all(run.get(k) for k in parts) and not sparse:
+                self.problem("planning stage: nothing is missing yet")
+        elif self.stage == "running":
+            if run.get("status") != "running":
+                self.problem("running stage: run status is not running")
+            expected = TASK_STATUSES - (set() if statuses & ACTIVE else ACTIVE)
+            if statuses != expected:
+                self.problem(f"running stage: statuses differ from {sorted(expected)}: missing {sorted(expected - statuses)}, extra {sorted(statuses - expected)}")
+            if not answered:
+                self.problem("running stage: no answered question")
+            if not pr_statuses & {"draft", "open"}:
+                self.problem("running stage: no PR is draft or open")
+            if not run.get("driver"):
+                self.problem("running stage: no driver")
+            if any(not t.get("pr") for t in tasks if t.get("status") != "dropped"):
+                self.problem("running stage: a live task has no pr")
+        elif self.stage == "done":
+            if run.get("status") != "done":
+                self.problem("done stage: run status is not done")
+            if statuses - {"merged", "dropped"}:
+                self.problem(f"done stage: tasks unfinished: {sorted(statuses)}")
+            if open_questions:
+                self.problem("done stage: open questions remain")
+            if not checks or any(c.get("state") != "met" or not c.get("note") for c in checks):
+                self.problem("done stage: every done-check needs state met and a note")
+            handover = run.get("handover") or {}
+            if not handover.get("look_first"):
+                self.problem("done stage: handover needs look_first")
+            if run.get("driver"):
+                self.problem("done stage: driver not cleared")
+            if pr_statuses - {"merged", "closed"}:
+                self.problem("done stage: a PR has not merged or closed")
+            if any(not t.get("pr") for t in tasks if t.get("status") != "dropped"):
+                self.problem("done stage: a live task has no pr")
+
+    def check_shape(self) -> None:
+        depth = self.levels()
+        count, levels = len(self.tasks), max(depth.values(), default=-1) + 1
+        widest = max(list(depth.values()).count(level) for level in range(levels)) if levels else 0
+        journal, questions, prs = len(self.journal), len(self.questions), len(self.prs)
+        stacked = sum(1 for p in self.prs.values() if re.fullmatch(r"P\d+", p.get("base", "")))
+        epics = len(self.run.get("epics", {}))
+        multi_epic = sum(1 for t in self.tasks.values() if len(t.get("epics", [])) > 1)
+        joins = sum(1 for t in self.tasks.values() if sum(d in self.tasks for d in t.get("depends_on", [])) > 1)
+        self.figures = f"{count}T {questions}Q {prs}P {journal}J levels={levels} widest={widest} epics={epics}"
+        if self.shape == "small":
+            if count > 8 or questions > 3 or journal > 14 or prs > 2:
+                self.problem(f"small: too large: {self.figures}")
+        elif self.shape == "big":
+            least = {"planning": 30, "running": 60, "done": 90}.get(self.stage, 0)
+            if count < 36 or questions < 8 or journal < least or widest < 4:
+                self.problem(f"big: too small, wants 36T 8Q {least}J widest>=4: {self.figures}")
+            if self.stage != "planning" and prs < 3:
+                self.problem("big: wants at least 3 PRs")
+        elif self.shape == "simple":
+            if count and levels < 0.6 * count:
+                self.problem(f"simple: not close to a straight line: {self.figures}")
+            if widest > 4 or epics:
+                self.problem(f"simple: too wide, or has epics: {self.figures}")
+            if self.stage != "planning" and prs != 1:
+                self.problem("simple: wants exactly one PR")
+        elif self.shape == "complex":
+            if count < 16 or levels < 6 or widest < 5 or joins < 3:
+                self.problem(f"complex: wants 16T levels>=6 widest>=5 joins>=3: {self.figures} joins={joins}")
+            if prs < 3 or stacked < 2:
+                self.problem(f"complex: wants 3 PRs with 2 stacked: {prs} with {stacked}")
+            if epics < 2 or not multi_epic:
+                self.problem(f"complex: wants 2 epics and a task in two of them: {epics}, {multi_epic}")
+            if self.stage == "running":
+                opens = {i for i, q in self.questions.items() if q.get("status") == "open"}
+                held = [t for t in self.tasks.values() if set(t.get("depends_on", [])) & opens]
+                if not held or not any(t.get("status") == "blocked" for t in self.tasks.values()):
+                    self.problem("complex: wants a task held by an open question and a blocked task")
+                if not self.shows_blocked():
+                    self.problem("complex: wants the running stage to show Blocked")
+
+    def check(self) -> None:
+        self.check_top()
+        # hostile-text exists to put backticks in the plain fields, to show that the page leaves them alone.
+        super().check(plain=self.name != "hostile-text")
+        if self.shape:
+            self.check_invented()
+        self.check_stage()
+        self.check_shape()
+
+
+def main(argv: list[str]) -> int:
+    names = argv or sorted(path.stem for path in HERE.glob("*.json"))
+    failed = 0
+    for name in names:
+        name = Path(name).stem
+        try:
+            data = json.loads((HERE / f"{name}.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError) as error:
+            print(f"{name}: unreadable: {error}")
+            failed += 1
+            continue
+        fixture = Fixture(name, data)
+        fixture.check()
+        print(f"{name}: {fixture.figures} {'ok' if not fixture.problems else str(len(fixture.problems)) + ' problems'}")
+        for problem in fixture.problems:
+            print(f"  {problem}")
+        failed += bool(fixture.problems)
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

@@ -340,6 +340,8 @@ details[open] > summary { margin-bottom: 10px; }
   const state = { run: null, tasks: [], questions: [], journal: [], prs: [] };
   // Set once the page knows who is viewing: editors answer open questions here.
   let dbRef = null, viewerUser = null, commentsRef = null, canAnswer = false, myId = null;
+  // Journal `by` values that mean an agent: "agent", and "claude" in plans written before it.
+  const AGENTS = new Set(["agent", "claude"]);
   const drafts = new Map();
 
   // "blocked" is never stored: the page works it out (see planBlocked).
@@ -1115,7 +1117,7 @@ details[open] > summary { margin-bottom: 10px; }
       const body = el("div", "entry");
       body.appendChild(el("p", null, j.text));
       if (j.by) {
-        const by = el("span", "by", j.by === "claude" ? "by Claude" : j.by === "owner" ? "by the plan page's owner" : "");
+        const by = el("span", "by", AGENTS.has(j.by) ? "by Claude" : j.by === "owner" ? "by the plan page's owner" : "");
         by.dataset.by = j.by;
         body.appendChild(by);
       }
@@ -1135,10 +1137,11 @@ details[open] > summary { margin-bottom: 10px; }
     fillNames();
   }
 
-  // A journal entry's `by` is a person's id, "claude" for what Claude decided, or "owner" for the plan page's owner
-  // when Claude recorded it without knowing the owner's id. Names resolve per viewer, every render.
+  // A journal entry's `by` is a person's id, "agent" for what an agent decided ("claude" in older plans), or "owner"
+  // for the plan page's owner when an agent recorded it without knowing the owner's id. Only Claude works a plan
+  // page, so both agent values read as Claude. Names resolve per viewer, every render.
   async function fillNames() {
-    const spans = [...document.querySelectorAll(".by[data-by]")].filter((s) => s.dataset.by !== "claude" && s.dataset.by !== "owner");
+    const spans = [...document.querySelectorAll(".by[data-by]")].filter((s) => !AGENTS.has(s.dataset.by) && s.dataset.by !== "owner");
     const ids = [...new Set(spans.map((s) => s.dataset.by))];
     if (!ids.length) return;
     const ps = viewerUser ? await viewerUser.profiles(ids) : {};

@@ -161,12 +161,15 @@
 .agents/skills/github-pr/scripts/dispatch.py
 .agents/skills/github-pr/tests/test-dispatch
 .claude/skills/plan-implementation/assets/board.html
-# drive was folded into plan-implementation's plan page, and drive-implementation
-# became a Claude-only skill that drives that page; without these the retired
-# copies linger on machines that already applied them.
+# drive was folded into plan-implementation's plan page; without these the
+# retired copies linger on machines that already applied them.
 .claude/skills/drive
-.agents/skills/drive-implementation
 .gemini/config/plugins/kris-steinhoff/skills/drive-implementation
+# The plan page and its fixtures moved from plan-implementation to
+# plan-store-claude-page when plans got a local store; without these the old
+# copies linger in the Claude entry, which now only links the guide.
+.claude/skills/plan-implementation/assets/plan-page.html
+.claude/skills/plan-implementation/fixtures
 # Gemini is no longer a supported surface, so its instruction file and the
 # plugin that carried every skill went from the source; without these they
 # linger on machines that already applied them.

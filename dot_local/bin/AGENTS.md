@@ -1,6 +1,6 @@
 # Scripts in ~/.local/bin
 
-This file covers the reasons behind the scripts deployed to `~/.local/bin` that have notes, `ai-usage`, `github-review-queue`, and `wt`, so load it before changing any of them. Usage lives in each script's docstring and `--help`; this file holds why.
+This file covers the reasons behind the scripts deployed to `~/.local/bin` that have notes, `ai-usage`, `github-review-queue`, `plan-store`, and `wt`, so load it before changing any of them. Usage lives in each script's docstring and `--help`; this file holds why.
 
 ## ai-usage
 
@@ -23,6 +23,17 @@ Every mode reads through a shared per-service cache in `~/.local/state/ai-usage/
 - **`requested_directly`** is whether one of the PR's pending review requests names me rather than a team I'm on. The mod uses it to keep a PR off its automatic mute: a request by name means the author wants me in particular, whoever else has reviewed. GitHub drops my request once I review, so it is true only until then.
 - **`stacked_on` ignores forks.** It is the open PR whose head branch is this PR's base, but only among PRs from this repository. A fork's head branch lives in the fork, so a fork's PR from its `main` would otherwise look like the PR under every PR based on `main`.
 - **`jira_keys`** come from the title and the upper-cased head branch, so a branch named `abc-162-saved-searches` yields `ABC-162`.
+
+## plan-store
+
+`executable_plan-store` is the local store for the plans `/plan-implementation` writes and `/drive-implementation` works: a directory with one JSON file per document, at `<plan>/<collection>/<id>.json`. Why plans have stores, and why this layout, is in `dot_agents/skills/plan-implementation/AGENTS.md`. It is a stdlib Python script that runs on macOS's `/usr/bin/python3` (3.9), so it works inside the Claude sandbox and under Codex alike. Its tests are `tests/test-plan-store`, run from the source directory.
+
+- **On PATH, not in a skill.** Both skills use it, and so can any view of a plan, such as a Herdr panel or a local page, without knowing where a skill is deployed. A plan's guide names the command, so an agent picking up a plan needs only the plan's path.
+- **The one writer.** Agents write only through it, so each write is checked against the version the writer read (`--if-version`, `absent` for a new document), applied under a lock, and written atomically. `batch` checks every version before writing anything. A version is a hash of the file's bytes, so a hand edit changes it too. A refused write exits 2, as `wt`'s refusals do.
+- **Waking a session.** `wait` polls the plan's files and exits when one changes, so a background run of it wakes a session the way a comment watch does on a plan page. To tell an agent's own writes from everyone else's, each write appends `{path, version, writer}` to `<plan>/.changes.jsonl` before replacing the file, so a waiter that sees a change can already see who made it. `wait` ignores a change only when the log shows its own writer made that exact version. Everything else, including an edit that never went through the command, counts as someone else's. The writer is `--as`, or `PLAN_STORE_WRITER`, or `agent`, so a view writing as itself wakes the agent and the agent's own writes don't.
+- **Where plans live.** `new` puts a plan in `<main checkout>/.plans/<slug>`, finding the main checkout as `wt` does, and adds `/.plans/` to the common dir's `info/exclude`, which the Claude sandbox can write even from a linked worktree. A bare slug in any command resolves there too.
+- **The guide's rules.** `check` holds a plan, or a fixture file shaped `{"docs": {...}}`, to the guide's schema. The plan page's fixture checker loads this script as a module and adds only the fixtures' own rules, so the rules live in one place. `check` names a person only when the file says who the people are; in a plan directory any id passes.
+- **The guide's store section.** `new` and `guide` splice a store's section into the guide at its `<!-- store -->` line, so the plan page store builds its `meta/guide` with the same command.
 
 ## wt
 

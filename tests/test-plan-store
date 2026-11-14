@@ -1,0 +1,202 @@
+#!/usr/bin/env python3
+"""Behavior tests for plan-store, against real git repos and plan directories."""
+
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+import time
+import unittest
+
+
+ROOT = Path(__file__).resolve().parents[1]
+SCRIPT = ROOT / "dot_local" / "bin" / "executable_plan-store"
+GUIDE = ROOT / "dot_agents" / "skills" / "plan-implementation" / "assets" / "guide.md"
+STORE = ROOT / "dot_agents" / "skills" / "plan-implementation" / "assets" / "store-local.md"
+FIXTURES = ROOT / "dot_claude" / "skills" / "plan-store-claude-page" / "fixtures"
+
+
+def store(*args, cwd=None, stdin=None, env=None, writer=None):
+    command = [sys.executable, str(SCRIPT)] + (["--as", writer] if writer else []) + [str(a) for a in args]
+    return subprocess.run(command, cwd=cwd, input=stdin, capture_output=True, text=True,
+                          env={**os.environ, **(env or {})})
+
+
+def git(cwd, *args):
+    subprocess.run(["git", "-C", str(cwd), *args], check=True, capture_output=True, text=True)
+
+
+class Base(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(os.path.realpath(self.tmp.name))
+        self.repo = self.dir / "repo"
+        self.repo.mkdir()
+        git(self.repo, "init", "-q", "-b", "main")
+        git(self.repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "start")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def new(self, slug="abc-1-thing", cwd=None):
+        proc = store("new", slug, "--guide", GUIDE, "--store", STORE, cwd=cwd or self.repo)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        return Path(proc.stdout.strip())
+
+    def ok(self, *args, **kwargs):
+        proc = store(*args, **kwargs)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        return json.loads(proc.stdout) if proc.stdout.strip().startswith(("{", "[")) else proc.stdout
+
+
+class NewTests(Base):
+    def test_new_makes_the_plan_under_the_main_checkout_and_hides_it_from_git(self):
+        plan = self.new()
+        self.assertEqual(plan, self.repo / ".plans" / "abc-1-thing")
+        guide = json.loads((plan / "meta" / "guide.json").read_text())
+        self.assertEqual(set(guide), {"format", "title", "text", "updated_at"})
+        self.assertNotIn("<!-- store -->", guide["text"])
+        self.assertIn("plan-store", guide["text"])
+        self.assertIn("/.plans/", (self.repo / ".git" / "info" / "exclude").read_text().splitlines())
+        status = subprocess.run(["git", "-C", str(self.repo), "status", "--porcelain"], capture_output=True, text=True)
+        self.assertEqual(status.stdout, "")
+
+    def test_new_from_a_linked_worktree_still_uses_the_main_checkout(self):
+        linked = self.dir / "linked"
+        git(self.repo, "worktree", "add", "-q", "-b", "side", str(linked))
+        self.assertEqual(self.new(cwd=linked), self.repo / ".plans" / "abc-1-thing")
+
+    def test_new_refuses_a_plan_that_exists(self):
+        self.new()
+        proc = store("new", "abc-1-thing", "--guide", GUIDE, "--store", STORE, cwd=self.repo)
+        self.assertEqual(proc.returncode, 2)
+
+    def test_a_bare_slug_resolves_inside_the_repo(self):
+        plan = self.new()
+        self.assertEqual(self.ok("path", "abc-1-thing", cwd=self.repo).strip(), str(plan))
+        self.assertEqual(store("path", "nope", cwd=self.repo).returncode, 1)
+
+    def test_guide_needs_the_store_marker(self):
+        bad = self.dir / "guide.md"
+        bad.write_text("# A guide\n\nno marker\n")
+        self.assertEqual(store("guide", "--guide", bad, "--store", STORE).returncode, 1)
+
+
+class WriteTests(Base):
+    def setUp(self):
+        super().setUp()
+        self.plan = self.new()
+
+    def test_set_get_update_and_null_removes_a_field(self):
+        put = self.ok("set", self.plan, "tasks/T1", stdin='{"title": "One", "status": "blocked", "blocked_on": "x"}')
+        got = self.ok("get", self.plan, "tasks/T1")
+        self.assertEqual(got["version"], put["version"])
+        self.ok("update", self.plan, "tasks/T1", "--if-version", put["version"],
+                stdin='{"status": "pending", "blocked_on": null}')
+        self.assertEqual(self.ok("get", self.plan, "tasks/T1")["data"], {"title": "One", "status": "pending"})
+
+    def test_a_stale_version_is_refused_and_changes_nothing(self):
+        first = self.ok("set", self.plan, "tasks/T1", stdin='{"title": "One"}')
+        self.ok("set", self.plan, "tasks/T1", stdin='{"title": "Two"}')
+        proc = store("update", self.plan, "tasks/T1", "--if-version", first["version"], stdin='{"title": "Three"}')
+        self.assertEqual(proc.returncode, 2)
+        self.assertEqual(self.ok("get", self.plan, "tasks/T1")["data"]["title"], "Two")
+
+    def test_absent_means_the_document_must_not_exist(self):
+        self.ok("set", self.plan, "tasks/T1", "--if-version", "absent", stdin="{}")
+        self.assertEqual(store("set", self.plan, "tasks/T1", "--if-version", "absent", stdin="{}").returncode, 2)
+
+    def test_a_batch_applies_all_or_none(self):
+        self.ok("set", self.plan, "tasks/T1", stdin='{"title": "One"}')
+        ops = [{"op": "set", "path": "tasks/T2", "data": {"title": "Two"}},
+               {"op": "update", "path": "tasks/T1", "data": {"title": "Uno"}, "if_version": "stale"}]
+        self.assertEqual(store("batch", self.plan, stdin=json.dumps(ops)).returncode, 2)
+        self.assertFalse((self.plan / "tasks" / "T2.json").exists())
+        ops[1]["if_version"] = self.ok("get", self.plan, "tasks/T1")["version"]
+        self.ok("batch", self.plan, stdin=json.dumps(ops))
+        self.assertEqual(self.ok("get", self.plan, "tasks/T1")["data"]["title"], "Uno")
+
+    def test_paths_outside_the_plan_are_rejected(self):
+        for bad in ("../escape", "tasks/../../x", "tasks", "Tasks/T1", "tasks/T1/extra"):
+            self.assertEqual(store("set", self.plan, bad, stdin="{}").returncode, 1, bad)
+
+    def test_journal_stamps_entries_and_moves_updated_at(self):
+        self.ok("set", self.plan, "run/main", stdin='{"title": "x", "updated_at": "2000-01-01T00:00:00Z"}')
+        first = self.ok("journal", self.plan, "one")
+        second = self.ok("journal", self.plan, "two", "--question", "Q1")
+        stamp = second[0]["path"].split("/", 1)[1]
+        self.assertNotEqual(first[0]["path"], second[0]["path"])
+        self.assertEqual(self.ok("get", self.plan, "run/main")["data"]["updated_at"], stamp)
+        entry = self.ok("get", self.plan, second[0]["path"])["data"]
+        self.assertEqual(entry, {"at": stamp, "text": "two", "by": "agent", "questions": ["Q1"]})
+
+    def test_list_orders_ids_by_number_and_the_journal_newest_first(self):
+        for n in (10, 2, 1):
+            self.ok("set", self.plan, f"tasks/T{n}", stdin="{}")
+        self.assertEqual(list(self.ok("list", self.plan, "tasks")), ["T1", "T2", "T10"])
+        for stamp in ("2026-01-01T00:00:00Z", "2026-01-02T00:00:00Z"):
+            self.ok("set", self.plan, f"journal/{stamp}", stdin=json.dumps({"at": stamp}))
+        self.assertEqual(list(self.ok("list", self.plan, "journal", "--limit", "1")), ["2026-01-02T00:00:00Z"])
+
+
+class WaitTests(Base):
+    def setUp(self):
+        super().setUp()
+        self.plan = self.new()
+        self.ok("set", self.plan, "questions/Q1", stdin='{"status": "open"}')
+
+    def start_wait(self, timeout=10):
+        return subprocess.Popen([sys.executable, str(SCRIPT), "wait", str(self.plan), "--timeout", str(timeout),
+                                 "--interval", "0.1"], stdout=subprocess.PIPE, text=True)
+
+    def finish(self, waiter):
+        out, _ = waiter.communicate(timeout=15)
+        return json.loads(out)
+
+    def test_its_own_writes_dont_wake_it_but_another_writers_do(self):
+        waiter = self.start_wait()
+        time.sleep(0.4)
+        self.ok("set", self.plan, "tasks/T1", stdin='{"title": "mine"}')
+        time.sleep(0.4)
+        self.assertIsNone(waiter.poll())
+        self.ok("update", self.plan, "questions/Q1", stdin='{"status": "answered"}', writer="herdr")
+        self.assertEqual(self.finish(waiter), {"changed": ["questions/Q1"]})
+
+    def test_a_hand_edit_wakes_it(self):
+        waiter = self.start_wait()
+        time.sleep(0.4)
+        (self.plan / "questions" / "Q1.json").write_text('{"status": "answered"}\n')
+        self.assertEqual(self.finish(waiter), {"changed": ["questions/Q1"]})
+
+    def test_it_times_out_quietly(self):
+        self.assertEqual(self.finish(self.start_wait(timeout=0.5)), {"changed": [], "timeout": True})
+
+
+class CheckTests(Base):
+    def test_every_fixture_passes_the_guides_rules(self):
+        # hostile-text breaks the plain-text rules on purpose; only the fixtures' own checker exempts it.
+        fixtures = sorted(str(p) for p in FIXTURES.glob("*.json") if p.stem != "hostile-text")
+        self.assertTrue(fixtures)
+        proc = store("check", *fixtures)
+        self.assertEqual(proc.returncode, 0, proc.stdout)
+
+    def test_a_plan_directory_is_checked_and_problems_fail_it(self):
+        plan = self.new()
+        stamp = "2026-01-01T00:00:00Z"
+        run = {"title": "x", "objective": "y", "source": "z", "slug": "abc-1-thing", "status": "pending",
+               "started_at": stamp, "updated_at": stamp}
+        self.ok("set", plan, "run/main", stdin=json.dumps(run))
+        self.ok("set", plan, "tasks/T1", stdin='{"title": "One", "status": "pending", "order": 1}')
+        self.ok("set", plan, f"journal/{stamp}", stdin=json.dumps({"at": stamp, "text": "hi", "by": "agent"}))
+        self.assertEqual(store("check", plan).returncode, 0, store("check", plan).stdout)
+        self.ok("set", plan, "tasks/T1", stdin='{"title": "Edit `config.py`", "status": "sideways", "order": 1}')
+        proc = store("check", plan)
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("bad status 'sideways'", proc.stdout)
+        self.assertIn("has a backtick", proc.stdout)
+
+
+if __name__ == "__main__":
+    unittest.main()

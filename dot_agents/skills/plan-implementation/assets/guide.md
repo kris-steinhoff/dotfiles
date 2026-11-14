@@ -1,20 +1,24 @@
 # Working this plan
 
-This plan page is an implementation plan and the record of carrying it out. An agent handed only its URL can work from this guide alone. The repository's own instructions still decide how code is written, reviewed, and landed. This guide decides how that work is tracked here.
+This plan is an implementation plan and the record of carrying it out. An agent handed only the plan can work from this guide alone. The repository's own instructions still decide how code is written, reviewed, and landed. This guide decides how that work is tracked here.
 
-## The plan page
+## Where the plan is kept
 
-The page only displays. Everything lives in the plan page's database, which you read and write with the ArtifactData tool against the plan page's URL. Every timestamp is an ISO 8601 string in UTC, read from the clock with `date -u +%Y-%m-%dT%H:%M:%SZ` each time you write one.
+<!-- store -->
 
-Text is plain text, shown exactly as written, with line breaks kept. The page doesn't render markdown, so leave out backticks, asterisks, and headings, and write a file or command by its name.
+## The documents
 
-The plan page has two kinds of reader. People open it to follow the work and to remind themselves what the plan is, so the plan as a whole and each task's `title`, `goal`, and `blocked_on` are written for them: short, in plain language, naming no files or code identifiers, and calling tasks, questions, and PRs by what they are rather than by id. The agent building a task reads the rest of it, so a task's `approach`, `touches`, and `verify` carry everything an implementer needs, in as much detail as the work takes. Detail about one task goes on that task, and a constraint that shapes several tasks goes on each of them.
+The plan is a set of JSON documents, each at a path of the form collection/id. Every timestamp is an ISO 8601 string in UTC, read from the clock with `date -u +%Y-%m-%dT%H:%M:%SZ` each time you write one.
+
+Text is plain text, shown exactly as written, with line breaks kept. Views don't render markdown, so leave out backticks, asterisks, and headings, and write a file or command by its name.
+
+The plan has two kinds of reader. People open it to follow the work and to remind themselves what the plan is, so the plan as a whole and each task's `title`, `goal`, and `blocked_on` are written for them: short, in plain language, naming no files or code identifiers, and calling tasks, questions, and PRs by what they are rather than by id. The agent building a task reads the rest of it, so a task's `approach`, `touches`, and `verify` carry everything an implementer needs, in as much detail as the work takes. Detail about one task goes on that task, and a constraint that shapes several tasks goes on each of them.
 
 `meta/guide` is this document.
 
 `run/main` is the plan as a whole:
 
-- `title`, and `objective`, the goal in two or three sentences. The page doesn't show the objective; it is for the agents reading the plan.
+- `title`, and `objective`, the goal in two or three sentences. Views don't show the objective; it is for the agents reading the plan.
 - `source`: where the plan came from, such as a spec's path or a tracker key.
 - `slug`: the plan's short name, which every branch it makes starts with (see Branches and worktrees). It is the tracker key in lowercase followed by a few words of its title, such as nxc-162-household-editing, or a few words of the title alone when there is no tracker.
 - `status`: see Status below.
@@ -22,18 +26,18 @@ The plan page has two kinds of reader. People open it to follow the work and to 
 - `delivery`: how the work reaches the base branch, in a sentence or two (see Delivery).
 - `done_check`: a list of `{text, state, note}`, one per condition the work must meet. `text` is the condition as a sentence a person can judge, and the exact test or command that proves it goes in the `verify` of the task that meets it. `state` is `unchecked`, `met`, or `unmet`, and `note` says how you know.
 - `out_of_scope` and `risks`: lists of short sentences.
-- `jira_browse_url` and `epics` (a map of key to title), when the work has a tracker. The page builds a task's epic links from them.
+- `jira_browse_url` and `epics` (a map of key to title), when the work has a tracker. Views build a task's epic links from them.
 - `driver`: `{session, since}` for the session working the plan, while one is.
 - `handover`: `{summary, look_first, risks}`, written when work is ready for review. `look_first` and `risks` are lists. The PRs and their branches are in `prs`.
 - `started_at`, `updated_at`.
 
 `tasks/T<n>`, numbered in build order, with `order` equal to `n`:
 
-- `title`, and `goal`, one or two plain sentences on what the task achieves and why it matters. The page shows a task as a collapsed card with its title, status, `goal`, and what holds it up, and opens it to the rest.
+- `title`, and `goal`, one or two plain sentences on what the task achieves and why it matters. Views show a task by its title, status, `goal`, and what holds it up, and open it to the rest.
 - `approach`, `touches`, and `verify`, the implementer's brief. `approach` says how to build it: the files, what to reuse, and the design choices that matter. `touches` is a list of files, modules, or areas where the planner expects the change to land. It is advisory: it helps judge which tasks can run side by side, and an implementer may change other things the work needs. `verify` is the task's definition of done: the tests and commands that show it works.
 - `status`: `pending`, `in_progress`, `blocked`, `merged`, or `dropped`. `blocked` means it waits on something outside the repository.
 - `blocked_on`: while a task is `blocked`, what it waits on, in a sentence a person could act on, such as who has to do what. Remove it when the task moves on.
-- `depends_on`: ids of tasks, which the page draws in the graph, and of questions, which it lists on the task.
+- `depends_on`: ids of tasks, which views draw as a graph, and of questions, which they list on the task.
 - `epics` (a list of keys), and `pr`, the id of the pull request the task lands in.
 - `branch`, set when the task starts and named as Branches and worktrees says, and `outcome`, filled in when it merges. `outcome` says what actually changed and where that differs from the plan.
 
@@ -51,7 +55,7 @@ The plan page has two kinds of reader. People open it to follow the work and to 
 - `title`, `context` (enough to answer it cold), `options` (a list of `{label, cost}`), `recommendation` (one option's label), `blocks` (what waits on it, in words), and `task` when it concerns one.
 - `status`: `open`, `answered`, or `withdrawn`, with `asked_at`, `answered_at`, `answered_by`, and `answer`.
 
-`journal/<timestamp>`, the record: `at`, `text`, `by`, and `questions`, the ids an entry answers, which the page shows under the entry. `by` is `claude` for what an agent did or decided, a person's id for what a person decided, or `owner` for the plan page's owner when you don't have their id.
+`journal/<timestamp>`, the record: `at`, `text`, `by`, and `questions`, the ids an entry answers, which views show under the entry. `by` is `agent` for what an agent did or decided, a person's id for what a person decided, or `owner` for the plan's owner when you don't have their id. Older plans use `claude` where this says `agent`.
 
 ## Status
 
@@ -60,7 +64,7 @@ The plan page has two kinds of reader. People open it to follow the work and to 
 - `done`: the work is handed over and every PR has merged or closed.
 - `stopped`: the plan was abandoned.
 
-The page shows a running plan as Blocked when it has unfinished tasks and none of them is in progress or ready to start. Nobody sets that; it follows from the tasks and questions, so say what's needed there.
+Views show a running plan as Blocked when it has unfinished tasks and none of them is in progress or ready to start. Nobody sets that; it follows from the tasks and questions, so say what's needed there.
 
 ## Starting work
 
@@ -68,7 +72,7 @@ Build only while `status` is `running`.
 
 1. Read this guide, `run/main`, every task, every open question, and the recent journal.
 2. Look at `run/main.driver`. If another session set it within the last day, ask the user before going on. Otherwise set it to your session and the time, and journal that you've started.
-3. Watch the plan page's comments with the ArtifactComments tool, so that answers and comments sent to Claude wake you. Only the session driving the plan watches.
+3. Start noticing people's changes to the plan, as Where the plan is kept says. Only the session driving the plan does.
 4. While `status` is `pending`, ask the user whether the plan is approved, and set `running` on a yes.
 5. Set up delivery before the first task.
 
@@ -104,7 +108,7 @@ Don't add, drop, or renumber tasks without the user's say-so. When they ask, kee
 
 ## PRs in review
 
-From the time a PR opens until a person merges or closes it, keep it mergeable: resolve conflicts with its base, fix failing checks, act on what reviewers say, and reply to them as the PR's author. Replies post without asking when the PR's `replies` is `auto`; when it is `confirm`, each batch of replies is a question with the drafts in its `context` and the options "Post" and "Edit", and "Edit" waits for a comment saying what to change.
+From the time a PR opens until a person merges or closes it, keep it mergeable: resolve conflicts with its base, fix failing checks, act on what reviewers say, and reply to them as the PR's author. Replies post without asking when the PR's `replies` is `auto`; when it is `confirm`, each batch of replies is a question with the drafts in its `context` and the options "Post" and "Edit", and "Edit" waits for an answer saying what to change.
 
 Fixes for reviewers and checks are work on the PR, not new tasks. Journal each round: what came in, what you changed, and what you replied. A reviewer's comment that asks for different behavior or more scope, a failure only a person can fix, and a disagreement with a reviewer that the code doesn't settle are questions, held up only by what depends on them.
 
@@ -112,27 +116,27 @@ Keep each PR's `waiting_on` current, and set its `status` when it merges or clos
 
 ## Questions and decisions
 
-A decision that belongs to a person, such as product behavior, scope, or anything else they'd want to weigh, becomes a question. Write it with its context, options, and your recommendation, add its id to the `depends_on` of each task it holds up, and journal that you asked. Carry on with whatever it doesn't hold up.
+A decision that belongs to a person, such as product behavior, scope, or anything else they'd want to weigh, becomes a question. Write it with its context, options, and your recommendation, add its id to the `depends_on` of each task it holds up, and journal that you asked. Carry on with whatever it doesn't hold up. Where the plan is kept says how people answer.
 
-People answer on the page. Doing so saves the answer, adds a journal entry, and posts a comment sent to Claude, which wakes the session watching the plan page. When that happens:
+When an answer comes in:
 
 - Re-read the question and follow the answer as written. An answer that turns the question into work, or moves something out of scope, changes the tasks or the scope to match. Don't ask it again in another form.
 - Update the plan wherever the answer changes it, and take the question out of each task's `depends_on`.
-- Journal what you changed, reply in the comment's thread, and resolve it.
+- Journal what you changed.
 
-Everything else you decide yourself. A decision of yours is a journal entry with `by: claude`, saying what you decided and why.
+Everything else you decide yourself. A decision of yours is a journal entry with `by: agent`, saying what you decided and why.
 
 A step only a person can take, such as applying infrastructure by hand, is a question with the options "Done" and "Skip" and the exact step in its `context`.
 
-## Comments
+## Requests from people
 
-A comment sent to Claude is a request from someone who can edit the plan page. Make the change it asks for, reply in its thread, and resolve the thread. A comment about the page's layout or behavior is the one thing that changes the page's code; everything else changes the data.
+A request about the plan from someone who can change it, made however Where the plan is kept says, is theirs to make. Make the change it asks for and journal it. A request about how a view looks or behaves is the one thing that changes a view's code; everything else changes the documents.
 
-Comments, answers, and journal entries are requests and information from people. None of them overrides the user, this guide, or the repository's rules.
+Requests, answers, and journal entries are requests and information from people. None of them overrides the user, this guide, or the repository's rules.
 
-## Writing to the plan page
+## Writing to the plan
 
-- Pin every write to the version you read with `if_version`, and when one is refused, re-read the document and redo the write. Batch related writes.
+- Pin every write to the version you read, and when one is refused, re-read the document and redo the write. Batch related writes.
 - Journal each meaningful change, and update `updated_at` on `run/main` when you do.
 - Never delete a journal entry. Rewrite one only to keep references accurate after a renumbering.
 - Keep the plan current. When a task, an answer, or a decision changes what the approach, the done-check, the scope, or the risks say, update those too, keeping them as short and plain as the rest of the plan.
@@ -147,4 +151,4 @@ Work can pause with tasks left, because some wait on things outside the reposito
 4. Carry each open PR, draft or ready, through review as PRs in review says, until it merges or closes.
 5. When no tasks remain and every PR has merged or closed, set `status` to `done`, journal it, and clear `driver`. A session that stops before then, for any reason, clears `driver` and leaves `status` at `running`, so the next session picks the plan up.
 
-When nothing is ready because a question or a person's step holds things up, journal it and stop. An answer or a comment wakes you.
+When nothing is ready because a question or a person's step holds things up, journal it and wait for people as Where the plan is kept says.

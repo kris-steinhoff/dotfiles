@@ -4,7 +4,7 @@ This file covers how a skill is authored once and deployed to every agent surfac
 
 A skill is authored once and shared across every agent surface, so its content is edited in exactly one place. The canonical copy is a real directory under `dot_agents/skills/`, which deploys to `~/.agents/skills/`. Each skill directory follows the [agentskills.io](https://agentskills.io/specification) format: a required `SKILL.md` with `name`/`description` frontmatter, plus optional `scripts/` (executable code), `references/` (documentation loaded on demand), and `assets/` (templates, static resources) subdirectories.
 
-That location is the cross-agent convention, not an arbitrary pick. Codex and OpenCode both read `~/.agents/skills/` natively, so they use the canonical copy as it is. Claude Code looks elsewhere, so it gets its own entry for the skill that is rendered from the canonical one. A skill only Claude Code can run, such as `plan-implementation` and `drive-implementation`, has no canonical copy and lives only under `dot_claude/skills/`.
+That location is the cross-agent convention, not an arbitrary pick. Codex and OpenCode both read `~/.agents/skills/` natively, so they use the canonical copy as it is. Claude Code looks elsewhere, so it gets its own entry for the skill that is rendered from the canonical one. A skill only Claude Code can run, such as `plan-store-claude-page`, has no canonical copy and lives only under `dot_claude/skills/`.
 
 ## Templated frontmatter
 

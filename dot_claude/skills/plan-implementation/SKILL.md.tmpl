@@ -1,0 +1,2 @@
+{{- $custom := `argument-hint: "<spec file, tracker key, or brief; or a plan's directory, slug, or page link>"` -}}
+{{- includeTemplate "dot_agents/skills/plan-implementation/SKILL.md.tmpl" (merge (dict "custom" $custom) .) -}}
