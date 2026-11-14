@@ -23,18 +23,18 @@ The posting schema is in [references/posting.md](references/posting.md); read it
 ## Starting
 
 1. Run directly, open with the PR's summary: run the `summarize-github-pr` skill and send its output, every line as markdown, as your first message. A caller that has its own view of the PR skips this.
-2. Run `scripts/feedback.py <n>`. If its `viewer` is not its `author`, say so and ask before going on, since you'd be posting as the author.
+2. Run `scripts/feedback.py <n> --agent-marker "Posted on behalf of"`. If its `viewer` is not its `author`, say so and ask before going on, since you'd be posting as the author.
 3. In `respond` mode, go to [`respond <n>`](#respond-n).
 4. Get a checkout of the PR's head branch, up to date with the remote. Use the current one if it's on that branch and has no changes of its own; otherwise make a worktree by the repository's instructions, such as `wt add <head branch>`. If you can't push to the head branch, as with a fork that doesn't allow edits, say so and stop.
 5. Take stock: the unanswered comments from `feedback.py`, and `gh pr view <n> --json mergeable,mergeStateStatus,statusCheckRollup,isDraft,reviewDecision`. Handle what is already waiting, as below, then watch.
 
 ## Watching
 
-Keep two `watch-pr` watches on the PR, each as a background command whose exit wakes you: `--until review --timeout 7200`, and `--until ci --sha <head>` for the head you last pushed. Both also end when the PR merges or closes. Don't poll. After handling an event, re-arm the watch that ended; a timeout only means re-arm.
+Keep two `watch-pr` watches on the PR, each as a background command whose exit wakes you: `--until review --agent-marker "Posted on behalf of" --timeout 7200`, and `--until ci --sha <head>` for the head you last pushed. Both also end when the PR merges or closes. Don't poll. After handling an event, re-arm the watch that ended; a timeout only means re-arm.
 
 Look at `pr_state.mergeable` on every exit. The base branch moving raises no event of its own, which is why the review watch times out every two hours: a quiet PR still gets checked for conflicts.
 
-The review watch wakes on activity newer than your own latest reply. When you handle a comment without replying, such as a bot's status note, re-arm it with `--since now`, or it fires again at once. It also ignores the user's own account, which is the one you post as, so comments the user leaves on the PR don't wake you; the user steers through this session or through the caller.
+The review watch wakes on activity newer than your own latest reply. When you handle a comment without replying, such as a bot's status note, re-arm it with `--since now`, or it fires again at once. You post as the user's account, so `--agent-marker` with your attribution line tells your posts from the user's: what the user writes on the PR themselves wakes you and is answered like any reviewer's, and `feedback.py` with the same flag lists it.
 
 ## Conflicts
 
@@ -59,7 +59,7 @@ An outcome of `none` means the PR has no checks, and `superseded` means you push
 
 ## Reviewers' comments
 
-Run `scripts/feedback.py <n>`. The items are every `unanswered` thread, whoever started it, and every review summary body and conversation comment that isn't yours. Those `after_my_latest` need an answer. For older ones, judge from what followed whether they were answered, and when unsure, treat them as needing one. Bots are included; a bot's status or tooling note that raises nothing about the code needs no reply.
+Run `scripts/feedback.py <n> --agent-marker "Posted on behalf of"`. The items are every `unanswered` thread, whoever started it, and every review summary body and conversation comment that isn't yours. Those `after_my_latest` need an answer. For older ones, judge from what followed whether they were answered, and when unsure, treat them as needing one. Bots are included; a bot's status or tooling note that raises nothing about the code needs no reply.
 
 Decide each item:
 

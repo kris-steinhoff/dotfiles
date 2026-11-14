@@ -11,7 +11,7 @@ description: Blocks until a GitHub PR's CI finishes, someone reviews or comments
 A PR primitive. Run the script in the background; its exit is the event. It prints nothing until then, so an empty output means the watch is still running.
 
 ```bash
-scripts/watch-pr <number> --until ci|review|push|closed [--repo <path>] [--sha <oid>] [--since <iso>] [--include-bots] [--fail-fast] [--interval <s>] [--checks-grace <s>] [--timeout <s>] [--max-failures <n>]
+scripts/watch-pr <number> --until ci|review|push|closed [--repo <path>] [--sha <oid>] [--since <iso>] [--include-bots] [--agent-marker <text>] [--fail-fast] [--interval <s>] [--checks-grace <s>] [--timeout <s>] [--max-failures <n>]
 ```
 
 Load once per session; takes no `args`. Start one watch per wait, as a background command where the harness supports it (Claude Code: `run_in_background`), and read its output when it exits. `--repo` (default: cwd) is the git repo `gh` detects the GitHub repo from. It drives only `gh`, so under a network sandbox `api.github.com` must be allowed.
@@ -28,6 +28,8 @@ Every watch also ends if the PR merges or closes first, and at `--timeout` (defa
 A `--sha` that is already in the PR's history but isn't its head has been moved off, so `push` reports `pushed` and `ci` reports `superseded` at once. A `--sha` the PR doesn't contain yet is treated as a push GitHub hasn't shown: the head counts as having moved off it only once it has been seen there, or after two minutes.
 
 The review rule is what makes the watch safe to re-arm. An agent posting as my account raises the baseline with its own replies instead of tripping the watch, even though GitHub records each thread reply as a review. And a review that arrived while nothing was watching still counts as unanswered, so a restarted session can re-arm without remembering where it left off. The watch then exits at once if something is already waiting. One consequence: after pushing fixes for a review without replying to it, the review still counts as unanswered. Reply, or re-arm with `--since` set to now.
+
+The same rule hides what the user writes on the PR themselves, since it comes from the account the agent posts as. `--agent-marker <text>` tells the two apart: a post from me counts as mine only when its body contains the text, which is the attribution line every agent post carries, and my other posts are the user's and wake the watch like anyone else's. A review from me with an empty body only holds inline comments, so it counts as neither, and its comments decide. `github-pr`'s `feedback.py` takes the same flag, so the two agree on what is unanswered.
 
 A failed `gh` call is retried with backoff and never read as the event. Only a run of more than `--max-failures` consecutive failures (default 10), or reaching `--timeout` while polls are failing, ends the watch, as an error.
 

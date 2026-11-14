@@ -14,7 +14,7 @@ The line between fixing and asking is the one `/drive-implementation` uses for t
 
 ## Watching
 
-It waits with `watch-pr`: one `review` watch and one `ci` watch pinned to the last pushed head. `watch-pr` has no event for the base branch moving, so the review watch times out every two hours and each wake checks `mergeable`. A `conflict` event in `watch-pr` would replace that. The review watch ignores the owner's account, which the skill posts as, so the owner steers through the session or a caller's page rather than PR comments.
+It waits with `watch-pr`: one `review` watch and one `ci` watch pinned to the last pushed head. `watch-pr` has no event for the base branch moving, so the review watch times out every two hours and each wake checks `mergeable`. Both the watch and `feedback.py` run with `--agent-marker` set to the attribution line, because the agent posts as the PR's author: without it, comments the owner left on their own PR read as the agent's replies, and in a test run a two-comment review from the owner sat unnoticed until the owner pointed the agent at it. A `conflict` event in `watch-pr` would replace that. The review watch ignores the owner's account, which the skill posts as, so the owner steers through the session or a caller's page rather than PR comments.
 
 ## Callers
 

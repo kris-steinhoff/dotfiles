@@ -14,6 +14,10 @@ Agents are addressed by the address `hc run` prints, so an hc name only has to b
 
 The driver's one label, `plan.driver`, is for the plan mod's Plan tab (`dot_config/herdr-app/AGENTS.md`), whose Go to driver button finds the driver by it. There are no status labels (phase, what the owner must do, each PR's status): the plan shows those, and Herdr already marks a driver waiting on a question as blocked. The label is the folder `plan-store path` prints because that path is resolved, as the Plan tab's is.
 
+Reviews are hc sub-agents of the agent whose work they review, rather than the harness's own subagents inside the driver, so the Agents list shows each review nested under the task or PR it checks; a review running inside the driver's session was invisible there. The reviewer still starts with a fresh context, which is all the review needs. For a task, the driver writes the reviewer's brief and receives its report, and the task agent only starts it, because the cycle in `/drive-implementation` gives the review's findings to the driver, which decides what goes back to the implementer, and an implementer that wrote its own reviewer's brief could steer the review.
+
+A sub-agent the user talks to directly answers them in its own terminal and then tells its parent what was settled. In a test run the user steered a PR agent from its terminal, and sending the user's questions round through the driver, as the contract otherwise says, would have answered the user somewhere they weren't looking.
+
 The PR agent contract is in the skill rather than in `drive-pr` or `/drive-implementation`, because how two agents hand work back and forth depends on how the harness lets them talk; `dot_agents/skills/drive-implementation/AGENTS.md` has why a PR gets its own agent at all.
 
 ## Testing

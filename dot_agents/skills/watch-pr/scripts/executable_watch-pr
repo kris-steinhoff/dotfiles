@@ -29,6 +29,13 @@ baseline instead of tripping the watch, and a review that arrived while nothing
 was watching still counts as unanswered. "Me" is the authenticated gh user.
 Bots are ignored unless --include-bots is passed.
 
+That rule also hides what the owner writes themselves, since it comes from the
+same account. --agent-marker TEXT tells the two apart: a post from me counts as
+mine only when its body contains TEXT (the attribution line every agent post
+carries), and my other posts count as the owner's, waking the watch like anyone
+else's. A review from me with an empty body only holds inline comments, so it
+counts as neither; its comments decide.
+
 CI needs two consecutive polls with every check finished before it reports, so a
 check suite that starts after the first one finishes is not missed. --fail-fast
 reports on the first failed check instead.
@@ -82,15 +89,15 @@ query($owner: String!, $repo: String!, $number: Int!, $sha: GitObjectID!) {
       createdAt
       commits(last: 100) { nodes { commit { oid } } }
       reviews(last: 100) {
-        nodes { author { __typename login } state submittedAt url }
+        nodes { author { __typename login } state submittedAt url body }
       }
       comments(last: 100) {
-        nodes { author { __typename login } createdAt url }
+        nodes { author { __typename login } createdAt url body }
       }
       reviewThreads(last: 100) {
         nodes {
           comments(last: 100) {
-            nodes { author { __typename login } createdAt url pullRequestReview { state } }
+            nodes { author { __typename login } createdAt url body pullRequestReview { state } }
           }
         }
       }
@@ -215,34 +222,44 @@ def is_bot(author):
 
 
 def activity(pr):
-    """Every review and comment on the PR as (author, at, kind, state, url)."""
+    """Every review and comment on the PR as (author, at, kind, state, url, body)."""
     for review in pr["reviews"]["nodes"]:
         if review["submittedAt"]:
-            yield review["author"], review["submittedAt"], "review", review["state"], review["url"]
+            yield review["author"], review["submittedAt"], "review", review["state"], review["url"], review.get("body") or ""
     for comment in pr["comments"]["nodes"]:
-        yield comment["author"], comment["createdAt"], "comment", None, comment["url"]
+        yield comment["author"], comment["createdAt"], "comment", None, comment["url"], comment.get("body") or ""
     for thread in pr["reviewThreads"]["nodes"]:
         for comment in thread["comments"]["nodes"]:
             if (comment.get("pullRequestReview") or {}).get("state") == "PENDING":
                 continue  # my own unsubmitted draft, visible only to me
-            yield comment["author"], comment["createdAt"], "thread_comment", None, comment["url"]
+            yield comment["author"], comment["createdAt"], "thread_comment", None, comment["url"], comment.get("body") or ""
 
 
-def unanswered(pr, login, since, include_bots):
+def unanswered(pr, login, since, include_bots, marker=None):
     """Others' reviews and comments newer than the baseline, oldest first.
 
     The baseline is --since when given, else my latest review or comment on the
-    PR, else the PR's creation. GitHub timestamps are ISO 8601 in UTC, so they
-    compare correctly as strings."""
-    items = list(activity(pr))
+    PR, else the PR's creation. With a marker, only my posts carrying it are
+    mine, and my others are the owner's, so they count as someone else's.
+    GitHub timestamps are ISO 8601 in UTC, so they compare correctly as strings."""
+    def from_me(author):
+        return bool(author) and author["login"] == login
+
+    def mine(author, body):
+        return from_me(author) and (marker is None or marker in body)
+
+    items = [
+        item for item in activity(pr)
+        # With a marker, my empty-bodied review is only the container of its comments.
+        if not (marker is not None and item[2] == "review" and from_me(item[0]) and not item[5].strip())
+    ]
     if since is None:
-        mine = [at for author, at, *_ in items if author and author["login"] == login]
-        since = max(mine, default=pr["createdAt"])
+        since = max((at for author, at, _, _, _, body in items if mine(author, body)), default=pr["createdAt"])
     found = [
         {"author": author["login"] if author else None, "at": at, "kind": kind, "state": state, "url": url}
-        for author, at, kind, state, url in items
+        for author, at, kind, state, url, body in items
         if at > since
-        and not (author and author["login"] == login)
+        and not mine(author, body)
         and (include_bots or not is_bot(author))
     ]
     return since, sorted(found, key=lambda item: item["at"])
@@ -293,6 +310,8 @@ def main():
     parser.add_argument("--sha", help="for ci and push: the commit to watch (default: the PR head at start)")
     parser.add_argument("--since", help="for review: a fixed baseline, `now` or ISO 8601, instead of my latest activity")
     parser.add_argument("--include-bots", action="store_true", help="for review: count bot reviews and comments")
+    parser.add_argument("--agent-marker", metavar="TEXT",
+                        help="for review: my posts count as mine only when they contain TEXT; my others wake the watch")
     parser.add_argument("--fail-fast", action="store_true", help="for ci: report on the first failed check")
     parser.add_argument("--interval", type=int, default=60, help="seconds between polls (default: 60)")
     parser.add_argument("--checks-grace", type=int, default=600,
@@ -364,7 +383,7 @@ def main():
 
         progress = {}
         if args.until == "review":
-            baseline, found = unanswered(pr, login, since, args.include_bots)
+            baseline, found = unanswered(pr, login, since, args.include_bots, args.agent_marker)
             if found:
                 who = ", ".join(sorted({item["author"] or "unknown" for item in found}))
                 result("activity", f"#{number}: {len(found)} new from {who} since {baseline}", pr,

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Print one PR's review conversation as JSON, from the authenticated user's side.
 
-  feedback.py <pr>
+  feedback.py <pr> [--agent-marker TEXT]
 
 Output:
 
@@ -33,6 +33,12 @@ Nothing is filtered out. A reviewer reads its own `started_by_me` threads for
 its prior findings, and other reviewers' threads, review bodies, and comments
 to weigh in on; an author reads every `unanswered` thread, and every review
 body and comment that is not its own.
+
+An agent posting as the owner passes --agent-marker with the attribution line
+its posts carry. Then only my posts containing it are mine (the "me" of
+started_by_me, replied_by_me, unanswered, my_latest, and after_my_latest), and
+the owner's own posts, from the same account, are treated as someone else's,
+the rule watch-pr applies with the same flag.
 """
 
 import argparse
@@ -54,12 +60,17 @@ def person(author):
 def main():
     parser = argparse.ArgumentParser(description="Print one PR's review conversation as JSON.")
     parser.add_argument("pr", type=int)
+    parser.add_argument("--agent-marker", metavar="TEXT",
+                        help="my posts count as mine only when they contain TEXT; my others are the owner's")
     args = parser.parse_args()
     pr = args.pr
 
     slug = repo_slug()
     me = viewer_login()
     view = pr_view(pr)
+
+    def mine(c):
+        return c["author"] == me and (args.agent_marker is None or args.agent_marker in (c.get("body") or ""))
 
     threads = []
     for node in review_threads(slug, pr):
@@ -77,9 +88,9 @@ def main():
             "line": node["line"] if node["line"] is not None else node["originalLine"],
             "resolved": node["isResolved"],
             "outdated": node["isOutdated"],
-            "started_by_me": comments[0]["author"] == me,
-            "replied_by_me": any(c["author"] == me for c in comments[1:]),
-            "unanswered": not node["isResolved"] and comments[-1]["author"] != me,
+            "started_by_me": mine(comments[0]),
+            "replied_by_me": any(mine(c) for c in comments[1:]),
+            "unanswered": not node["isResolved"] and not mine(comments[-1]),
             "comments": comments,
         })
 
@@ -104,16 +115,18 @@ def main():
                          "created_at": c["created_at"], "url": c.get("html_url")})
 
     # ISO-8601 UTC timestamps from GitHub compare correctly as strings.
-    mine = [c["created_at"] for t in threads for c in t["comments"] if c["author"] == me]
-    mine += [r["submitted_at"] for r in reviews if r["author"] == me and r["submitted_at"]]
-    mine += [c["created_at"] for c in comments if c["author"] == me]
-    my_latest = max(mine) if mine else None
+    # With a marker, my review with an empty body isn't mine: it only holds its
+    # inline comments, which count on their own.
+    times = [c["created_at"] for t in threads for c in t["comments"] if mine(c)]
+    times += [r["submitted_at"] for r in reviews if mine(r) and r["submitted_at"]]
+    times += [c["created_at"] for c in comments if mine(c)]
+    my_latest = max(times) if times else None
 
-    def after_mine(author, when):
-        return author != me and (my_latest is None or (when or "") > my_latest)
+    def after_mine(item, when):
+        return not mine(item) and (my_latest is None or (when or "") > my_latest)
 
-    reviews = [dict(r, after_my_latest=after_mine(r["author"], r["submitted_at"])) for r in reviews if r["body"].strip()]
-    comments = [dict(c, after_my_latest=after_mine(c["author"], c["created_at"])) for c in comments]
+    reviews = [dict(r, after_my_latest=after_mine(r, r["submitted_at"])) for r in reviews if r["body"].strip()]
+    comments = [dict(c, after_my_latest=after_mine(c, c["created_at"])) for c in comments]
 
     json.dump({
         "pr": pr,
