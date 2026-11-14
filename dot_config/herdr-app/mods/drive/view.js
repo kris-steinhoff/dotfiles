@@ -1,8 +1,8 @@
 // What the Drive panel shows, worked out from terminals and records, and what its
 // buttons do. No rendering here (panel.js draws it).
-import { exec, run, setShared, terminals } from "herdr";
+import { exec, panes, run, setShared, terminals } from "herdr";
 import { reveal } from "./launch.js";
-import { L, PLANS_KEY, groupPlans, homeSpace, plansRecord } from "./model.js";
+import { L, PLANS_KEY, groupPlans, homeSpace, isLocal, plansRecord } from "./model.js";
 
 // Labels beyond the ones model.js names (PROTOCOL.md section 6).
 export const LB = {
@@ -27,7 +27,8 @@ export function derive(terms, planRecords, spaceOf = homeSpace) {
       key: p.id,
       id: p.id,
       title: p.title,
-      url: p.url,
+      url: p.url, // a plan page's link, or a local plan's folder
+      local: isLocal(p.id),
       repo: p.record?.repo_name ?? null,
       record: p.record,
       driver: p.driver,
@@ -52,7 +53,8 @@ export function inSpace(plans, spaceId) {
   return plans.find((p) => p.space?.id === spaceId) ?? null;
 }
 
-export const planName = (p) => p.title ?? p.id;
+// Before the driver has set a title: a local plan's slug, or a page's artifact id.
+export const planName = (p) => p.title ?? (p.local ? p.id.split("/").pop() : p.id);
 
 // --- Actions --------------------------------------------------------------------
 
@@ -67,6 +69,17 @@ export function show(address) {
 
 export function goTo(space) {
   if (!space.active) run("space.select", { id: space.id });
+}
+
+// Shows a local plan in a Plan tab of its space: the space's tab holding a
+// Drive pane if it has one (a space holds one plan), else a new one.
+// `extra` goes into the new pane's props (`demo` in DEMO).
+export function openPlanTab(space, dir, extra = {}) {
+  goTo(space);
+  const all = panes();
+  const tab = (space.tabs ?? []).find((t) => all.some((p) => p.tab === t.id && p.mod === "drive"));
+  if (tab) run("tab.select", { id: tab.id });
+  else run("tab.new", { name: "Plan", space: space.id, mod: "drive", props: { plan: dir, ...extra } });
 }
 
 // --- Records that outlive their checkout ----------------------------------------

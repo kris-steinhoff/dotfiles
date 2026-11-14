@@ -10,6 +10,8 @@ The plan page is the pattern for handing a plan over to people outside the sessi
 
 People who can edit answer questions on the page itself, which is the one place the page writes: `comments: {}` lets it send Claude a comment so the watching session wakes, and `user` names who answered in the journal. When only people's answers can move the plan, the session ends its turn instead of asking through AskUserQuestion, an exception to the global rule, because a session sitting at that prompt can't be woken by an answer on the page. Herdr therefore shows such a session as idle, and an open question on the plan page is the signal.
 
+The Herdr Drive mod's Plan tab shows a local plan the way this page shows one, and its `plan.js` repeats the page's derived views (when a running plan counts as blocked, the PR chain, answered questions folded into the journal, the dependency graph's layout), so a change to those here needs the same change there.
+
 The page shows journal entries by `agent`, and by `claude` from plans written before stores existed, as by Claude, since only Claude works a plan page.
 
 ### The page

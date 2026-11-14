@@ -5,14 +5,16 @@
 // defines them; keep the two in step.
 import { panes, shared, spaces } from "herdr";
 
-// Shared state, written at launch (see launch.js).
-export const PLANS_KEY = "drive.plans"; // { <artifact id>: { url, repo_root, repo_name, checkout, space_id, started_at } }
+// Shared state, written at launch (see launch.js). `url` is what the driver was
+// given: a plan page's link, or a local plan's folder.
+export const PLANS_KEY = "drive.plans"; // { <plan id>: { url, repo_root, repo_name, checkout, space_id, started_at } }
 
 // Labels (PROTOCOL.md section 6).
 export const L = {
   role: "drive.role",
   plan: "drive.plan",
   url: "drive.url",
+  key: "drive.key",
   phase: "drive.phase",
   title: "drive.title",
   prNumber: "drive.pr_number",
@@ -24,8 +26,21 @@ export const plansRecord = () => shared(PLANS_KEY) ?? {};
 
 // --- Names (PROTOCOL.md section 2) ----------------------------------------------
 
-// A plan's key: the first 8 characters of its artifact id, lowercased.
-export const planKey = (id) => String(id).slice(0, 8).toLowerCase();
+// A plan's id: a plan page's artifact id, or a local plan's folder (an
+// absolute path, which no artifact id looks like).
+export const isLocal = (id) => String(id).startsWith("/");
+
+// 32-bit FNV-1a, as 8 hex characters.
+function fnv(s) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193) >>> 0;
+  return h.toString(16).padStart(8, "0");
+}
+
+// A plan's key: the first 8 characters of its artifact id, lowercased, or for a
+// local plan a hash of its folder, since slugs can repeat across repos and
+// their first 8 characters often do within one.
+export const planKey = (id) => (isLocal(id) ? fnv(String(id)) : String(id).slice(0, 8).toLowerCase());
 
 export const driverName = (key) => `drive-${key}`;
 

@@ -8,7 +8,8 @@ You run in Herdr App. `hc` and `herdr-app` leave the Claude sandbox only when ru
 
 ## 2. Names
 
-- A plan's **key** is the first 8 characters of its artifact id, lowercased.
+- A plan is a plan page or a local plan. Its **id** is the page's artifact id, or the local plan's folder, and is on your `drive.plan` label (the driver's, for a task or PR agent).
+- A plan's **key** is on the driver's `drive.key` label: the first 8 characters of a plan page's artifact id, lowercased, or for a local plan a hash of its folder.
 - The driver's hc name is `drive-<key>`.
 - An **agent name** is the one `drive-implementation` gives: `t3-validation` for a task, the PR's slug for a PR agent. Use it for `claude --name`.
 - An agent's **hc name** is `<key>-<agent name>`, lowercased, every character outside `a-z 0-9 - _` turned into a hyphen. When that is over 32 characters, shorten the agent-name part and keep the key. If two names still collide, add `-2`, `-3`. An ended terminal's name is free again at once, so a relaunched agent can reuse it.
@@ -16,7 +17,7 @@ You run in Herdr App. `hc` and `herdr-app` leave the Claude sandbox only when ru
 ## 3. A plan's shape
 
 - Each plan has one Herdr space, on a detached checkout at `~/.herdr/worktrees/<repo name>/plan-<key>`. The mod makes both. The driver is the space's first tab, started with `--add-dir` pointing at the repo's main checkout, so it can make worktrees and merge in the main checkout's `.worktrees` folder while it runs in the plan's checkout.
-- Once the driver has read the page, it renames the space to the plan's title: `herdr-app do space.rename '{"id":"<space id>","name":"<title>"}'`. The space id is the `herdr.space` label on its own terminal.
+- Once the driver has read the plan, it renames the space to the plan's title: `herdr-app do space.rename '{"id":"<space id>","name":"<title>"}'`. The space id is the `herdr.space` label on its own terminal.
 - PR and task worktrees come from `wt add` in the repo's main checkout, named as the plan guide's Branches and worktrees says.
 - Never build in the plan's own checkout. It exists only to host the driver.
 
@@ -47,14 +48,14 @@ Values are one line, under about 120 characters. Set one with `hc label <termina
 
 **The driver's own terminal.**
 
-- `drive.role=driver`, `drive.plan` (the artifact id) and `drive.url`: set by the mod at launch; leave them alone.
-- `drive.title`: the plan's title, set once you have read the page.
+- `drive.role=driver`, `drive.plan` (the plan's id), `drive.url` (what you were given: the page's link or the plan's folder) and `drive.key`: set by the mod at launch; leave them alone.
+- `drive.title`: the plan's title, set once you have read the plan.
 - `drive.phase`: `starting`, `building`, `reviewing`, `blocked` (nothing can move without the owner), or `done`.
-- `drive.needs_you`: one line naming what the owner must do, such as `Answer 2 questions on the plan page`. Remove it when there is nothing.
+- `drive.needs_you`: one line naming what the owner must do, such as `Answer 2 questions on the plan page`, or for a local plan, whose questions you ask in your own session, `Answer a question in the driver's session`. Remove it when there is nothing.
 - `drive.tasks`: progress such as `3/8 merged`.
 - `drive.updated`: the UTC time (`date -u +%FT%TZ`).
 
-Update these whenever the plan page changes.
+Update these whenever the plan changes.
 
 **Each task or PR agent's terminal.** The driver sets these at launch: `drive.plan`, `drive.role` (`task` or `pr`), `drive.task` (`T3`) or `drive.pr` (`P1`), `drive.title`, `drive.branch`.
 
@@ -69,7 +70,7 @@ This section is the harness's instructions that `drive-implementation` and `driv
 
 - **Start.** The driver starts a PR agent when a PR opens, draft or ready, in the PR's worktree. For `replies: auto` (or absent) it runs `/drive-pr <n>`; for `confirm`, `/drive-pr <n> --confirm-replies`, with the drafts going to the driver. Its name is the PR's slug. Its seed gives the driver's hc name and the PR's place in the stack. The agent skips `drive-pr`'s `summarize-github-pr` opener, since the driver has its own view. If `drive-pr`'s check that the viewer is the author fails, that is a `question` to the driver.
 - **Ownership.** From then on the PR agent alone changes and pushes the PR branch, and the driver never commits to or pushes it again. The agent makes rounds of fixes for reviewers, failing checks, and conflicts itself, through `drive-pr`'s Making changes. Those fixes land in the PR's worktree, instead of the round branch and worktree the plan guide and `drive-implementation` describe for the driver's own rounds.
-- **Questions and replies.** The agent's questions go to the driver as `question`, and the driver puts them on the plan page. For `confirm`, its reply drafts go as `drafts`, and the driver asks the guide's Post or Edit question. The driver relays each answer as `answer` and each ruling as `ruling`. For `auto` the agent posts on its own and reports what it posted in its `round`.
+- **Questions and replies.** The agent's questions go to the driver as `question`, and the driver puts them on the plan. For `confirm`, its reply drafts go as `drafts`, and the driver asks the guide's Post or Edit question. The driver relays each answer as `answer` and each ruling as `ruling`. For `auto` the agent posts on its own and reports what it posted in its `round`.
 - **Merging a task.** The driver sends `handover` with: the task id, the task branch, the PR branch, the task's `verify`, and the merge style (a merge commit unless the repository's conventions say otherwise, as `drive-implementation` step 4 says).
   - The agent merges only when it has no unpushed commits of its own; otherwise it pushes or finishes those first.
   - It runs the `verify` on the merged result and pushes only if that passes, then sends `merged-task` with the new head.

@@ -5,7 +5,7 @@ import { h_flex, v_flex } from "gpui-base";
 import { exec, focused, notify, openOverlay, spaces, theme } from "herdr";
 import { relaunchPlan } from "./launch.js";
 import { L } from "./model.js";
-import { LB, derive, goTo, inSpace, live, peek, planName, prune, show } from "./view.js";
+import { LB, derive, goTo, inSpace, live, openPlanTab, peek, planName, prune, show } from "./view.js";
 import { demo } from "./demo.js";
 
 const PRUNE_MS = 60_000;
@@ -92,6 +92,13 @@ export class Panel {
       .on_click((_e, cx) => { cx.stop_propagation(); this.open(url); })).child(`#${number}`);
   }
 
+  // A local plan's Plan tab. DEMO opens a real one in the space showing, on demo.js's plan.
+  openPlan(p) {
+    if (!this.demoOn) return openPlanTab(p.space, p.id);
+    const here = spaces().find((s) => s.active);
+    if (here) openPlanTab(here, p.id, { demo: true });
+  }
+
   open(url) {
     if (this.demoOn) notify({ title: "Demo", body: `Would open ${url}` });
     else exec("open", [url]);
@@ -117,7 +124,7 @@ export class Panel {
   }
 
   dialog() {
-    openOverlay({ mod: "drive", kind: "dialog", width: 460, height: 230, props: { dialog: "plan", space: this.spaceId() } });
+    openOverlay({ mod: "drive", kind: "dialog", width: 480, height: 380, props: { dialog: "plan", space: this.spaceId() } });
   }
 
   // One plan as a row: its name and state, a line of facts, what the owner must do.
@@ -158,7 +165,8 @@ export class Panel {
         .child([p.tasks, p.repo].filter(Boolean).join(" · "))))
       .when(Boolean(p.needs), (el) => el.child(div().text_size(12).text_color(t.blocked).child(p.needs)))
       .child(h_flex().gap(6).flex_wrap()
-        .when(Boolean(p.url), (el) => el.child(this.button(t, "open-plan", "Open plan page", () => this.open(p.url))))
+        .when(p.local && Boolean(p.space), (el) => el.child(this.button(t, "open-plan", "Open plan", () => this.openPlan(p))))
+        .when(!p.local && Boolean(p.url), (el) => el.child(this.button(t, "open-plan", "Open plan page", () => this.open(p.url))))
         .when(p.stopped, (el) => el.child(this.button(t, "resume-plan", "Resume",
           (cx) => this.run(cx, resumeKey, "Resume plan", () => relaunchPlan(p.id)), { primary: true, busy: this.busy.has(resumeKey) })))
         .when(p.phase === "done" && Boolean(p.space), (el) => el.child(this.button(t, "close-plan", "Close plan",

@@ -4,7 +4,8 @@
 //
 // Everything here throws an Error with a message a person can read; the dialog
 // shows it inline.
-import { appHome, exec, hc, home, run, setShared, spaces, terminals } from "herdr";
+import { appHome, exec, hc, home, readTextFile, run, setShared, spaces, terminals } from "herdr";
+import * as fs from "fs/promises";
 import {
   L, PLANS_KEY, driverName, homeSpace, place, plansRecord, planKey, runningDriver, whereIs,
 } from "./model.js";
@@ -40,11 +41,9 @@ async function git(folder, args, timeout = 30_000) {
   }
 }
 
-// The repo a space is in: its main checkout, found through the git common dir,
+// The repo a folder is in: its main checkout, found through the git common dir,
 // and its name from the origin remote (the folder's name without one).
-async function repoOf(space) {
-  const folder = place(space);
-  if (!folder) throw new Error("This space has no folder to find a repo from.");
+async function repoAt(folder) {
   const r = await git(folder, ["rev-parse", "--path-format=absolute", "--show-toplevel", "--git-common-dir"]);
   const [top, common] = r.ok ? r.out.split("\n") : [];
   if (!top || !common) throw new Error(`${folder} is not in a git repo.`);
@@ -52,6 +51,12 @@ async function repoOf(space) {
   const origin = (await git(root, ["remote", "get-url", "origin"])).out;
   const name = origin.split(/[/:]/).pop()?.replace(/\.git$/, "") || root.split("/").pop();
   return { root, name };
+}
+
+async function repoOf(space) {
+  const folder = place(space);
+  if (!folder) throw new Error("This space has no folder to find a repo from.");
+  return repoAt(folder);
 }
 
 const spaceById = (id) => spaces().find((s) => s.id === id) ?? null;
@@ -107,6 +112,58 @@ async function startTab({ name, cwd, command, labels, space, newSpaceId, spaceNa
   return address;
 }
 
+// --- Local plans ----------------------------------------------------------------
+
+// A local plan is a folder holding meta/guide.json, normally
+// <main checkout>/.plans/<slug> (see plan-store).
+const SLUG = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+// The folder with symlinks resolved, or null when there is none.
+async function realDir(folder) {
+  try {
+    const r = await exec("/bin/sh", ["-c", 'cd "$1" && pwd -P', "sh", folder]);
+    return r.code === 0 ? r.stdout.trim() || null : null;
+  } catch {
+    return null;
+  }
+}
+
+// The local plan `text` names: a folder (absolute or ~/), or the slug of a plan
+// in the space's repo. Returns its real path.
+async function localPlan(text, space) {
+  let t = text.trim().replace(/\/+$/, "");
+  if (t.startsWith("~/")) t = home() + t.slice(1);
+  let folder;
+  if (t.startsWith("/")) folder = t;
+  else if (SLUG.test(t)) folder = `${(await repoOf(space)).root}/.plans/${t}`;
+  else throw new Error("Not a plan: expected a plan page link, a plan's folder, or the slug of a plan in this repo's .plans folder.");
+  const dir = await realDir(folder);
+  if (!dir) throw new Error(`No plan at ${folder}.`);
+  if ((await exec("test", ["-f", `${dir}/meta/guide.json`])).code !== 0) {
+    throw new Error(`${dir} isn't a plan: it has no meta/guide.json.`);
+  }
+  return dir;
+}
+
+// The plans in the space's repo, most recently updated first: { dir, slug, title, status, updated_at }.
+// For the dialog to offer; empty when the space isn't in a repo or has none.
+export async function localPlans(space) {
+  const root = (await repoOf(space)).root;
+  let names = [];
+  try {
+    names = await fs.readdir(`${root}/.plans`);
+  } catch {
+    return [];
+  }
+  const plans = await Promise.all(names.filter((n) => SLUG.test(n)).map(async (slug) => {
+    const dir = `${root}/.plans/${slug}`;
+    let run = null;
+    try { run = JSON.parse((await readTextFile(`${dir}/run/main.json`)) ?? "null"); } catch {}
+    return { dir, slug, title: run?.title ?? slug, status: run?.status ?? null, updated_at: run?.updated_at ?? "" };
+  }));
+  return plans.sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)));
+}
+
 // --- Plans ----------------------------------------------------------------------
 
 // The plan's detached checkout, made if it isn't there: it hosts the driver and
@@ -124,9 +181,10 @@ async function ensureCheckout(repo, key) {
   return checkout;
 }
 
-// Starts (or, when one is running, shows) the driver of a plan. `repo` is
+// Starts (or, when one is running, shows) the driver of a plan. `ref` is what
+// the driver is given: the page's link or the plan's folder. `repo` is
 // { root, name }. Returns { existing, address }.
-async function drivePlan(id, url, repo, record) {
+async function drivePlan(id, ref, repo, record) {
   const key = planKey(id);
   const running = runningDriver(id, terminals());
   if (running) {
@@ -138,16 +196,16 @@ async function drivePlan(id, url, repo, record) {
   const space = homeSpace(running ?? null, record, checkout);
   const command = [
     "exec claude", "--name", driverName(key), "--add-dir", shq(repo.root),
-    "--append-system-prompt-file", shq(protocolFile()), "--", shq(`/drive-implementation ${url}`),
+    "--append-system-prompt-file", shq(protocolFile()), "--", shq(`/drive-implementation ${ref}`),
   ].join(" ");
   const address = await startTab({
     name: driverName(key), cwd: checkout, command, space,
     newSpaceId: driverName(key), spaceName: `Plan ${key}`,
-    labels: { [L.role]: "driver", [L.plan]: id, [L.url]: url, [L.phase]: "starting" },
+    labels: { [L.role]: "driver", [L.plan]: id, [L.url]: ref, [L.key]: key, [L.phase]: "starting" },
     record: (spaceId) => setShared(PLANS_KEY, {
       ...plansRecord(),
       [id]: {
-        url, repo_root: repo.root, repo_name: repo.name, checkout,
+        url: ref, repo_root: repo.root, repo_name: repo.name, checkout,
         space_id: spaceId, started_at: new Date().toISOString(),
       },
     }),
@@ -155,17 +213,19 @@ async function drivePlan(id, url, repo, record) {
   return { existing: false, address };
 }
 
-export async function launchPlan(url, fromSpace) {
-  const id = parseArtifact(url);
-  if (!id) throw new Error("Not a plan page link: expected claude.ai/artifact/<id>.");
+// Starts the driver of the plan `text` names (a plan page's link, a local
+// plan's folder, or its slug in the space's repo), or shows the running one.
+export async function launchPlan(text, fromSpace) {
+  const space = typeof fromSpace === "string" ? spaceById(fromSpace) : fromSpace;
+  const page = parseArtifact(text);
+  const id = page ?? await localPlan(text, space);
   const running = runningDriver(id, terminals());
   if (running) {
     revealLive(running, `Plan ${planKey(id)}'s driver`);
     return { existing: true, address: running.address };
   }
-  const space = typeof fromSpace === "string" ? spaceById(fromSpace) : fromSpace;
-  const repo = await repoOf(space);
-  return drivePlan(id, cleanUrl(url), repo, plansRecord()[id]);
+  const repo = page ? await repoOf(space) : await repoAt(id);
+  return drivePlan(id, page ? cleanUrl(text) : id, repo, plansRecord()[id]);
 }
 
 // Starts a plan's driver again from its record, for a plan whose driver is gone.
