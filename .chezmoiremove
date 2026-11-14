@@ -251,3 +251,9 @@
 .agents/skills/github-pr/scripts/queue.py
 .agents/skills/github-pr/tests/test-queue
 .agents/skills/github-pr/references/queue.md
+
+# The Drive panel and its tab-bar button were retired: plans are shown by the
+# plan mod, and the agents' Herdr rules moved to the herdr-agents skill. Without
+# these the old mods linger on machines that applied them.
+.config/herdr-app/mods/drive
+.config/herdr-app/mods/drive-tabs

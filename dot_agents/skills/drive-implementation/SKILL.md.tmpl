@@ -20,7 +20,7 @@ A pass: take the tasks that are ready, start them, handle what the running agent
 
 ## Where work happens
 
-Every task that changes code gets its own worktree and its own agent. Make the worktree yourself with `wt`, as the guide's Branches and worktrees says, then start the agent in it with whatever the harness offers, such as a background subagent told to work in that path, a new session, or the workspace tool's own commands. Don't let the harness make the worktree too, as worktree-isolated subagents or a workspace tool's new-worktree command would, since each names and bases it its own way. Small reads you do yourself or give to a plain subagent. What matters is what the result looks like:
+Every task that changes code gets its own worktree and its own agent. Make the worktree yourself with `wt`, as the guide's Branches and worktrees says, then start the agent in it with whatever the harness offers, such as a background subagent told to work in that path, a new session, or the workspace tool's own commands. In the Herdr desktop app (`$HC_TERMINAL_ID` is set), follow the `herdr-agents` skill for starting and talking to agents. Don't let the harness make the worktree too, as worktree-isolated subagents or a workspace tool's new-worktree command would, since each names and bases it its own way. Small reads you do yourself or give to a plain subagent. What matters is what the result looks like:
 
 - **The PR's worktree.** Each PR's branch gets a worktree from `wt add <PR branch> --base <its base>` when its first task starts, where its base is the base branch or the branch of the PR it stacks on. Merges, the merged `verify`, and pushes happen there, and it stays until the PR merges or closes.
 - **Its own worktree**, from `wt add <task branch> --base <PR branch>`, named as the guide says. Record the task's `branch` in the plan.
@@ -48,7 +48,7 @@ From the time a PR opens, draft or ready, carry it through review as the guide's
 - **What it waits on** goes in the PR's `waiting_on`.
 - **When it merges or closes**, run `wt remove` on its branch. After a squash merge `wt` keeps the branch, since it isn't an ancestor of the default branch; leave it there. GitHub retargets the PR stacked on it, `drive-pr` merges the new base into that one, and you update the stack line in the remaining PRs' descriptions.
 
-When the harness's instructions give each open PR its own agent running `drive-pr`, that agent alone changes and pushes the PR's branch once the PR opens, and those instructions define how you and it coordinate: handing it task branches, its reports, its questions, and its replies. Follow them in place of driving that PR yourself. Without such instructions, drive the PR as above.
+When the harness's instructions, such as the `herdr-agents` skill in Herdr, give each open PR its own agent running `drive-pr`, that agent alone changes and pushes the PR's branch once the PR opens, and those instructions define how you and it coordinate: handing it task branches, its reports, its questions, and its replies. Follow them in place of driving that PR yourself. Without such instructions, drive the PR as above.
 
 Several PRs are driven at once, each with its own watches.
 

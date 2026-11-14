@@ -3,12 +3,11 @@
 // below them, when there is room, the task graph on the left beside the plan.
 // Read-only, and live: it rereads the plan's folder whenever something in it
 // changes. Questions are answered in the driver's session, so an open one
-// offers a way there.
+// offers a way there. The driver is the live terminal whose `plan.driver`
+// label is this plan's folder, which the herdr-agents skill has it set.
 import { div, PathBuilder } from "gpui-kit";
 import { h_flex, v_flex, ScrollHandle } from "gpui-base";
-import { exec, notify, settings, terminals, theme, watchFolder } from "herdr";
-import { groupPlans } from "./model.js";
-import { show } from "./view.js";
+import { exec, notify, run, settings, terminals, theme, watchFolder } from "herdr";
 import {
   CHECK_MARK, G, PR_STATUS, RUN_STATUS, TASK_STATUS, after, ago, arr, byLine, graphLayout, journal, loadPlan, openQuestions,
   prChain, prName, prNumber, progress, runStatus, sortedPrs, sortedTasks, waits, wrapTitle,
@@ -49,7 +48,7 @@ export class PlanView {
         try {
           await watchFolder(this.dir);
         } catch (e) {
-          console.log(`drive: can't watch ${this.dir}, refreshing on a timer: ${e?.message ?? e}`);
+          console.log(`plan: can't watch ${this.dir}, refreshing on a timer: ${e?.message ?? e}`);
           return;
         }
         await this.load();
@@ -74,15 +73,18 @@ export class PlanView {
     }
   }
 
-  // The plan's driver, live or ended, or null.
+  // The plan's running driver, { address, blocked }, or null. A tab's terminal
+  // outlives the agent run in it, so a live terminal counts only while its
+  // agent is still there.
   driver() {
-    if (this.demo) return { address: "demo", live: true, labels: {} };
-    return groupPlans(terminals(), {}).find((p) => p.id === this.dir)?.driver ?? null;
+    if (this.demo) return { address: "demo", blocked: true };
+    const t = terminals().find((x) => x.state === "live" && x.program?.agent && x.labels?.["plan.driver"] === this.dir);
+    return t ? { address: t.address, blocked: t.status === "blocked" } : null;
   }
 
   goToDriver(d) {
     if (this.demo) notify({ title: "Demo", body: "Would show the driver's tab." });
-    else show(d.address);
+    else run("agent.focus", { terminal: d.address });
   }
 
   open(url) {
@@ -170,7 +172,6 @@ export class PlanView {
     const count = progress(plan);
     const share = (n) => (count.live ? (n / count.live) * 100 : 0);
     const d = this.driver();
-    const needs = d?.live ? d.labels?.["drive.needs_you"] : null;
     return v_flex().gap(10)
       .child(h_flex().gap(12).items_start()
         .child(v_flex().flex_1().min_w(0).gap(3)
@@ -186,10 +187,9 @@ export class PlanView {
         .when(!side, (el) => el
           .child(h_flex().child(this.button(t, "graph-toggle", `${this.graphOpen ? "Hide" : "Show"} task dependency graph`,
             (cx) => { this.graphOpen = !this.graphOpen; cx.notify(); })))))
-      .when(Boolean(needs), (el) => el.child(div().text_size(12.5).text_color(t.blocked).child(needs)))
       .when(Boolean(d), (el) => el.child(h_flex().gap(8).items_center()
-        .child(this.button(t, "go-driver", "Go to driver", () => this.goToDriver(d), Boolean(needs)))
-        .when(!d.live, (el) => el.child(div().text_size(12).text_color(t.dim).child("Its driver has ended; resume it from the Drive panel.")))));
+        .child(this.button(t, "go-driver", "Go to driver", () => this.goToDriver(d), d.blocked))
+        .when(d.blocked, (el) => el.child(div().text_size(12.5).text_color(t.blocked).child("The driver is waiting on you.")))));
   }
 
   // --- Handover and questions ---------------------------------------------------
@@ -236,10 +236,9 @@ export class PlanView {
     return this.section(t, "Needs attention", open.length || null,
       open.length === 0 ? this.quiet(t, "Nothing needs attention right now.")
         : h_flex().gap(10).items_center().text_size(12.5).text_color(t.muted)
-          .child(div().flex_1().min_w(0).child(d?.live ? "The driver asks these in its own session; answer them there."
-            : d ? "The driver asks these in its own session once it's resumed from the Drive panel."
-              : "A driver asks these in its own session; none is running this plan."))
-          .when(Boolean(d?.live), (el) => el.child(this.button(t, "go-driver-ask", "Answer in the driver", () => this.goToDriver(d), true))),
+          .child(div().flex_1().min_w(0).child(d ? "The driver asks these in its own session; answer them there."
+            : `The driver asks these in its own session; none is running. /drive-implementation ${this.dir.split("/").pop()} starts one.`))
+          .when(Boolean(d), (el) => el.child(this.button(t, "go-driver-ask", "Answer in the driver", () => this.goToDriver(d), true))),
       ...open.map((q) => this.question(t, q, true)));
   }
 

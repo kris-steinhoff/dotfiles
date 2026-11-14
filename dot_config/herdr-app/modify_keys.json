@@ -1,0 +1,13 @@
+{{- /* chezmoi:modify-template */ -}}
+{{- /*
+  Herdr writes this file with its default shortcuts, and keeps upgrading them
+  only while the file is untouched, so only the keys below are managed and
+  everything else is kept. With no file yet (Herdr hasn't run), nothing is
+  written, since a file holding only these keys would replace every default.
+  cmd-shift-o opens the plan mod's picker of local plans.
+*/ -}}
+{{- if .chezmoi.stdin -}}
+{{- $k := fromJson .chezmoi.stdin -}}
+{{- $k = setValueAtPath "global.cmd-shift-o" "mod.open:plan" $k -}}
+{{ toPrettyJson "  " $k -}}
+{{- end -}}
