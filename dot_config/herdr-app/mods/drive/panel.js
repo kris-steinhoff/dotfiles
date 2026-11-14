@@ -1,11 +1,11 @@
-// The Drive panel: a plan's or a PR's detail in its own space, and every plan and
-// driven PR anywhere else. Laid out for a column about 368 px wide.
+// The Drive panel: a plan's detail in its own space, and every plan anywhere
+// else. Laid out for a column about 368 px wide.
 import { div } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { exec, focused, notify, openOverlay, spaces, theme } from "herdr";
-import { relaunchPR, relaunchPlan } from "./launch.js";
+import { relaunchPlan } from "./launch.js";
 import { L } from "./model.js";
-import { LB, closePR, derive, goTo, inSpace, live, peek, planName, prFinished, prune, show } from "./view.js";
+import { LB, derive, goTo, inSpace, live, peek, planName, prune, show } from "./view.js";
 import { demo } from "./demo.js";
 
 const PRUNE_MS = 60_000;
@@ -24,7 +24,7 @@ export class Panel {
   constructor(demoOn) {
     this.demoOn = demoOn;
     this.busy = new Set();
-    this.demoView = null; // DEMO: the key of the plan or PR to show in detail, null for the overview
+    this.demoView = null; // DEMO: the key of the plan to show in detail, null for the overview
   }
 
   // Looks for records whose folder is gone once a minute, while the panel exists.
@@ -36,7 +36,7 @@ export class Panel {
   }
 
   data() {
-    return this.demoOn ? derive(demo.terms, demo.plans, demo.prs, demo.space) : live();
+    return this.demoOn ? derive(demo.terms, demo.plans, demo.space) : live();
   }
 
   // Runs a button's action once at a time, telling the owner how it went.
@@ -84,7 +84,7 @@ export class Panel {
     return div().flex_none().text_size(11.5).text_color(color).child(text);
   }
 
-  // A PR number that opens the PR.
+  // A plan PR agent's number, which opens the PR.
   prLink(t, id, number, url) {
     return div().id(id).flex_none().text_color(url ? t.accent : t.muted).when(Boolean(url), (el) => el.cursor_pointer()
       .tooltip("Open on GitHub")
@@ -116,45 +116,33 @@ export class Panel {
     return spaces().find((s) => s.active)?.id ?? focused()?.space;
   }
 
-  dialog(kind) {
-    openOverlay({ mod: "drive", kind: "dialog", width: 460, height: 230, props: { dialog: kind, space: this.spaceId() } });
+  dialog() {
+    openOverlay({ mod: "drive", kind: "dialog", width: 460, height: 230, props: { dialog: "plan", space: this.spaceId() } });
   }
 
-  // One plan or PR as a row: its name and state, a line of facts, what the owner must do.
+  // One plan as a row: its name and state, a line of facts, what the owner must do.
   overviewRow(t, item) {
-    const plan = item.kind === "plan";
-    const name = plan ? planName(item) : `${item.title ?? "PR"}`;
-    const state = item.stopped ? "stopped" : plan ? (item.phase ?? "starting") : (item.status ?? "starting");
+    const state = item.stopped ? "stopped" : (item.phase ?? "starting");
     const color = item.stopped ? t.dim : tone(t, state);
-    const facts = [
-      item.repo,
-      plan ? item.tasks : null,
-      item.working ? `${item.working} working` : null,
-      !plan ? item.waiting : null,
-    ].filter(Boolean).join(" · ");
+    const facts = [item.repo, item.tasks, item.working ? `${item.working} working` : null].filter(Boolean).join(" · ");
     const resumeKey = `resume-${item.key}`;
-    const resume = plan
-      ? (cx) => this.run(cx, resumeKey, "Resume plan", () => relaunchPlan(item.id))
-      : (cx) => this.run(cx, resumeKey, "Resume PR", () => relaunchPR(item.record));
+    const resume = (cx) => this.run(cx, resumeKey, "Resume plan", () => relaunchPlan(item.id));
     return this.rowBase(t, `row-${item.key}`, item.space ? (cx) => this.goTo(item, cx) : null)
-      .child(this.dot(t, plan ? item.driver : item.term))
+      .child(this.dot(t, item.driver))
       .child(v_flex().flex_1().min_w(0).gap(1)
         .child(h_flex().min_w(0).gap(6).items_center()
-          .when(!plan, (el) => el.child(this.prLink(t, `num-${item.key}`, item.number, item.url)))
-          .child(div().flex_1().min_w(0).truncate().text_color(item.stopped ? t.muted : t.foreground).child(name))
+          .child(div().flex_1().min_w(0).truncate().text_color(item.stopped ? t.muted : t.foreground).child(planName(item)))
           .child(this.tag(color, state)))
         .when(Boolean(facts), (el) => el.child(div().truncate().text_size(11.5).text_color(t.dim).child(facts)))
         .when(Boolean(item.needs), (el) => el.child(div().truncate().text_size(11.5).text_color(t.blocked).child(item.needs))))
       .when(item.stopped, (el) => el.child(this.button(t, `resume-btn-${item.key}`, "Resume", resume, { busy: this.busy.has(resumeKey) })));
   }
 
-  renderOverview(t, data) {
+  renderOverview(t, plans) {
     return v_flex().gap(14)
       .child(h_flex().gap(8)
-        .child(this.button(t, "new-driver", "New driver", () => this.dialog("plan"), { primary: true }))
-        .child(this.button(t, "drive-pr", "Drive PR", () => this.dialog("pr"))))
-      .child(this.group(t, "Plans", data.plans.length, data.plans.map((p) => this.overviewRow(t, p)), "No plans yet"))
-      .child(this.group(t, "PRs", data.prs.length, data.prs.map((p) => this.overviewRow(t, p)), "No driven PRs"));
+        .child(this.button(t, "new-driver", "New driver", () => this.dialog(), { primary: true })))
+      .child(this.group(t, "Plans", plans.length, plans.map((p) => this.overviewRow(t, p)), "No plans yet"));
   }
 
   // --- A plan's space -----------------------------------------------------------
@@ -209,34 +197,11 @@ export class Panel {
         .when(!p.driver && agents.length === 0, (el) => el.child(div().px(8).text_size(12).text_color(t.dim).child("No agents running"))));
   }
 
-  // --- A single PR's space ------------------------------------------------------
-
-  renderPR(t, p) {
-    const state = p.stopped ? "stopped" : (p.status ?? "starting");
-    const resumeKey = `resume-${p.key}`;
-    const closeKey = `close-${p.key}`;
-    const finished = prFinished(p) || p.stopped;
-    return v_flex().gap(6).px(8)
-      .child(h_flex().gap(8).items_center()
-        .child(this.prLink(t, "pr-num", p.number, p.url))
-        .child(div().flex_1().min_w(0).truncate().text_size(14).font_semibold().child(p.title ?? "PR"))
-        .child(this.tag(p.stopped ? t.dim : tone(t, state), state)))
-      .when(Boolean(p.repo), (el) => el.child(div().truncate().text_size(12).text_color(t.muted).child(p.repo)))
-      .when(Boolean(p.waiting), (el) => el.child(div().text_size(12).text_color(t.foreground).child(p.waiting)))
-      .when(Boolean(p.needs), (el) => el.child(div().text_size(12).text_color(t.blocked).child(p.needs)))
-      .child(h_flex().gap(6).flex_wrap()
-        .when(Boolean(p.url), (el) => el.child(this.button(t, "open-pr", "Open PR", () => this.open(p.url))))
-        .when(p.stopped, (el) => el.child(this.button(t, "resume-pr", "Resume",
-          (cx) => this.run(cx, resumeKey, "Resume PR", () => relaunchPR(p.record)), { busy: this.busy.has(resumeKey) })))
-        .when(finished, (el) => el.child(this.button(t, "close-pr", "Close",
-          (cx) => this.run(cx, closeKey, "Close PR", () => closePR(p)), { primary: true, busy: this.busy.has(closeKey) }))));
-  }
-
   // --- Render -------------------------------------------------------------------
 
-  demoBar(t, data) {
-    const items = [{ key: null, label: "Overview" }, ...[...data.plans, ...data.prs].map((i) => ({
-      key: i.key, label: i.kind === "plan" ? `${i.stopped ? "stopped " : ""}${i.phase ?? "plan"}${i.title ? "" : " (no title)"}` : `PR ${i.number}`,
+  demoBar(t, plans) {
+    const items = [{ key: null, label: "Overview" }, ...plans.map((i) => ({
+      key: i.key, label: `${i.stopped ? "stopped " : ""}${i.phase ?? "plan"}${i.title ? "" : " (no title)"}`,
     }))];
     return h_flex().gap(4).flex_wrap().pb(6).text_size(11)
       .children(items.map((i) => div().id(`demo-${i.key ?? "overview"}`).px(6).py(2).rounded(5).cursor_pointer()
@@ -253,14 +218,14 @@ export class Panel {
 
   render() {
     const t = theme();
-    const data = this.data();
+    const plans = this.data();
     const active = this.demoOn
-      ? [...data.plans, ...data.prs].find((i) => i.key === this.demoView) ?? null
-      : inSpace(data, this.spaceId());
-    const body = !active ? this.renderOverview(t, data) : active.kind === "plan" ? this.renderPlan(t, active) : this.renderPR(t, active);
+      ? plans.find((p) => p.key === this.demoView) ?? null
+      : inSpace(plans, this.spaceId());
+    const body = active ? this.renderPlan(t, active) : this.renderOverview(t, plans);
     return v_flex().id("drive-panel").size_full().p(12).gap(10).bg(t.surface).text_size(12.5).text_color(t.foreground)
       .overflow_y_scrollbar()
-      .when(this.demoOn, (el) => el.child(this.demoBar(t, data)))
+      .when(this.demoOn, (el) => el.child(this.demoBar(t, plans)))
       .child(body);
   }
 }

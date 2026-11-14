@@ -1,23 +1,22 @@
-// Drive: start and find the agents that drive a plan or a PR (see PROTOCOL.md).
+// Drive: start and find the agents that drive a plan (see PROTOCOL.md).
 //
-// - `{ dialog: "plan" | "pr", space? }`, opened with openOverlay (kind dialog):
-//   asks for a plan page's link or a PR number, then starts its driver or shows
-//   the one already running. `space` is where to find the repo (default: the
-//   focused space).
-// - no props: the panel (panel.js). In a plan's or a PR's space it shows that one
-//   in detail; anywhere else it lists every plan and driven PR.
+// - `{ dialog: "plan", space? }`, opened with openOverlay (kind dialog): asks for
+//   a plan page's link, then starts its driver or shows the one already running.
+//   `space` is where to find the repo (default: the focused space).
+// - no props: the panel (panel.js). In a plan's space it shows that plan in
+//   detail; anywhere else it lists every plan.
 //
 // The model (model.js), the launching (launch.js) and what the panel works out
 // (view.js) hold no rendering.
 import { View, div } from "gpui-kit";
 import { h_flex, v_flex, InputState, Input } from "gpui-base";
 import { closeOverlay, focused, props, spaces, theme } from "herdr";
-import { launchPR, launchPlan, parseArtifact } from "./launch.js";
+import { launchPlan, parseArtifact } from "./launch.js";
 import { Panel } from "./panel.js";
 
-// Test data: true shows the made-up plans and PRs of demo.js, with a row of chips
+// Test data: true shows the made-up plans of demo.js, with a row of chips
 // to switch between the views, instead of the real ones. Launching from the
-// dialogs is real either way; the panel's own buttons only say what they would do.
+// dialog is real either way; the panel's own buttons only say what they would do.
 const DEMO = false;
 
 const DIALOGS = {
@@ -25,11 +24,6 @@ const DIALOGS = {
     title: "Drive a plan",
     placeholder: "https://claude.ai/artifact/…",
     hint: "The plan page's link, in the claude.ai/artifact/<id> form plan pages are published in. The claude.ai/code/artifact/<uuid> form names the same page by another id and starts a separate record.",
-  },
-  pr: {
-    title: "Drive a PR",
-    placeholder: "PR number",
-    hint: "One of your own PRs in this space's repo. It gets a space of its own.",
   },
 };
 
@@ -64,7 +58,7 @@ export default class Drive extends View {
     if (this.busy) return;
     const text = this.text.trim();
     if (!text) return;
-    if (this.kind === "plan" && !parseArtifact(text)) {
+    if (!parseArtifact(text)) {
       this.error = "Not a plan page link: expected claude.ai/artifact/<id>.";
       cx.notify();
       return;
@@ -80,7 +74,7 @@ export default class Drive extends View {
     cx.notify();
     cx.spawn(async (cx) => {
       try {
-        await (this.kind === "plan" ? launchPlan(text, space) : launchPR(text, space));
+        await launchPlan(text, space);
         closeOverlay(props().overlay);
         return;
       } catch (e) {

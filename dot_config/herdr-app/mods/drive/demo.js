@@ -1,6 +1,6 @@
-// Made-up plans and PRs for trying the panel (DEMO in main.js): raw terminals and
-// records in the shapes herdr and model.js give, so they go through the same
-// code as real ones. Every phase, a stopped plan and each kind of PR appear.
+// Made-up plans for trying the panel (DEMO in main.js): raw terminals and records
+// in the shapes herdr and model.js give, so they go through the same code as
+// real ones. Every phase and a stopped plan appear.
 
 const term = (address, name, status, labels, { live = true, agent = true } = {}) => ({
   address, name, state: live ? "live" : "ended", status, labels, program: { agent },
@@ -62,29 +62,9 @@ const planTerms = [
   }, "done"),
 ];
 
-const pr = (n, title, status, extra = {}, { live = true, state = "working" } = {}) => ({
-  key: `demo/widgets#${n}`,
-  record: {
-    repo: "demo/widgets", repo_root: "/demo/repo", repo_name: "widgets", number: n,
-    worktree: `/demo/repo/.worktrees/pr-${n}`, space_id: `demo:pr-${n}`,
-  },
-  term: live ? term(`p-${n}`, `pr-${n}-widgets`, state, {
-    "drive.role": "pr", "drive.repo": "demo/widgets", "drive.pr_number": String(n), "drive.title": title,
-    "drive.status": status, "drive.pr_url": `https://github.com/demo/widgets/pull/${n}`, ...extra,
-  }) : null,
-});
-
-const prs = [
-  pr(130, "Cache the feature flags", "ci-failing", { "drive.waiting_on": "Fix the failing lint check" }),
-  pr(131, "Bump the SDK", "approved", { "drive.waiting_on": "Waiting for you to merge" }, { state: "blocked" }),
-  pr(132, "Drop the legacy flag", "merged", {}, { state: "done" }),
-  pr(133, "Fix the pager", "open", {}, { live: false }),
-];
-
 export const demo = {
-  terms: [...planTerms, ...prs.filter((p) => p.term).map((p) => p.term)],
+  terms: planTerms,
   plans: Object.fromEntries(plans.map((p) => [p.id, p.record])),
-  prs: Object.fromEntries(prs.map((p) => [p.key, p.record])),
-  // The fake space each plan or PR lives in, by the record's space_id.
+  // The fake space each plan lives in, by the record's space_id.
   space: (_term, record) => (record?.space_id ? { id: record.space_id, name: record.space_id.slice(5), active: false } : null),
 };

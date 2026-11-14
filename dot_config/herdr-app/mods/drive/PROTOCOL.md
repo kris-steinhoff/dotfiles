@@ -61,12 +61,6 @@ Update these whenever the plan page changes.
 - For a task, the driver keeps `drive.status` current: `implementing`, `reviewing`, `fixing`, `merging`, and last `merged`, set just before the agent is removed.
 - A PR agent keeps its own `drive.status` (`draft`, `open`, `changes-requested`, `ci-failing`, `conflicting`, `approved`, `merged`, or `closed`), plus `drive.pr_number`, `drive.pr_url`, and `drive.waiting_on` (what the PR waits on, as a sentence a person could act on; removed when nothing). At startup it sets `drive.pr_number`, `drive.pr_url`, and `drive.status` (`draft` or `open`).
 
-**A PR driven on its own** (started from the panel, no plan):
-
-- The mod sets `drive.role=pr`, `drive.repo` (`owner/name`), `drive.pr_number`, `drive.title`, and `drive.branch` (the PR's head branch, which the panel's Close needs).
-- The agent keeps `drive.status`, `drive.pr_url`, and `drive.waiting_on` current.
-- It has a space of its own, shaped like a plan's: the mod finds or makes a `wt` worktree of the PR's head branch and a Herdr space on it, with the PR agent as the first tab. There is no driver, so the agent asks its questions in its own session.
-
 ## 7. PR agents: the coordination contract
 
 This section is the harness's instructions that `drive-implementation` and `drive-pr` refer to. It binds both sides.
@@ -99,5 +93,4 @@ This section is the harness's instructions that `drive-implementation` and `driv
 
 - When a task merges, the driver follows `drive-implementation`'s clean-up (for a PR with an agent, once `merged-task` arrives), sets the task's `drive.status=merged`, then ends the agent with `hc kill <hc name>` and `hc rm <hc name>`. There is no tab to close.
 - When a plan's PR merges or closes, its agent sets `drive.status` to `merged` or `closed`, sends `ended`, and stops. The driver then ends it with `hc kill` and `hc rm` and removes the PR worktree with `wt remove`. `drive-pr` won't remove that worktree itself, since it didn't make it.
-- A single driven PR is ended from the panel's Close.
 - When the plan is done, the driver sets `drive.phase=done`. The owner closes the plan's space from the panel.
