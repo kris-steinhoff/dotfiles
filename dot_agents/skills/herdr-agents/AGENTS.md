@@ -12,6 +12,8 @@ Sub-agents rather than tabs, for three reasons: they nest under the driver in He
 
 Agents are addressed by the address `hc run` prints, so an hc name only has to be unique among live terminals, and a collision takes a `-2` rather than every name carrying a per-plan prefix. The driver can see `hc run` refuse a name and pick another, and the Agents list already nests each agent under its driver, which says which plan it belongs to.
 
+Agents start with `hc run --rm`, so ending one is a single `hc kill`. With `hc kill` and `hc rm` as two steps, a test-run driver did only the first, and every ended task agent and reviewer stayed listed in `hc ls --all`.
+
 The driver's one label, `plan.driver`, is for the plan mod's Plan tab (`dot_config/herdr-app/AGENTS.md`), whose Go to driver button finds the driver by it. There are no status labels (phase, what the owner must do, each PR's status): the plan shows those, and Herdr already marks a driver waiting on a question as blocked. The label is the folder `plan-store path` prints because that path is resolved, as the Plan tab's is.
 
 Reviews are hc sub-agents of the agent whose work they review, rather than the harness's own subagents inside the driver, so the Agents list shows each review nested under the task or PR it checks; a review running inside the driver's session was invisible there. The reviewer still starts with a fresh context, which is all the review needs. For a task, the driver writes the reviewer's brief and receives its report, and the task agent only starts it, because the cycle in `/drive-implementation` gives the review's findings to the driver, which decides what goes back to the implementer, and an implementer that wrote its own reviewer's brief could steer the review.

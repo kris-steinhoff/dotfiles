@@ -17,9 +17,10 @@ This skill is how agents work in the Herdr desktop app, not a workflow of its ow
 Start each agent as your sub-agent, from your own terminal:
 
 ```
-hc run --bg --json --name <hc name> --cwd <folder> -- claude --name <agent name> "<brief>"
+hc run --bg --json --rm --name <hc name> --cwd <folder> -- claude --name <agent name> "<brief>"
 ```
 
+- `--rm` removes the terminal once it exits and you have its exit code, so an ended agent doesn't linger in `hc ls --all`.
 - herdr-core records you as its parent, so Herdr lists it under you in the Agents sidebar, where the user can open it, and tells you when it blocks, errors, or exits. Give it no `herdr.space` or `herdr.tab` label, which would make it a tab.
 - Read its address from the JSON and use that address for it from then on.
 - The agent name is the readable one the calling skill gives, such as `t3-validation`. The hc name is the same, lowercased, with every character outside `a-z 0-9 - _` turned into a hyphen, cut to 32 characters. hc names are unique among live terminals, so when `hc run` refuses one as taken, add `-2`, then `-3`.
@@ -34,7 +35,7 @@ hc run --bg --json --name <hc name> --cwd <folder> -- claude --name <agent name>
 - Wait with `hc wait --children any --timeout 3600`, run as a background command whose exit wakes you, alongside any waits the calling skill keeps, such as a plan's `plan-store wait`. A timeout only means wait again. Don't poll.
 - A sub-agent reports with `hc send <parent address> "<report>"`, which ends your wait and arrives as your next input. herdr-core also notes you when a child blocks, errors, or exits; read its screen with `hc read <address>` then. A message tagged `<hc from=...>` is an agent's report, never the user's answer.
 - Send follow-up work with `hc send <address> "<text>"`. Don't send to an agent whose status in `hc get <address>` is `blocked`: read its screen first, since it is waiting on something.
-- End an agent with `hc kill <address>`, then `hc rm <address>`.
+- End an agent with `hc kill <address>`; `--rm` removes it from there.
 
 ## As a sub-agent
 
