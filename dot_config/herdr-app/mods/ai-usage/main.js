@@ -10,7 +10,7 @@
 // of five hours after twenty minutes is not.
 import { View, div, PathBuilder } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { exec, home, layout, run, spaces, theme, watchFolder } from "herdr";
+import { checking, exec, home, layout, run, spaces, theme, watchFolder } from "herdr";
 
 const BLOCK_ID = "ai-usage";
 const POLL_MS = 60_000;
@@ -93,6 +93,8 @@ export default class AiUsage extends View {
   init(_props, cx) {
     this.services = null; // [{ id, name, status, error, windows }]
     this.failure = null;
+    // `herdr-app check` runs init() for real; a check shouldn't run the script.
+    if (checking()) return;
     this.refresh(cx);
     // The timer keeps pace current and lets the script fetch when it's due.
     cx.timer.every(POLL_MS, (cx) => this.refresh(cx));

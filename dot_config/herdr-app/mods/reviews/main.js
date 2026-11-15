@@ -18,8 +18,8 @@
 import { View, div } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import {
-  closeOverlay, exec, hc, home, layout, nextCommand, notify, openOverlay, panes, props, run,
-  setShared, shared, spaces, terminals, theme,
+  checking, closeOverlay, exec, hc, home, layout, nextCommand, notify, openOverlay, panes, props, run,
+  setBadge, setShared, shared, spaces, terminals, theme,
 } from "herdr";
 
 // Test data: true lists the made-up PRs in demoScan() instead of running the
@@ -376,7 +376,10 @@ export default class Reviews extends View {
     });
   }
 
+  // Never under `herdr-app check`, which runs init() for real: a check would
+  // otherwise read the queue, write shared state, and close sessions.
   polls() {
+    if (checking()) return false;
     return this.badge || !find(layout(), BADGE_ID);
   }
 
@@ -439,9 +442,15 @@ export default class Reviews extends View {
   }
 
   // Tells me when a session turns to needing me or finishes, since sessions
-  // without a tab get none of Herdr's own attention cues.
+  // without a tab get none of Herdr's own attention cues, and keeps the count
+  // of sessions waiting on me on the Dock icon.
   watchSessions(cx) {
     const seen = new Map();
+    const waiting = sessions().filter((s) => s.status === "blocked").length;
+    if (waiting !== this.dockCount) {
+      this.dockCount = waiting;
+      setBadge(waiting ? String(waiting) : null);
+    }
     for (const s of sessions()) {
       const before = this.statuses.get(s.address);
       seen.set(s.address, s.status);
