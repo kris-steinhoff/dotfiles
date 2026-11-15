@@ -4,9 +4,11 @@
   contrast), so only the keys below are managed and everything else is kept.
   Sounds are off because with many agents in flight the done and blocked
   chimes were constant; toasts and the sidebar still show agent state.
+  Copy on select is off, so a selection reaches the clipboard only with Cmd+C.
 */ -}}
 {{- $s := dict -}}
 {{- if .chezmoi.stdin }}{{ $s = fromJson .chezmoi.stdin }}{{ end -}}
 {{- $s = setValueAtPath "theme" "tokyo-night" $s -}}
 {{- $s = setValueAtPath "sounds.enabled" false $s -}}
+{{- $s = setValueAtPath "copy_on_select" false $s -}}
 {{ toPrettyJson "  " $s -}}
