@@ -32,7 +32,7 @@ When `$HC_TERMINAL_ID` is set and `hc` is available, run the work as Herdr agent
 You work from the repository's main checkout and never make, remove, or commit in a worktree yourself: Claude Code's sandbox lets a session write only the worktree it was started in. So every change is made by an agent started in its own worktree, and you only move branch pointers and push.
 
 - **PR branches are never checked out.** Create each as a plain branch when its first task starts: `git branch --no-track <PR branch> <base>`, where the base is `origin/<default branch>` or the branch of the PR it stacks on.
-- **Each task gets an agent in its own worktree**, started from the main checkout with `WT_BASE=<PR branch> claude --worktree <task branch> --name <agent name> "<brief>"`. The worktree hook makes it with `wt`, cut from the PR branch, and the agent owns it. Name the agent for the task without the plan's slug, such as `t3-validation`. Record the task's `branch` in the plan.
+- **Each task gets an agent in its own worktree**, started from the main checkout with `WT_BASE=<PR branch> claude --worktree <task branch> --name <agent name> "<brief>"`. Claude Code's worktree hook makes it, cut from the PR branch, and the agent owns it. Name the agent for the task without the plan's slug, such as `t3-validation`. Record the task's `branch` in the plan.
 - **Landing is a fast-forward.** The agent merges the PR branch into its task branch, so you advance the PR branch with `git fetch . <task branch>:<PR branch>`, which refuses anything but a fast-forward.
 - **Pushing** is `git push origin <PR branch>` from the main checkout. Before landing on a PR that is already open, run `git fetch origin <PR branch>:<PR branch>` to pick up anything pushed from elsewhere; if that refuses because the branches diverged, ask.
 
@@ -74,11 +74,11 @@ For a local plan, ask in the session, batching what's open, and keep `plan-store
 
 ## Finishing
 
-When the plan is `done`, ask the user, as a step only they can take, to remove the plan's worktrees: `wt list` shows them, each starting with the plan's slug, and `wt remove <branch>` removes one, keeping it if it has uncommitted work.
+When the plan is `done`, ask the user, as a step only they can take, to remove the plan's worktrees, which `git worktree list` shows with branches starting with the plan's slug.
 
 ## Resuming
 
-Run it again with the same plan. Trust the plan for the work, then reconcile it with reality: the worktrees (`wt list`), which agents are alive, each PR's state, and the branches. Fix the plan where it differs and journal it. Relaunch an agent that died into its existing worktree, starting it there (`--cwd <worktree>`) without `--worktree`, with a brief that says where the work stands. Re-arm each PR's watches; `watch-pr` counts a review that arrived while nothing watched as unanswered.
+Run it again with the same plan. Trust the plan for the work, then reconcile it with reality: the worktrees (`git worktree list`), which agents are alive, each PR's state, and the branches. Fix the plan where it differs and journal it. Relaunch an agent that died into its existing worktree, starting it there (`--cwd <worktree>`) without `--worktree`, with a brief that says where the work stands. Re-arm each PR's watches; `watch-pr` counts a review that arrived while nothing watched as unanswered.
 
 ## Boundaries
 

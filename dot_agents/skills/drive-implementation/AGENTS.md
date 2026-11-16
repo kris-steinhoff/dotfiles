@@ -4,12 +4,12 @@
 
 ## Worktrees and the sandbox
 
-Claude Code's sandbox makes `.git/worktrees` read-only except for the worktree a session was started in. So a sandboxed driver can't run `wt add` or `wt remove`, and can't merge or commit in a PR's worktree, all of which an earlier design asked of it and which failed halfway. The design follows from that:
+Claude Code's sandbox makes `.git/worktrees` read-only except for the worktree a session was started in. So a sandboxed driver can't create or remove a worktree, and can't merge or commit in a PR's worktree, all of which an earlier design asked of it and which failed halfway. The design follows from that:
 
 - The driver works from the main checkout and only moves branch pointers and pushes, which write `.git/refs` and objects, both writable.
-- Each task agent is started with `claude --worktree`, whose `WorktreeCreate` hook runs `wt add` outside the sandbox, cut from the PR branch through `WT_BASE`. The agent owns that worktree, so it can commit there. A relaunched agent started with `--cwd` in an existing worktree owns it too.
+- Each task agent is started with `claude --worktree`, whose `WorktreeCreate` hook (`dot_claude/AGENTS.md`) creates the worktree outside the sandbox, cut from the PR branch through `WT_BASE`. The agent owns that worktree, so it can commit there. A relaunched agent started with `--cwd` in an existing worktree owns it too.
 - PR branches are never checked out, so there are no PR worktrees. A task lands by merging the PR branch into itself in its own worktree, after which the driver fast-forwards the PR branch with `git fetch . <task>:<PR>`. That keeps merge commits, so tasks cut from earlier history are never orphaned, and runs the task's `verify` on exactly what lands.
-- Worktrees outlive their tasks, since the driver can't remove them; the owner removes a finished plan's worktrees with `wt remove`.
+- Worktrees outlive their tasks, since the driver can't remove them; the owner removes a finished plan's worktrees.
 
 These were checked in a scratch repository in November 2026: an agent started with `--worktree` committed and merged in its worktree, a session started in an existing worktree could write its git dir, and the driver's fast-forward and push succeeded from the main checkout.
 
