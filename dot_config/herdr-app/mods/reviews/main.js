@@ -6,12 +6,11 @@
 //   layout's sidebar: polls the queue, publishes it in shared state, lists it in
 //   two-line rows, notifies when a session needs me, puts the count of those
 //   on the Dock icon, and closes finished sessions. The block fits its list
-//   until its divider is dragged, then keeps the dragged height until Fit to
-//   list. In the sidebar's narrow rail it shows just the count; a click
-//   unfolds it.
+//   until its divider is dragged, then keeps the dragged height. In the
+//   sidebar's narrow rail it shows just the count; a click unfolds it.
 // - `{ menu: { key, url } }`, a row's right-click popup: Mute / Unmute, and
-//   Open on GitHub. `{ menu: { list: true } }`: the ⋯ menu, the sorts, Fit to
-//   list while the height is dragged, and Review all.
+//   Open on GitHub. `{ menu: { list: true } }`: the ⋯ menu, the sorts and
+//   Review all.
 // - no props: a Reviews tab left open from before the list moved to the
 //   sidebar. It only says to close it, and neither polls nor acts.
 //
@@ -578,8 +577,8 @@ export default class Reviews extends View {
   // in the column holds it short, at another, which is then kept rather than
   // asked for again. A change with none pending is a drag. Out of the rail it
   // becomes the dragged height in shared state, so the block stops fitting
-  // its list; no dragged height is below the header, so the ⋯ menu and its
-  // Fit to list stay in reach. In the rail, whose height is always the
+  // its list; no dragged height is below the header, so the ⋯ menu stays
+  // in reach. In the rail, whose height is always the
   // copy's, it only gets resized back.
   observe(dragsCount) {
     const px = blockPx();
@@ -614,7 +613,7 @@ export default class Reviews extends View {
   }
 
   // From the measured content column plus the header and border outside it.
-  // Kept, so leaving the rail or Fit to list restores it without waiting for a
+  // Kept, so leaving the rail restores it without waiting for a
   // new measurement. The render resizes, after looking for a drag.
   fitContent(size, cx) {
     const fitted = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, Math.ceil(size.height + 1 + 41)));
@@ -728,9 +727,8 @@ export default class Reviews extends View {
       .child(div().flex_1())
       .child(this.headerControl(t, "rv-refresh", "↻", checkedLine(queue, checking, shared(NEXT_KEY)),
         () => setShared(REFRESH_KEY, Date.now()), { on: checking }))
-      .child(this.headerControl(t, "rv-more", "⋯", "Sort, fit, or review all", () => {
-        const actions = (shared(HEIGHT_KEY) != null ? 1 : 0) + (startablePairs().length > 1 ? 1 : 0);
-        const items = SORTS.length * 31 + (actions ? 9 + actions * 31 : 0);
+      .child(this.headerControl(t, "rv-more", "⋯", "Sort, or review all", () => {
+        const items = SORTS.length * 31 + (startablePairs().length > 1 ? 9 + 31 : 0);
         openOverlay({ mod: MOD_NAME, kind: "popup", width: 200, height: 10 + items, props: { menu: { list: true } } });
       }));
 
@@ -810,8 +808,6 @@ export default class Reviews extends View {
     if (list) {
       const on = sortOf().id;
       items = SORTS.map((s) => [`${s.id === on ? "✓ " : "   "}${s.label}`, () => setShared(SORT_KEY, s.id)]);
-      // Back to fitting the list, after a drag. The sidebar copy resizes.
-      if (shared(HEIGHT_KEY) != null) actions.push(["Fit to list", () => setShared(HEIGHT_KEY, null)]);
       // Starting needs the sidebar copy, which handles the request.
       const startable = startablePairs().length;
       if (startable > 1) actions.push([`Review all ${startable}`, () => setShared(START_ALL_KEY, Date.now())]);
