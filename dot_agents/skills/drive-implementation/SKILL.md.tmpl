@@ -31,14 +31,14 @@ driver (you)
 ├─ t1-validation                  task agent
 │  └─ t1-validation-review        its review
 └─ pr-123-api                     PR agent, running drive-pr
-   └─ pr-123-api-review-fixes     a round of fixes
-      └─ pr-123-api-review-fixes-review
+   └─ pr-123-api-fixes            a round of fixes
+      └─ pr-123-api-fixes-review
 ```
 
 - **Task agents** are your children, one per task, named for the task without the plan's slug.
 - **Each review** is a child of the agent whose work it reviews. Whoever owns the cycle starts it with `--parent` set to that agent: you for a task, the PR agent for a round of fixes. It reports to whoever started it.
 - **PR agents** are your children, one per open PR, named `pr-<number>-<PR slug>`.
-- **Fix rounds** are children of their PR agent, named for the PR agent and the round.
+- **Fix rounds** are children of their PR agent, named for it with `-fixes` added.
 
 The commands, from the main checkout, with every address written out literally (your address is `$HC_TERMINAL_ID`'s value, such as `t12`):
 
@@ -75,7 +75,7 @@ Open each PR as the guide's Delivery says, as a draft when its first task lands,
 The PR agent's brief: follow the `drive-pr` skill for PR `<number>`, adding `--confirm-replies` when the PR's `replies` is `confirm`; the PR branch, its base, and its place in the stack; your address; and these in place of `drive-pr`'s defaults:
 
 - **No checkout.** It works from the main checkout, which needs no worktree, since it only reads the code, moves the PR branch, and pushes.
-- **Code changes**, for reviewers, failing checks, or conflicts with the base, are rounds of fixes it runs as its own children, as The agent tree says: a fix agent in a worktree cut from the PR branch, named for the round, then a fresh review under that agent, then the fix agent merges the PR branch into its branch, and the PR agent fast-forwards the PR branch and pushes. A conflict round's agent merges `origin/<base>` into its branch. After three rounds that haven't converged, it asks you.
+- **Code changes**, for reviewers, failing checks, or conflicts with the base, are rounds of fixes it runs as its own children, as The agent tree says: a fix agent in a worktree cut from the PR branch, then a fresh review under that agent, then the fix agent merges the PR branch into its branch, and the PR agent fast-forwards the PR branch and pushes. A conflict round's agent merges `origin/<base>` into its branch. After three rounds that haven't converged, it asks you.
 - **Pushes.** It alone pushes the PR branch, including the tasks you land and tell it about, so its watches follow every push.
 - **Questions**, including reply drafts for `confirm`, go to you with `hc send`, each with an id your answer echoes. You put them on the plan as the guide says and relay each answer.
 - **Reports** to you: each round, with what came in, what changed, and what it replied; what the PR waits on, whenever that changes; the checks' results on each push; and when the PR merges or closes, after which it stops.

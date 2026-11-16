@@ -92,7 +92,7 @@ Every branch this plan makes starts with `run/main.slug`, so a person can list t
 
 - A PR's branch is the plan's slug and the PR's slug, such as nxc-162-household-editing-api. PR branches are the only ones pushed.
 - A task's branch is the plan's slug, the task's id in lowercase, and a few words of its title, such as nxc-162-household-editing-t3-validation.
-- A round of fixes on an open PR is the PR's branch and a few words naming the round, such as nxc-162-household-editing-api-review-fixes.
+- A round of fixes on an open PR is the PR's branch, `fixes`, and a few words naming what it fixes, such as nxc-162-household-editing-api-fixes-null-check.
 
 A PR's branch is cut from its base, the base branch or the branch of the PR it stacks on, when its first task starts, and is never checked out. A task's or a round's branch is cut from its PR's branch and checked out in its own worktree, never in the main checkout. It lands by merging its PR's branch into itself, rerunning its `verify` there, and then fast-forwarding the PR's branch to it, so the PR's branch only ever moves forward. When the repository's instructions name another way to make worktrees, follow them, keeping these names.
 
