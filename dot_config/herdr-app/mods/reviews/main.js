@@ -659,15 +659,15 @@ export default class Reviews extends View {
       .child("▶");
   }
 
-  // Two lines, for the sidebar's width: number, title, and status; then repo,
-  // author, age, and size. The rest is in the tooltip.
+  // Two lines, for the sidebar's width: number, author, title, and status;
+  // then repo, age, and size. The rest is in the tooltip.
   sidebarRow(t, repo, item, shortName, { isMuted = false } = {}) {
     const key = `${repo.name}#${item.number}`;
     const session = sessionFor(repo.name, item.number);
     const selected = this.selected === key;
     const d = details(repo, item, isMuted);
     const author = item.author?.trim().split(/\s+/)[0];
-    const line2 = [d.why, shortName(repo.name), author, d.age, isMuted ? null : d.lines].filter(Boolean).join(" · ");
+    const line2 = [d.why, shortName(repo.name), d.age, isMuted ? null : d.lines].filter(Boolean).join(" · ");
     const tip = [
       item.title,
       repo.name,
@@ -704,7 +704,9 @@ export default class Reviews extends View {
           .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
           .on_click((_e, cx) => { cx.stop_propagation(); exec("open", [item.url]); })
           .child(`#${item.number}`))
-        .child(div().flex_1().min_w(0).truncate().text_color(isMuted ? t.muted : t.foreground).child(item.title))
+        .when(Boolean(author), (el) => el.child(div().flex_none().max_w(90).truncate().font_medium()
+          .text_color(isMuted ? t.muted : t.foreground).child(author)))
+        .child(div().flex_1().min_w(0).truncate().text_color(isMuted ? t.dim : t.muted).child(item.title))
         .when(Boolean(end), (el) => el.child(end)))
       .child(div().truncate().text_size(11.5).text_color(t.dim).child(line2));
   }
