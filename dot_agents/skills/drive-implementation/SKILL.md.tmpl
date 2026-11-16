@@ -1,6 +1,6 @@
 ---
 name: drive-implementation
-description: "Implement a plan made by /plan-implementation, working its tasks, keeping the plan current, and driving its PRs through review until they merge. Pass the plan's directory, slug, or page link."
+description: "Implement a plan made by /plan-implementation inside Herdr, running each task, review, and PR as an hc agent under the driver, keeping the plan current, and driving its PRs through review until they merge. Pass the plan's directory, slug, or page link."
 {{- with get . "custom" }}
 {{ . }}
 {{- end }}
@@ -8,7 +8,9 @@ description: "Implement a plan made by /plan-implementation, working its tasks, 
 
 # drive-implementation
 
-You drive one plan to done. The plan holds the work and the record, and the user follows it there, not in this session. Its `meta/guide` owns the schema, statuses, questions, delivery, and handover: read it first and follow it. This skill adds only how the user likes implementation to run.
+You drive one plan to done. The plan holds the work and the record, and the user follows it there and in Herdr's Agents list, not in this session. Its `meta/guide` owns the schema, statuses, questions, delivery, and handover: read it first and follow it. This skill adds only how the user likes implementation to run.
+
+This skill runs only inside Herdr. If `$HC_TERMINAL_ID` is unset or `hc` isn't on the PATH, say that `/drive-implementation` needs to run in a Herdr terminal and stop. Read `hc --skill` before your first `hc` command.
 
 The argument is a plan: a directory holding `meta/guide.json`, a slug with a directory under the repository's `.plans/`, or a claude.ai artifact link, which is a plan page. For a plan page, follow the `plan-store-claude-page` skill for every read and write. A local plan is read and written with `plan-store`, as its guide says. If the argument isn't a plan, say that `/plan-implementation` makes one and stop.
 
@@ -16,51 +18,70 @@ The argument is a plan: a directory holding `meta/guide.json`, a slug with a dir
 
 Follow the guide's Starting work, then keep going until every PR has merged or closed, or nothing can move without a person. Don't stop to report progress, and don't ask about anything the plan, the code, or the repository's instructions settle.
 
-A pass: start the tasks that are ready, handle what the running agents report, land each reviewed task on its PR branch, then look again. Run up to three tasks at once when they look independent, judging from the code with `touches` as a hint. Wait for reports; they wake the session, so don't poll.
+A pass: start the tasks that are ready, handle what the running agents report, land each reviewed task on its PR branch, then look again. Run up to three tasks at once when they look independent, judging from the code with `touches` as a hint. Wait with `hc wait --children any --timeout 3600` as a background command, alongside the waits below; a report or a child's state change wakes you, so don't poll.
 
-## In Herdr
+Label yourself with the plan, `hc label <your address> plan.driver=<plan>`, where `<plan>` is the folder `plan-store path` prints or the plan page's link, so the plan mod's Go to driver button finds you. Clear it (`plan.driver=`) when you stop.
 
-When `$HC_TERMINAL_ID` is set and `hc` is available, run the work as Herdr agents so the user sees it as a tree: each task agent under you, and each review under the task it reviews. Your address is `$HC_TERMINAL_ID`'s value, such as `t12`; write it out literally in commands. Every brief tells the agent to report with `hc send <your address>`.
+## The agent tree
 
-- **Task agents** are your children: `hc run --bg --rm --parent <your address> --name <agent name> --cwd <main checkout> -- claude --worktree <task branch> --name <agent name> "<brief>"`. A fix round's agent starts the same way.
-- **Reviews** are started by you, as children of the task agent: `hc run --bg --rm --no-notify --parent <task agent address> --name <agent name>-review --cwd <task worktree> -- claude --name <agent name>-review "<review brief>"`. `--no-notify` keeps notes about the reviewer from interrupting the implementer. It isn't your child, so wait on it with `hc wait <reviewer address>` alongside your other waits, and end it with `hc kill` once you have its findings. Start a new one for each round.
-- **Your label**: `hc label $HC_TERMINAL_ID plan.driver=<plan>`, where `<plan>` is the folder `plan-store path` prints or the plan page's link, so the plan mod's Go to driver button finds you. Clear it (`plan.driver=`) when you stop.
-- An `hc kill` that answers `not_found` means the agent had already ended.
+All the work runs as `hc` agents, nested so the user can follow it in the Agents list:
+
+```
+driver (you)
+├─ t1-validation                  task agent
+│  └─ t1-validation-review        its review
+└─ pr-123-api                     PR agent, running drive-pr
+   └─ pr-123-api-review-fixes     a round of fixes
+      └─ pr-123-api-review-fixes-review
+```
+
+- **Task agents** are your children, one per task, named for the task without the plan's slug.
+- **Each review** is a child of the agent whose work it reviews. Whoever owns the cycle starts it with `--parent` set to that agent: you for a task, the PR agent for a round of fixes. It reports to whoever started it.
+- **PR agents** are your children, one per open PR, named `pr-<number>-<PR slug>`.
+- **Fix rounds** are children of their PR agent, named for the PR agent and the round.
+
+The commands, from the main checkout, with every address written out literally (your address is `$HC_TERMINAL_ID`'s value, such as `t12`):
+
+- An agent that changes code: `hc run --bg --rm --parent <parent address> --name <name> --cwd <main checkout> -- claude --worktree <branch> --name <name> "<brief>"`. It owns that worktree. The worktree starts from the default branch, so its brief's first step, before any work, is `git switch -C <branch> <PR branch>`.
+- A review: `hc run --bg --rm --no-notify --parent <implementer address> --name <implementer name>-review --cwd <implementer's worktree> -- claude --name <implementer name>-review "<review brief>"`. `--no-notify` keeps notes about it from interrupting the implementer, so whoever started it waits on it with `hc wait <reviewer address>` and ends it with `hc kill` once its findings are in. Each round gets a new reviewer.
+- A PR agent: `hc run --bg --rm --parent <your address> --name pr-<number>-<PR slug> --cwd <main checkout> -- claude --name pr-<number>-<PR slug> "<brief>"`.
+
+hc names are at most 32 characters; when a name is longer or already taken, cut it and add `-2`, `-3`, and so on. Every brief tells the agent who to report to with `hc send <address>`. An `hc kill` that answers `not_found` means the agent had already ended.
 
 ## Branches and worktrees
 
-You work from the repository's main checkout and never make, remove, or commit in a worktree yourself: Claude Code's sandbox lets a session write only the worktree it was started in. So every change is made by an agent started in its own worktree, and you only move branch pointers and push.
+You and the PR agents work from the repository's main checkout and never make, remove, or commit in a worktree yourselves: Claude Code's sandbox lets a session write only the worktree it was started in. Every change is made by an agent started in its own worktree; you and the PR agents only move branch pointers and push.
 
 - **PR branches are never checked out.** Create each as a plain branch when its first task starts: `git branch --no-track <PR branch> <base>`, where the base is `origin/<default branch>` or the branch of the PR it stacks on.
-- **Each task gets an agent in its own worktree**, started from the main checkout with `claude --worktree <task branch> --name <agent name> "<brief>"`, and owns that worktree. The worktree starts from the default branch, so the brief's first step, before any work, is `git switch -C <task branch> <PR branch>`. Name the agent for the task without the plan's slug, such as `t3-validation`. Record the task's `branch` in the plan.
-- **Landing is a fast-forward.** The agent merges the PR branch into its task branch, so you advance the PR branch with `git fetch . <task branch>:<PR branch>`, which refuses anything but a fast-forward.
+- **Landing is a fast-forward.** The implementer merges the PR branch into its own branch, so the PR branch advances with `git fetch . <branch>:<PR branch>`, which refuses anything but a fast-forward. If it refuses, something else landed first: send the implementer back to merge again.
 - **Pushing** is `git push origin <PR branch>` from the main checkout. Before landing on a PR that is already open, run `git fetch origin <PR branch>:<PR branch>` to pick up anything pushed from elsewhere; if that refuses because the branches diverged, ask.
 
-A plan written before this scheme may have a guide that describes PR worktrees; follow this section instead. Where the harness can't start an agent in its own worktree, do the tasks yourself, one at a time, in a worktree made as the repository's instructions say.
+A plan written before this scheme may have a guide that describes PR worktrees; follow this section instead.
 
-## The brief
+## Tasks
 
-The task's goal, approach, and verify from the plan, with `touches` as a hint rather than a limit; its branch and the PR branch it was cut from; and what done looks like. It commits as it goes and reports back, and asks you, never the user, when a choice would change behavior or reach past the task. It never pushes, and never touches the plan, the PR, or other branches. How to build and test is left to it and the repository's instructions.
-
-## The cycle
+A task agent's brief: the task's goal, approach, and verify from the plan, with `touches` as a hint rather than a limit; its branch and the PR branch; the `git switch -C` first step; what done looks like; and your address. It commits as it goes and reports back, and asks you, never the user, when a choice would change behavior or reach past the task. It never pushes, and never touches the plan, the PR, or other branches. How to build and test is left to it and the repository's instructions. Record the task's `branch` in the plan.
 
 1. **Implement.** The agent builds the task, runs its `verify`, and commits.
-2. **Review.** A fresh reviewer that didn't write the code, following the `review` skill, gets only the task's intent, its `verify`, its worktree's path, and the commits since the PR branch. It reports Blockers and Follow-ups to you.
+2. **Review.** Start a fresh reviewer under the task agent. Its brief, following the `review` skill, holds only the task's intent, its `verify`, the worktree's path, the commits since the PR branch, and your address. It reports Blockers and Follow-ups to you.
 3. **Fix.** Send each Blocker to the implementer and review again. Record Follow-ups in the task's `outcome` rather than fixing them, unless the fix is trivial. After three rounds that haven't converged, journal what keeps failing and ask the user.
-4. **Land.** Tell the implementer to merge the PR branch into its branch (`git merge --no-edit <PR branch>`), resolve any conflicts, run the `verify` again, and report its head. Fast-forward the PR branch to that head. If another task landed first and the fast-forward refuses, send it back to merge again. A conflict resolution that rewrites logic goes back to step 2.
+4. **Land.** Tell the implementer to merge the PR branch into its branch (`git merge --no-edit <PR branch>`), resolve any conflicts, run the `verify` again, and report its head. Fast-forward the PR branch to that head. A conflict resolution that rewrites logic goes back to step 2. Before the PR opens, you push. Once it has a PR agent, don't push: send that agent `landed <task id> at <head>` and it pushes.
 5. **Finish.** End the task's agent and mark the task `merged` with an `outcome` saying what changed and where it differs from the plan. Its worktree stays until the plan ends.
 
-Open and push PRs as the guide's Delivery says. Only the user merges a PR.
+## PRs
 
-## PRs in review
+Open each PR as the guide's Delivery says, as a draft when its first task lands, then start its PR agent. Only the user merges a PR.
 
-From the time a PR opens until it merges or closes, carry it through review by following the `drive-pr` skill in this session, with these in place of its defaults:
+The PR agent's brief: follow the `drive-pr` skill for PR `<number>`, adding `--confirm-replies` when the PR's `replies` is `confirm`; the PR branch, its base, and its place in the stack; your address; and these in place of `drive-pr`'s defaults:
 
-- **Questions** go in the plan, as the guide says, and its watches are among this session's waits.
-- **Replies** post without asking when the PR's `replies` is `auto` or absent. When it's `confirm`, its confirmation is the guide's Post or Edit question.
-- **Code changes**, for reviewers, failing checks, or conflicts with the base, go through the cycle above as a round of fixes: a worktree and agent cut from the PR branch, named for the round (`api-review-fixes`), reviewed, fast-forwarded, and pushed. A conflict round's agent merges `origin/<base>` into its branch. Journal the round rather than adding a task.
-- **What it waits on** goes in the PR's `waiting_on`.
-- **When it merges**, GitHub retargets the PR stacked on it; update the stack line in the remaining PRs' descriptions, and let a fix round merge the new base when it conflicts.
+- **No checkout.** It works from the main checkout, which needs no worktree, since it only reads the code, moves the PR branch, and pushes.
+- **Code changes**, for reviewers, failing checks, or conflicts with the base, are rounds of fixes it runs as its own children, as The agent tree says: a fix agent in a worktree cut from the PR branch, named for the round, then a fresh review under that agent, then the fix agent merges the PR branch into its branch, and the PR agent fast-forwards the PR branch and pushes. A conflict round's agent merges `origin/<base>` into its branch. After three rounds that haven't converged, it asks you.
+- **Pushes.** It alone pushes the PR branch, including the tasks you land and tell it about, so its watches follow every push.
+- **Questions**, including reply drafts for `confirm`, go to you with `hc send`, each with an id your answer echoes. You put them on the plan as the guide says and relay each answer.
+- **Reports** to you: each round, with what came in, what changed, and what it replied; what the PR waits on, whenever that changes; the checks' results on each push; and when the PR merges or closes, after which it stops.
+- It never touches the plan or another PR's branch.
+
+You keep the plan current from its reports: journal each round rather than adding a task, and keep the PR's `waiting_on` and `status` and the done-check up to date. Mark a PR ready for review once its tasks have all landed and its checks pass, or make that a person's step as the guide says. When a PR merges, end its agent, and update the stack line in the remaining PRs' descriptions; GitHub retargets the PR stacked on it, and that PR's agent merges the new base when it conflicts.
 
 ## Keeping the plan current
 
@@ -68,7 +89,7 @@ The plan is the user's view, so update it as things happen: a task's status when
 
 ## When to ask
 
-Decide everything reversible and inside the plan yourself. A question in the plan is for what belongs to a person: product behavior, scope, splitting or merging PRs, anything hard to undo, and any step only a person can take. A question holds up only what depends on it, so carry on with the rest.
+Decide everything reversible and inside the plan yourself, and let your agents bring you their choices rather than the user. A question in the plan is for what belongs to a person: product behavior, scope, splitting or merging PRs, anything hard to undo, and any step only a person can take. A question holds up only what depends on it, so carry on with the rest.
 
 For a local plan, ask in the session, batching what's open, and keep `plan-store wait` running alongside your other waits. For a plan page, end your turn with one line pointing at the plan when nothing can move without an answer.
 
@@ -78,7 +99,7 @@ When the plan is `done`, ask the user, as a step only they can take, to remove t
 
 ## Resuming
 
-Run it again with the same plan. Trust the plan for the work, then reconcile it with reality: the worktrees (`git worktree list`), which agents are alive, each PR's state, and the branches. Fix the plan where it differs and journal it. Relaunch an agent that died into its existing worktree, starting it there (`--cwd <worktree>`) without `--worktree`, with a brief that says where the work stands. Re-arm each PR's watches; `watch-pr` counts a review that arrived while nothing watched as unanswered.
+Run it again with the same plan. Your agents ended with your last session, so trust the plan for the work, then reconcile it with reality: the worktrees (`git worktree list`), each PR's state, and the branches. Fix the plan where it differs and journal it. Relaunch what was in flight with a brief that says where the work stands: a task agent into its existing worktree, started with `--cwd <worktree>` and without `--worktree`, and each open PR's agent as at its start. `watch-pr` counts a review that arrived while nothing watched as unanswered, so a relaunched PR agent misses nothing.
 
 ## Boundaries
 

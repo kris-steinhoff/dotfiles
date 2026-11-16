@@ -1,6 +1,6 @@
 # drive-implementation
 
-`/drive-implementation <plan>` works the tasks in a plan that `/plan-implementation` wrote, keeps the plan current, and drives the plan's PRs through review until a person merges or closes them. The plan's `meta/guide` owns the schema, statuses, questions, delivery, and handover, so the skill holds only how the owner likes implementation to run: an agent and worktree per task, a fresh review of every task, and PRs driven by `drive-pr` with the plan standing in for its session.
+`/drive-implementation <plan>` works the tasks in a plan that `/plan-implementation` wrote, keeps the plan current, and drives the plan's PRs through review until a person merges or closes them. The plan's `meta/guide` owns the schema, statuses, questions, delivery, and handover, so the skill holds only how the owner likes implementation to run: an `hc` agent and worktree per task, a fresh review of every task, and an `hc` agent per PR running `drive-pr`, all nested under the driver in Herdr.
 
 ## Worktrees and the sandbox
 
@@ -15,11 +15,15 @@ These were checked in a scratch repository in November 2026: an agent started wi
 
 ## PRs
 
-Driving a PR is its own skill, `drive-pr`, because it is just as useful for a PR no plan made. The driver runs it for each open PR in its own session, with questions in the plan and code changes made by fix-round agents through the same cycle as tasks. Each PR's `replies` field says whether replies need the owner's confirmation; the default is `auto`. Driving starts when a PR opens rather than when it's marked ready, because a draft can fall behind its base too, and auto mode may refuse `gh pr ready`, which makes marking it ready a person's step. A plan is `done` only once every PR has merged or closed.
+Driving a PR is its own skill, `drive-pr`, because it is just as useful for a PR no plan made. Each open PR gets its own agent running it, a child of the driver, so the owner can find and steer each PR in one place in the Agents list, with its fix rounds and their reviews nested beneath it. The PR agent works from the main checkout without a worktree, since the PR branch is never checked out; its fixes go through the same cycle as tasks, in fix-round agents it starts and reviews itself. Its questions and reply drafts go to the driver, which puts them on the plan, so the plan stays the one place the owner answers. Each PR's `replies` field says whether replies need the owner's confirmation; the default is `auto`.
+
+Once a PR has its agent, that agent alone pushes the PR branch, and the driver tells it about each task it lands rather than pushing. `drive-pr`'s CI watch is pinned to the head it last pushed, so a push from anyone else would leave it watching a stale commit. Both may fast-forward the PR branch locally, which is safe because a fast-forward refuses anything else.
+
+Driving starts when a PR opens rather than when it's marked ready, because a draft can fall behind its base too, and auto mode may refuse `gh pr ready`, which makes marking it ready a person's step. A plan is `done` only once every PR has merged or closed.
 
 ## Herdr
 
-In Herdr the work runs as a tree the owner can follow in the Agents list: task agents are the driver's `hc` children, and each review is a child of the task agent it reviews. The driver still starts every review and receives its findings, because it decides what goes back to the implementer, and an implementer that started its own reviewer could steer the review; `--parent` lets the driver start it under the task agent anyway. `--no-notify` keeps herdr-core's notes about the reviewer out of the implementer's input, so the driver waits on the reviewer by address, since it isn't the driver's child. How to use `hc` comes from its own manual (`hc --skill`), which the global instructions point at; the skill adds only the start command that gives a task agent its own worktree, and the `plan.driver` label the plan mod's Go to driver button looks for (`dot_config/herdr-app/AGENTS.md`).
+The skill requires Herdr, because the owner follows the work as a tree in the Agents list: task and PR agents are the driver's `hc` children, each review is a child of the agent it reviews, and fix rounds are children of their PR agent. Whoever owns a cycle (the driver for a task, the PR agent for a fix round) starts the review and receives its findings, since it decides what goes back to the implementer, and an implementer that started its own reviewer could steer the review; `--parent` puts the review under the implementer anyway. `--no-notify` keeps herdr-core's notes about the reviewer out of the implementer's input, so the starter waits on the reviewer by address. How to use `hc` comes from its own manual (`hc --skill`); the skill adds only the tree, its start commands, and the `plan.driver` label the plan mod's Go to driver button looks for (`dot_config/herdr-app/AGENTS.md`).
 
 ## Resuming
 

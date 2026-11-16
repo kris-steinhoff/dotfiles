@@ -18,4 +18,4 @@ It waits with `watch-pr`: one `review` watch and one `ci` watch pinned to the la
 
 ## Callers
 
-`/drive-implementation` runs it for each PR a plan opens, in the driver's own session, with questions in the plan, replies set per PR by the plan's `replies` field, and code changes made by the driver's fix-round agents rather than by this skill's Making changes, because the driver's PR branches are never checked out (`dot_agents/skills/drive-implementation/AGENTS.md`). A caller's instructions win over the skill's defaults, which is what lets the driver shape this.
+`/drive-implementation` runs it in a PR agent of its own for each PR a plan opens, with questions and reply drafts sent to the driver for the plan, replies set per PR by the plan's `replies` field, and code changes made by fix-round agents it starts rather than by this skill's Making changes, because the driver's PR branches are never checked out (`dot_agents/skills/drive-implementation/AGENTS.md`). A caller's instructions win over the skill's defaults, which is what lets the driver shape this.
