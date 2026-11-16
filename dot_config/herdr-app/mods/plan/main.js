@@ -11,7 +11,7 @@
 import { View, div } from "gpui-kit";
 import { h_flex, v_flex, InputState, Input } from "gpui-base";
 import { closeOverlay, props, theme } from "herdr";
-import { here, localPlan, localPlans, openPlanTab } from "./find.js";
+import { here, localPlan, localPlans, openPlanPane, openPlanTab } from "./find.js";
 import { PlanView } from "./plan-view.js";
 import { demoPlan } from "./demo.js";
 
@@ -61,19 +61,22 @@ export default class Plan extends View {
     closeOverlay(props().overlay);
   }
 
-  open(dir) {
+  // as: "pane" (a split of the focused pane) or "tab".
+  open(dir, as = "pane") {
     this.close();
-    openPlanTab(DEMO ? "/demo/repo/.plans/wid-12-rate-limit-headers" : dir, DEMO ? { demo: true } : {});
+    const open = as === "tab" ? openPlanTab : openPlanPane;
+    open(DEMO ? "/demo/repo/.plans/wid-12-rate-limit-headers" : dir, DEMO ? { demo: true } : {});
   }
 
-  // Enter: the highlighted plan, else what was typed as a folder or slug.
-  submit(cx) {
+  // Enter opens a pane, Shift-Enter a tab: the highlighted plan, else what was
+  // typed as a folder or slug.
+  submit(cx, as = "pane") {
     const pick = this.shown()[this.at];
-    if (pick) return this.open(pick.dir);
+    if (pick) return this.open(pick.dir, as);
     if (!this.text.trim()) return;
     cx.spawn(async (cx) => {
       try {
-        this.open(await localPlan(this.text, this.folder));
+        this.open(await localPlan(this.text, this.folder), as);
       } catch (e) {
         this.error = String(e?.message ?? e);
         cx.notify();
@@ -83,12 +86,24 @@ export default class Plan extends View {
 
   key(e, cx) {
     const n = this.shown().length;
-    if (e.key === "escape") this.close();
+    if (e.keystroke === "shift-enter") this.submit(cx, "tab");
+    else if (e.key === "escape") this.close();
     else if (e.key === "down" && n) this.at = (this.at + 1) % n;
     else if (e.key === "up" && n) this.at = (this.at + n - 1) % n;
     else return;
     cx.stop_propagation();
     cx.notify();
+  }
+
+  // A button with its key hint; the primary one is filled.
+  button(id, label, hint, primary, onClick) {
+    const t = theme();
+    return h_flex().id(id).gap(6).px(10).h(26).items_center().rounded(6).cursor_pointer()
+      .text_size(12).border(1).border_color(t.accent)
+      .when(primary, (el) => el.bg(t.accent).text_color(t.background))
+      .when(!primary, (el) => el.text_color(t.foreground).hover((s) => s.bg(t.hover)))
+      .on_click((_e, cx) => onClick(cx))
+      .child(label).child(div().text_size(11).opacity(0.7).child(hint));
   }
 
   renderPicker() {
@@ -109,7 +124,10 @@ export default class Plan extends View {
           .on_click(() => this.open(p.dir))
           .child(div().flex_1().min_w(0).truncate().child(p.title))
           .child(div().flex_none().text_size(11.5).text_color(t.dim).child(p.status ?? p.slug)))))
-      .child(h_flex().justify_end().text_size(11).text_color(t.dim).child("↑↓ choose · ↵ open · esc close"));
+      .child(h_flex().items_center().gap(8).text_size(11).text_color(t.dim)
+        .child(div().flex_1().child("↑↓ choose · esc close"))
+        .child(this.button("plan-open-tab", "Open as tab", "⇧↵", false, cx => this.submit(cx, "tab")))
+        .child(this.button("plan-open-pane", "Open as pane", "↵", true, cx => this.submit(cx, "pane"))));
   }
 
   render() {

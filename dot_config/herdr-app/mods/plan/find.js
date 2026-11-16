@@ -1,7 +1,7 @@
 // Finding local plans, and showing one in a Plan tab. A local plan is a folder
 // holding meta/guide.json, normally <main checkout>/.plans/<slug> (see
 // plan-store). Everything here that can fail throws an Error a person can read.
-import { exec, focused, home, panes, readTextFile, run, spaces } from "herdr";
+import { exec, focused, home, panes, readTextFile, run, setShared, shared, spaces } from "herdr";
 import * as fs from "fs/promises";
 
 const SLUG = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
@@ -94,4 +94,25 @@ export function openPlanTab(dir, extra = {}) {
     return;
   }
   run("tab.new", { name, space: focused()?.space, mod: "plan", props: { plan: dir, ...extra } });
+}
+
+// Shows the plan in a split of the focused pane, or focuses the split that
+// already shows it. panes() doesn't expose a mod pane's props, so which plan a
+// pane shows is kept in shared state (`plan.panes`, folder -> pane id) and
+// trusted only while that pane still exists.
+export function openPlanPane(dir, extra = {}) {
+  const known = shared("plan.panes") ?? {};
+  const before = panes();
+  const live = new Set(before.filter((p) => p.mod === "plan").map((p) => p.pane));
+  const kept = Object.fromEntries(Object.entries(known).filter(([, id]) => live.has(id)));
+  if (kept[dir]) {
+    run("pane.focus", { pane: kept[dir] });
+    if (Object.keys(kept).length !== Object.keys(known).length) setShared("plan.panes", kept);
+    return;
+  }
+  run("pane.split", { direction: "right", mod: "plan", props: { plan: dir, ...extra } });
+  const seen = new Set(before.map((p) => p.pane));
+  const added = panes().find((p) => p.mod === "plan" && !seen.has(p.pane));
+  if (added) kept[dir] = added.pane;
+  setShared("plan.panes", kept);
 }
