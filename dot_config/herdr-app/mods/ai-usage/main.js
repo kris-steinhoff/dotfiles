@@ -10,14 +10,24 @@
 // of five hours after twenty minutes is not.
 import { View, div, PathBuilder } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { checking, exec, home, layout, run, spaces, theme, watchFolder } from "herdr";
+import { checking, exec, hc, home, layout, notify, openOverlay, run, terminals, theme, watchFolder } from "herdr";
 
 const BLOCK_ID = "ai-usage";
 const POLL_MS = 60_000;
 const PAD_X = 14; // matches the shipped status bar
 const GLYPH = 18; // px; the bar is 28 tall
 const MAX_RINGS = 3;
-const LIVE_TAB = "AI usage";
+// Labels the snapshot terminal, so the next click finds and ends it.
+const SNAPSHOT_LABEL = "herdr-ai-usage";
+// Waits a moment before printing, so the overlay has already given the
+// terminal its size: what --once prints doesn't redraw at a new width.
+const SNAPSHOT = [
+  "sleep 0.3",
+  "clear",
+  "ai-usage --once",
+  "print -n '\\n\\e[2mPress any key to close\\e[0m'",
+  "read -sk 1",
+].join("; ");
 const NAMES = { claude: "Claude", chatgpt: "ChatGPT", openrouter: "OpenRouter" };
 
 // The script's cache, where every caller's fetches land.
@@ -201,20 +211,42 @@ export default class AiUsage extends View {
       .tooltip(this.tooltip(s, ws, now)).children(layers);
   }
 
-  // Shows the live `ai-usage` view: the tab already running it if there is
-  // one (this space's first), else a new tab in this space.
-  openLive() {
-    const all = spaces();
-    const ordered = [...all.filter((s) => s.active), ...all.filter((s) => !s.active)];
-    for (const space of ordered) {
-      const tab = space.tabs.find((tb) => tb.named && tb.name === LIVE_TAB);
-      if (tab) {
-        if (!space.active) run("space.select", { id: space.id });
-        run("tab.select", { id: tab.id });
-        return;
+  // Shows a snapshot of `ai-usage --once` over the window. It is a dialog of
+  // our own around a terminal block rather than terminal.peek, whose bar
+  // offers to keep the terminal as a tab. The terminal waits for a key and
+  // then ends, which closes the dialog (and --rm removes it); a click beside
+  // the dialog closes it too and leaves the terminal waiting, so each click
+  // first ends the one before.
+  async showSnapshot(cx) {
+    if (this.starting) return;
+    this.starting = true;
+    try {
+      const live = () => terminals().filter((t) => t.state === "live");
+      for (const t of live().filter((t) => t.labels?.[SNAPSHOT_LABEL])) await hc(["kill", t.address]);
+      // Through a login shell, so uv is on the PATH it has in a terminal.
+      const r = await hc([
+        "run", "--bg", "--json", "--no-parent", "--rm", "--label", `${SNAPSHOT_LABEL}=snapshot`, "--cwd", home(),
+        "--", "/bin/zsh", "-lic", SNAPSHOT,
+      ]);
+      if (r.code !== 0) throw new Error(r.stderr.trim().split("\n").pop() || `hc run exited ${r.code}`);
+      const out = JSON.parse(r.stdout);
+      const address = out.address ?? out.terminal?.address;
+      if (!address) throw new Error("hc run printed no address");
+      // hc returns before the app's terminal list has the new terminal, and a
+      // terminal block shows only terminals on that list.
+      for (let waited = 0; !live().some((t) => t.address === address); waited += 100) {
+        if (waited >= 5_000) throw new Error(`${address} didn't appear`);
+        await cx.sleep(100);
       }
+      openOverlay({
+        kind: "dialog", width: 0.8, height: 0.8,
+        layout: { id: "ai-usage-snapshot", type: "block", padding: [6, 10], content: { terminal: address } },
+      });
+    } catch (e) {
+      notify({ title: "Couldn't show AI usage", body: String(e?.message ?? e), level: "error" });
+    } finally {
+      this.starting = false;
     }
-    run("tab.new", { name: LIVE_TAB, argv: ["ai-usage"] });
   }
 
   render() {
@@ -230,7 +262,7 @@ export default class AiUsage extends View {
       .bg(t.chrome).border_t(1).border_color(t.border).text_size(11.8).cursor_pointer()
       .on_click((_e, cx) => {
         this.refresh(cx);
-        this.openLive();
+        cx.spawn((cx) => this.showSnapshot(cx));
       })
       .child(h_flex().id("content").flex_none().gap(12).items_center()
         .on_size_change((size, cx) => this.fitBlock(size.width, cx))
