@@ -63,6 +63,20 @@
               "content": {
                 "mod": "agents"
               }
+            },
+            {
+              "id": "reviews",
+              "type": "block",
+              "size": {
+                "px": 41
+              },
+              "min": 28,
+              "content": {
+                "mod": "reviews",
+                "props": {
+                  "sidebar": true
+                }
+              }
             }
           ]
         },
@@ -180,19 +194,6 @@
               "type": "block",
               "content": {
                 "mod": "workspace-status"
-              }
-            },
-            {
-              "id": "reviews-badge",
-              "type": "block",
-              "size": {
-                "px": 120
-              },
-              "content": {
-                "mod": "reviews",
-                "props": {
-                  "badge": true
-                }
               }
             },
             {

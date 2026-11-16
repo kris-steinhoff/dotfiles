@@ -1,24 +1,30 @@
 // The GitHub review queue, from `~/.local/bin/github-review-queue --all`, for
 // every GitHub repo a Herdr space on this computer is in.
 //
-// One mod in two places, told apart by props:
-// - `{ badge: true }`, a block in the bottom bar: polls the queue, publishes it
-//   in shared state, shows a count, and notifies when a session needs me.
-//   Clicking it goes to the Reviews tab.
-// - no props, the Reviews tab: the list, with one viewer pane split beside it.
+// One mod in a few places, told apart by props:
+// - `{ sidebar: true }`, the `reviews` block under Agents in the personal
+//   layout's sidebar: polls the queue, publishes it in shared state, lists it in
+//   two-line rows, notifies when a session needs me, puts the count of those
+//   on the Dock icon, and closes finished sessions. The block fits its list
+//   until its divider is dragged, then keeps the dragged height until Fit to
+//   list. In the sidebar's narrow rail it shows just the count; a click
+//   unfolds it.
 // - `{ menu: { key, url } }`, a row's right-click popup: Mute / Unmute, and
-//   Open on GitHub. `{ menu: { sort: true } }`: the sort menu.
+//   Open on GitHub. `{ menu: { list: true } }`: the ⋯ menu, the sorts, Fit to
+//   list while the height is dragged, and Review all.
+// - no props: a Reviews tab left open from before the list moved to the
+//   sidebar. It only says to close it, and neither polls nor acts.
 //
 // Each review's Claude session (`/github-pr review <n>`) runs as a herdr-core
 // terminal with no tab of its own, labeled with its repo and PR number. The
 // queue keeps no state of its own (a PR is done when my review is at its head),
 // so finding a session by its labels is what stops a second one starting for
-// the same PR. Clicking a row shows its session in the viewer pane with
-// `terminal.show`.
+// the same PR. Clicking a row, or a notification about its session, peeks at
+// the session over the current tab with `terminal.peek`.
 import { View, div } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import {
-  checking, closeOverlay, exec, hc, home, layout, nextCommand, notify, openOverlay, panes, props, run,
+  checking, closeOverlay, exec, focused, hc, home, layout, notify, openOverlay, panes, props, run,
   setBadge, setShared, shared, spaces, terminals, theme,
 } from "herdr";
 
@@ -29,8 +35,6 @@ const DEMO = false;
 const QUEUE_KEY = "reviews.queue"; // { checked_at, repos: [...] }
 const CHECKING_KEY = "reviews.checking";
 const REFRESH_KEY = "reviews.refresh"; // a time; the poller checks when it's newer than its last check
-const SHOW_KEY = "reviews.show"; // { address, at }: a session to show, asked for from a notification
-const SHOWN_KEY = "reviews.shown"; // the session the viewer pane shows now
 const SORT_KEY = "reviews.sort"; // an id from SORTS
 const MUTED_KEY = "reviews.muted"; // ["owner/repo#n"]: set aside until unmuted or gone from the queue
 // { "owner/repo#n": still muted for that reason }: PRs muted once because
@@ -38,11 +42,22 @@ const MUTED_KEY = "reviews.muted"; // ["owner/repo#n"]: set aside until unmuted 
 const AUTO_MUTED_KEY = "reviews.automuted";
 const POLL_MS = 5 * 60_000;
 const NEXT_KEY = "reviews.next"; // when the poller checks next, for the countdown
-const TICK_MS = 10_000; // how often the poller looks at the clock, and the tab redraws its times
-const BADGE_ID = "reviews-badge";
-const TAB_NAME = "Reviews";
+const TICK_MS = 10_000; // how often the poller looks at the clock and redraws its times
+// A time; the sidebar copy starts every startable PR when it's newer than the
+// last one it handled. Set by the ⋯ menu, which can't start sessions itself.
+const START_ALL_KEY = "reviews.startAll";
+const SIDEBAR_ID = "reviews";
+const SIDEBAR_MIN = 41; // just the header
+const SIDEBAR_MAX = 360; // fitting the list stops here, and it scrolls
+// The block's height in px once its divider is dragged; null while it fits its
+// list. Shared, since Herdr keeps the dragged size across restarts and the
+// sidebar copy must not fit over it then.
+const HEIGHT_KEY = "reviews.height";
+const RAIL_PX = 28; // the block in the sidebar's narrow rail: just the count
+const LAND_MS = 2_000; // a resize not shown by then was held where it was
 const MOD_NAME = "reviews";
-const PAD_X = 12;
+// Keys the mod no longer reads, cleared from shared state, which outlives restarts.
+const STALE_KEYS = ["reviews.show", "reviews.shown"];
 
 // Session labels.
 const L_REPO = "herdr-reviews.repo";
@@ -63,10 +78,19 @@ function find(node, id) {
   return null;
 }
 
-const clock = (ms) => {
-  const d = new Date(ms);
-  return `${d.getHours()}:${String(d.getMinutes()).padStart(2, "0")}`;
-};
+// The sidebar's rail goes by its width, as the agents mod's does: Herdr folds
+// the sidebar below 160px, and dragging its edge narrows it too.
+const narrow = () => (find(layout(), "sidebar")?.size?.px ?? Infinity) < 160;
+
+// The reviews block's height in the layout, as Herdr has it now.
+const blockPx = () => find(layout(), SIDEBAR_ID)?.size?.px;
+
+// Out of the rail, back to the width it had, as the agents mod's toggle does.
+function unfoldSidebar() {
+  setShared("sidebar.collapsed", false);
+  run("layout.resize", { id: "sidebar", px: shared("sidebar.width") ?? 268 });
+}
+
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 const lastLine = (s) => s.trim().split("\n").pop();
 
@@ -140,37 +164,8 @@ async function startSession(repo, item) {
   return out.address ?? out.terminal?.address ?? null;
 }
 
-// --- Tabs and panes -------------------------------------------------------------
-
-function spaceOfTab(tabId) {
-  for (const s of spaces()) for (const t of s.tabs) if (t.id === tabId) return { space: s, tab: t };
-  return null;
-}
-
-function selectTab(found) {
-  if (!found.space.active) run("space.select", { id: found.space.id });
-  run("tab.select", { id: found.tab.id });
-}
-
-const listPane = () => panes().find((p) => p.mod === MOD_NAME) ?? null;
-
-// The Reviews tab: the tab holding this mod's pane, if one is open.
-function queueTab() {
-  const pane = listPane();
-  return pane ? spaceOfTab(pane.tab) : null;
-}
-
-function openQueueTab() {
-  const found = queueTab();
-  if (found) selectTab(found);
-  else run("tab.new", { name: TAB_NAME, mod: MOD_NAME });
-}
-
-// The terminal pane beside the list, where sessions are shown.
-function viewerPane() {
-  const list = listPane();
-  return list ? panes().find((p) => p.tab === list.tab && p.terminal) ?? null : null;
-}
+// Over the current tab, with Herdr's bar to keep it as a tab or close it.
+const peek = (address) => run("terminal.peek", { terminal: address });
 
 // --- Finding the repos ----------------------------------------------------------
 
@@ -341,6 +336,64 @@ function leftoverSessions(repos) {
     && !(s.state === "live" && (s.status === "working" || s.status === "blocked")));
 }
 
+// The listed PRs as [repo, item] pairs in the chosen order.
+function listedPairs(repos) {
+  return repos
+    .flatMap((repo) => repo.items.map((item) => [repo, item]))
+    .filter(([repo, item]) => listed(item, sessionFor(repo.name, item.number)))
+    .sort(sortOf().compare);
+}
+
+// What the sidebar header and rail count: listed PRs that aren't muted.
+function listedCount() {
+  const quiet = muted();
+  return listedPairs(shared(QUEUE_KEY)?.repos ?? [])
+    .filter(([repo, item]) => !quiet.has(`${repo.name}#${item.number}`)).length;
+}
+
+// What Review all starts: new, unmuted PRs without a session.
+function startablePairs() {
+  const quiet = muted();
+  const out = [];
+  for (const repo of shared(QUEUE_KEY)?.repos ?? []) {
+    for (const item of repo.items) {
+      if (item.state === "new" && !sessionFor(repo.name, item.number) && !quiet.has(`${repo.name}#${item.number}`)) {
+        out.push([repo, item]);
+      }
+    }
+  }
+  return out;
+}
+
+// A repo's name without its owner, unless two watched repos share that name.
+function shortNamer(repos) {
+  const short = (name) => name.slice(name.indexOf("/") + 1);
+  const counts = new Map();
+  for (const r of repos) counts.set(short(r.name), (counts.get(short(r.name)) ?? 0) + 1);
+  return (name) => (counts.get(short(name)) > 1 ? name : short(name));
+}
+
+// The parts of a row's details: some on its second line, the rest in its tooltip.
+function details(repo, item, isMuted) {
+  const key = `${repo.name}#${item.number}`;
+  const size = item.size ?? {};
+  const others = item.other_reviewers?.join(", ") || null;
+  // Why a muted row is muted, which for an automatic mute names who else reviewed it.
+  const auto = Boolean(isMuted && others && autoMuted()[key]);
+  return {
+    others,
+    auto,
+    why: !isMuted ? null : auto ? `already reviewed by ${others}` : "muted by you",
+    age: item.created_at ? age(item.created_at) : null,
+    lines: `+${size.additions ?? 0} −${size.deletions ?? 0}`,
+    files: plural(size.files ?? 0, "file"),
+    stacked: item.stacked_on ? `stacked on #${item.stacked_on}` : null,
+    // Says why a PR others reviewed isn't muted.
+    asked: others && item.requested_directly ? "asked of you by name" : null,
+    jira: item.jira_keys ?? [],
+  };
+}
+
 // --- The mod ----------------------------------------------------------------------
 
 export default class Reviews extends View {
@@ -351,36 +404,41 @@ export default class Reviews extends View {
       this.handle.focus();
       return;
     }
-    this.badge = Boolean(props()?.badge);
+    this.sidebar = Boolean(props()?.sidebar);
+    // A Reviews tab left from before: it only says to close it.
+    if (!this.sidebar) return;
+    this.mutedOpen = false; // the sidebar's Muted group
+    this.hovered = null; // the sidebar row under the pointer
+    // Shared state outlives restarts, so only a Review all asked for after this
+    // copy started counts; a leftover one would start every PR again.
+    this.handledStartAll = Date.now();
     this.lastCheck = 0;
     this.statuses = new Map(); // session address -> last status seen, for notifications
     this.scanned = false; // whether this copy has read the queue itself since it started
     this.closing = new Set(); // sessions being closed
     this.selected = null; // "owner/repo#n"
-    this.pendingShow = null; // an address to show once the viewer pane exists
-    // A show asked for just before this copy started (the badge opening the tab) still counts.
-    this.handledShow = Date.now() - 10_000;
-    // The badge polls. A Reviews tab polls only in a layout without the badge.
-    if (this.polls()) this.refresh(cx);
+    this.pendingPeek = null; // a new session to peek at once Herdr lists it
+    this.shown = null; // the block's height when the copy last looked
+    this.pending = []; // { px, at }: resizes asked for and not yet shown, oldest first
+    this.kept = null; // a height asked for that Herdr held at another; not asked again
+    if (this.polls()) {
+      for (const key of STALE_KEYS) if (shared(key) != null) setShared(key, null);
+      this.refresh(cx);
+    }
     // The poller checks when the next check is due, so a check asked for by
-    // hand starts the countdown again; the tab redraws to keep its times current.
+    // hand starts the countdown again; a redraw keeps the header's times current.
     cx.timer.every(TICK_MS, (cx) => {
       if (this.polls() && Date.now() >= (shared(NEXT_KEY) ?? 0)) this.refresh(cx);
-      if (!this.badge) cx.notify();
-    });
-    cx.spawn(async (cx) => {
-      for (;;) {
-        this.command(await nextCommand());
-        cx.notify();
-      }
+      cx.notify();
     });
   }
 
-  // Never under `herdr-app check`, which runs init() for real: a check would
-  // otherwise read the queue, write shared state, and close sessions.
+  // Only the sidebar copy, and never under `herdr-app check`, which runs init()
+  // for real: a check would otherwise read the queue, write shared state, and
+  // close sessions. Herdr keeps the copy running while the sidebar is folded or
+  // hidden, but starts it only when its block first shows.
   polls() {
-    if (checking()) return false;
-    return this.badge || !find(layout(), BADGE_ID);
+    return !checking() && this.sidebar;
   }
 
   refresh(cx) {
@@ -406,38 +464,22 @@ export default class Reviews extends View {
     });
   }
 
-  // `reviews.show-<address>`, from a notification: the poller opens the
-  // Reviews tab and asks its copy to show that session.
-  command(c) {
-    const m = /^show-(.+)$/.exec(c ?? "");
-    if (!m || !this.polls()) return;
-    openQueueTab();
-    setShared(SHOW_KEY, { address: m[1], at: Date.now() });
-  }
-
   // Asks made through shared state reach the right copy here, since every copy
   // re-renders when shared state changes.
   handleShared(cx) {
     const asked = shared(REFRESH_KEY);
     if (this.polls() && typeof asked === "number" && asked > this.lastCheck) this.refresh(cx);
-    if (this.badge) return;
-    const show = shared(SHOW_KEY);
-    if (show?.at > this.handledShow) {
-      this.handledShow = show.at;
-      const s = sessions().find((x) => x.address === show.address);
-      if (s) {
-        this.selected = `${s.labels[L_REPO]}#${s.labels[L_PR]}`;
-        cx.spawn(async () => this.show(show.address));
-      }
+    // Review all from the ⋯ menu, which can't start sessions itself.
+    const all = shared(START_ALL_KEY);
+    if (this.sidebar && typeof all === "number" && all > this.handledStartAll) {
+      this.handledStartAll = all;
+      for (const [repo, item] of startablePairs()) this.start(repo, item, cx, { stay: true });
     }
-    // A new session waits until Herdr lists it, and until the viewer exists. A
-    // viewer just split in is still starting its own shell, which wins over a
-    // show sent at once; so show after a moment, and once more to be sure.
-    const pending = this.pendingShow;
-    if (pending && viewerPane() && terminals().some((t) => t.address === pending)) {
-      const address = this.pendingShow;
-      this.pendingShow = null;
-      for (const ms of [300, 1200]) cx.timer.after(ms, () => this.show(address));
+    // A session just started is peeked at once Herdr lists it.
+    const pending = this.pendingPeek;
+    if (pending && terminals().some((t) => t.address === pending)) {
+      this.pendingPeek = null;
+      cx.spawn(async () => peek(pending));
     }
   }
 
@@ -455,14 +497,14 @@ export default class Reviews extends View {
       const before = this.statuses.get(s.address);
       seen.set(s.address, s.status);
       if (!before || before === s.status || (s.status !== "blocked" && s.status !== "done")) continue;
-      const here = queueTab();
-      if (shared(SHOWN_KEY) === s.address && here?.tab.active && here?.space.active) continue;
+      // Not while I'm looking at it: focused() names a peeked terminal too.
+      if (focused()?.terminal === s.address) continue;
       const blocked = s.status === "blocked";
       cx.spawn(async () => notify({
         title: `#${s.labels[L_PR]} ${blocked ? "needs you" : "finished"}`,
         body: s.labels[L_TITLE] ?? "",
         level: blocked ? "warning" : "info",
-        action: { name: `${MOD_NAME}.show-${s.address}` },
+        action: { name: "terminal.peek", args: { terminal: s.address } },
       }));
     }
     this.statuses = seen;
@@ -470,39 +512,23 @@ export default class Reviews extends View {
 
   render(cx) {
     if (this.menu) return this.renderMenu();
+    if (!this.sidebar) return this.renderLeftover();
     this.handleShared(cx);
     if (this.polls()) {
       this.watchSessions(cx);
       this.closeLeftovers(cx);
     }
-    return this.badge ? this.renderBadge() : this.renderTab();
+    return narrow() ? this.renderRail(cx) : this.renderSidebar(cx);
   }
 
   // --- Actions ----------------------------------------------------------------------
-
-  show(address) {
-    const viewer = viewerPane();
-    if (!viewer) {
-      // Split a viewer in beside the list, and show the session once it's there.
-      this.later(address);
-      return;
-    }
-    run("terminal.show", { terminal: address, pane: viewer.pane });
-    setShared(SHOWN_KEY, address);
-  }
-
-  // Shows a session once it and the viewer pane are ready (see handleShared).
-  later(address) {
-    this.pendingShow = address;
-    if (!viewerPane()) run("pane.split", { direction: "right", pane: listPane()?.pane });
-  }
 
   start(repo, item, cx, { stay = false } = {}) {
     if (!stay) this.selected = `${repo.name}#${item.number}`;
     cx.spawn(async (cx) => {
       try {
         const address = await startSession(repo, item);
-        if (address && !stay) this.later(address);
+        if (address && !stay) this.pendingPeek = address;
       } catch (e) {
         notify({ title: `Couldn't start #${item.number}`, body: String(e?.message ?? e), level: "error" });
       }
@@ -523,11 +549,6 @@ export default class Reviews extends View {
   }
 
   close(session, cx) {
-    if (shared(SHOWN_KEY) === session.address) {
-      const viewer = viewerPane();
-      if (viewer) run("terminal.show", { pane: viewer.pane });
-      setShared(SHOWN_KEY, null);
-    }
     // Kill, then remove: an ended terminal stays listed until it's removed.
     cx.spawn(async () => {
       try {
@@ -539,198 +560,261 @@ export default class Reviews extends View {
     });
   }
 
-  // --- Badge ------------------------------------------------------------------------
+  // --- Sidebar ----------------------------------------------------------------------
 
-  fitBlock(contentWidth, cx) {
-    const px = Math.ceil(contentWidth);
-    const current = find(layout(), BADGE_ID)?.size?.px;
-    if (current === px || this.resizingTo === px) return;
-    this.resizingTo = px;
-    cx.spawn(async () => {
-      run("layout.resize", { id: BADGE_ID, px });
-      this.resizingTo = null;
-    });
+  // A layout block can't size itself to its content, so the sidebar copy sets
+  // its own block's height: what its content measures, a dragged height, or
+  // the rail's height. Each resize joins `pending` until the block shows it,
+  // and one asked while another is pending is sent even if the block shows
+  // that height now, since the pending one lands first.
+  sizeBlock(px, cx) {
+    if (this.pending.length ? this.pending.at(-1).px === px : this.shown === px || this.kept === px) return;
+    this.pending.push({ px, at: Date.now() });
+    cx.spawn(async () => run("layout.resize", { id: SIDEBAR_ID, px }));
   }
 
-  renderBadge() {
-    const t = theme();
-    const queue = shared(QUEUE_KEY);
-    // The count is what the Reviews tab lists; the red dot, a session waiting on me.
-    const waits = sessions().some((s) => stage(t, s).waits);
-    const quiet = muted();
-    let count = 0;
-    for (const repo of queue?.repos ?? []) {
-      for (const item of repo.items) {
-        if (listed(item, sessionFor(repo.name, item.number)) && !quiet.has(`${repo.name}#${item.number}`)) count++;
+  // Looks at the block's height on each render. A change while resizes are
+  // pending is them landing, in order: at a pending height, or, when the room
+  // in the column holds it short, at another, which is then kept rather than
+  // asked for again. A change with none pending is a drag. Out of the rail it
+  // becomes the dragged height in shared state, so the block stops fitting
+  // its list; no dragged height is below the header, so the ⋯ menu and its
+  // Fit to list stay in reach. In the rail, whose height is always the
+  // copy's, it only gets resized back.
+  observe(dragsCount) {
+    const px = blockPx();
+    if (typeof px !== "number") return;
+    const changed = this.shown != null && px !== this.shown;
+    this.shown = px;
+    if (changed) {
+      const i = this.pending.findIndex((p) => p.px === px);
+      if (i >= 0) {
+        this.pending.splice(0, i + 1);
+        this.kept = null;
+      } else if (this.pending.length) {
+        const held = this.pending.shift();
+        if (!this.pending.length) this.kept = held.px;
+      } else {
+        this.kept = null;
+        const height = Math.max(SIDEBAR_MIN, px);
+        if (dragsCount && shared(HEIGHT_KEY) !== height) setShared(HEIGHT_KEY, height);
       }
     }
-
-    // Shown even when nothing waits, so the Reviews tab is always a click away.
-    return h_flex().id("root").size_full().justify_end().items_center()
-      .bg(t.chrome).border_t(1).border_color(t.border).text_size(11.8).cursor_pointer()
-      .on_click(() => openQueueTab())
-      .child(h_flex().id("content").flex_none().gap(6).px(PAD_X).items_center()
-        .tooltip(waits ? "A review session needs you. Click for the queue." : "GitHub reviews waiting on you. Click for the queue.")
-        .when(waits, (el) => el.child(div().size(6).rounded(3).bg(t.blocked)))
-        .child(div().text_color(count ? t.foreground : t.dim).child(count ? `Reviews: ${count}` : "Reviews"))
-        .on_size_change((size, cx) => this.fitBlock(size.width, cx)));
+    // Resizes that changed nothing by now were held where the block was.
+    if (this.pending.length && Date.now() - this.pending.at(-1).at > LAND_MS) {
+      this.kept = this.pending.at(-1).px;
+      this.pending = [];
+    }
   }
 
+  // The height out of the rail: the dragged one, else the content's.
+  target() {
+    const dragged = shared(HEIGHT_KEY);
+    return typeof dragged === "number" ? dragged : this.fitted;
+  }
 
-  // --- Reviews tab ------------------------------------------------------------------
+  // From the measured content column plus the header and border outside it.
+  // Kept, so leaving the rail or Fit to list restores it without waiting for a
+  // new measurement. The render resizes, after looking for a drag.
+  fitContent(size, cx) {
+    const fitted = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, Math.ceil(size.height + 1 + 41)));
+    if (fitted === this.fitted) return;
+    this.fitted = fitted;
+    cx.notify();
+  }
 
-  button(t, id, label, action, { primary = false } = {}) {
-    return div().id(id).flex_none().px(10).h(24).flex().items_center().rounded(6).cursor_pointer()
-      .text_size(12).font_semibold()
-      .when(primary, (el) => el.bg(t.solid).text_color(t.solid_foreground))
-      .when(!primary, (el) => el.border(1).border_color(t.border).text_color(t.foreground)
-        .hover((s) => s.bg(t.hover)))
+  // A small control in the sidebar header, in the agents header's quiet style.
+  headerControl(t, id, glyph, tip, action, { on = false } = {}) {
+    return div().id(id).flex_none().size(18).flex().items_center().justify_center().rounded(4)
+      .text_size(12).text_color(on ? t.foreground : t.dim).cursor_pointer()
+      .hover((s) => s.bg(t.hover).text_color(t.foreground))
+      .tooltip(tip)
+      .on_click((_e, cx) => { action(); cx.notify(); })
+      .child(glyph);
+  }
+
+  // What sits at a row's right end: a start button, the session's status dot,
+  // or, while it needs me, the agents list's compact ! pill. Muted rows show a
+  // session's status in grey and offer no start; unmute to review.
+  rowEnd(t, repo, item, key, session, isMuted) {
+    if (session) {
+      const st = stage(t, session);
+      const mark = st.waits && !isMuted
+        ? div().size(14).rounded(4).bg(t.blocked + "26").text_size(10.5).font_bold().text_color(t.blocked)
+          .flex().items_center().justify_center().child("!")
+        : div().size(7).rounded(4).bg(isMuted ? t.dim : st.color);
+      return h_flex().id(`st-${key}`).size(18).flex_none().items_center().justify_center().tooltip(st.label).child(mark);
+    }
+    if (isMuted) return null;
+    return div().id(`start-${key}`).size(18).flex_none().flex().items_center().justify_center().rounded(4)
+      .text_size(9).cursor_pointer()
+      .text_color(this.hovered === key ? t.foreground : t.dim)
+      .hover((s) => s.bg(t.hover).text_color(t.accent))
+      .tooltip("Start a review")
       .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
       .on_click((_e, cx) => {
         cx.stop_propagation();
-        action(cx);
+        this.start(repo, item, cx);
         cx.notify();
       })
-      .child(label);
+      .child("▶");
   }
 
-  stageTag(st) {
-    return h_flex().gap(5).items_center()
-      .child(div().size(6).rounded(3).bg(st.color))
-      .child(div().text_size(12).text_color(st.color).child(st.label));
-  }
-
-  row(t, repo, item, { isMuted = false } = {}) {
+  // Two lines, for the sidebar's width: number, title, and status; then repo,
+  // author, age, and size. The rest is in the tooltip.
+  sidebarRow(t, repo, item, shortName, { isMuted = false } = {}) {
     const key = `${repo.name}#${item.number}`;
     const session = sessionFor(repo.name, item.number);
     const selected = this.selected === key;
-    const size = item.size ?? {};
-    const others = item.other_reviewers?.join(", ");
-    // Why a muted row is muted, first, which for an automatic mute names who else reviewed it.
-    const auto = isMuted && others && autoMuted()[key];
-    const why = !isMuted ? null : auto ? `already reviewed by ${others}` : "muted by you";
-    const meta = [
-      why,
-      item.created_at && age(item.created_at) ? `opened ${age(item.created_at)} ago` : null,
-      `+${size.additions ?? 0} −${size.deletions ?? 0}`,
-      plural(size.files ?? 0, "file"),
-      item.stacked_on ? `stacked on #${item.stacked_on}` : null,
-      others && !auto ? `reviewed by ${others}` : null,
-      // Says why a PR others reviewed isn't muted.
-      others && item.requested_directly ? "asked of you by name" : null,
-      ...(item.jira_keys ?? []),
-    ].filter(Boolean).join(" · ");
+    const d = details(repo, item, isMuted);
+    const author = item.author?.trim().split(/\s+/)[0];
+    const line2 = [d.why, shortName(repo.name), author, d.age, isMuted ? null : d.lines].filter(Boolean).join(" · ");
+    const tip = [
+      item.title,
+      repo.name,
+      `${d.files} changed`,
+      d.stacked,
+      d.others ? `reviewed by ${d.others}` : null,
+      d.asked,
+      d.jira.join(", ") || null,
+    ].filter(Boolean).join("\n");
+    const end = this.rowEnd(t, repo, item, key, session, isMuted);
 
-    return h_flex().id(`row-${key}`).gap(12).px(10).py(7).items_center().rounded(8)
+    return v_flex().id(`srow-${key}`).flex_none().px(8).py(5).gap(1).rounded(8)
+      .tooltip(tip)
+      .when(selected, (el) => el.bg(t.selected))
+      .when(!selected, (el) => el.hover((s) => s.bg(t.hover)))
+      .when(Boolean(session), (el) => el.cursor_pointer())
+      .on_hover((on, cx) => {
+        if (on) this.hovered = key;
+        else if (this.hovered === key) this.hovered = null;
+        cx.notify();
+      })
       .on_mouse_down("right", (_e, cx) => {
         cx.stop_propagation();
         openOverlay({ mod: MOD_NAME, kind: "popup", width: 200, height: 78, props: { menu: { key, url: item.url } } });
       })
-      .when(selected, (el) => el.bg(t.selected))
-      .when(!selected, (el) => el.hover((s) => s.bg(t.hover)))
-      .when(Boolean(session), (el) => el.cursor_pointer())
       .on_click((_e, cx) => {
         this.selected = key;
-        if (session) this.show(session.address);
+        if (session) peek(session.address);
         cx.notify();
       })
-      .child(v_flex().w(92).flex_none().gap(2)
-        .child(div().id(`num-${key}`).text_color(isMuted ? t.dim : t.accent).cursor_pointer()
+      .child(h_flex().min_w(0).gap(6).items_center()
+        .child(div().id(`snum-${key}`).flex_none().text_color(isMuted ? t.dim : t.accent).cursor_pointer()
           .tooltip("Open on GitHub")
           .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
           .on_click((_e, cx) => { cx.stop_propagation(); exec("open", [item.url]); })
           .child(`#${item.number}`))
-        .child(div().truncate().text_size(11.5).text_color(t.dim).child(repo.name)))
-      .child(v_flex().flex_1().min_w(0).gap(2)
-        .child(h_flex().min_w(0).gap(12).items_center()
-          .child(div().flex_1().min_w(0).truncate().text_color(isMuted ? t.muted : t.foreground).child(item.title))
-          .when(Boolean(item.author), (el) => el.child(div().flex_none().max_w(160).truncate()
-            .text_color(isMuted ? t.dim : t.muted).child(item.author))))
-        .child(div().truncate().text_size(11.5).text_color(t.dim).child(meta)))
-      // A fixed width, so the authors before it line up whatever it holds.
-      // Muted rows show a session's status but no actions; unmute to review.
-      .child(h_flex().w(96).flex_none().justify_end()
-        .when(Boolean(session), (el) => el.child(
-          this.stageTag(isMuted ? { ...stage(t, session), color: t.dim } : stage(t, session))))
-        .when(!session && !isMuted, (el) => el.child(
-          this.button(t, `review-${key}`, "Review", (cx) => this.start(repo, item, cx), { primary: true }))));
+        .child(div().flex_1().min_w(0).truncate().text_color(isMuted ? t.muted : t.foreground).child(item.title))
+        .when(Boolean(end), (el) => el.child(end)))
+      .child(div().truncate().text_size(11.5).text_color(t.dim).child(line2));
   }
 
-  renderTab() {
+  renderSidebar(cx) {
+    this.observe(true);
+    const px = this.target();
+    if (px != null) this.sizeBlock(px, cx);
     const t = theme();
     const queue = shared(QUEUE_KEY);
     const checking = Boolean(shared(CHECKING_KEY));
     const repos = queue?.repos ?? [];
-
+    const shortName = shortNamer(repos);
     const quiet = muted();
-    const startable = [];
-    for (const repo of repos) {
-      for (const item of repo.items) {
-        if (item.state === "new" && !sessionFor(repo.name, item.number) && !quiet.has(`${repo.name}#${item.number}`)) {
-          startable.push([repo, item]);
-        }
-      }
-    }
+    const count = listedCount();
 
-    const header = h_flex().gap(10).items_center()
-      // No title of its own: the tab and Herdr's pane header already say "Reviews".
-      .child(this.button(t, "refresh", "Refresh", () => setShared(REFRESH_KEY, Date.now())))
-      .child(div().id("checked").text_size(12).text_color(t.dim)
-        .when(Boolean(queue?.checked_at), (el) => el.tooltip(`Checked at ${clock(queue.checked_at)}`))
-        .child(checkedLine(queue, checking, shared(NEXT_KEY))))
+    const header = h_flex().px(16).h(41).pt(14).pb(5).flex_none().gap(6).items_center()
+      .child(div().text_size(11.5).font_medium().text_color(t.dim).child("Reviews"))
+      .child(div().text_size(11.5).text_color(count ? t.foreground : t.dim).child(String(count)))
       .child(div().flex_1())
-      // Plain text, not a button: a setting, quieter than the actions beside it.
-      .child(div().id("sort").flex_none().px(4).text_size(12).text_color(t.dim).cursor_pointer()
-        .hover((st) => st.text_color(t.foreground))
-        .on_click(() => openOverlay({
-          mod: MOD_NAME, kind: "popup", width: 180, height: 10 + 31 * SORTS.length, props: { menu: { sort: true } },
-        }))
-        .child(`${sortOf().label} ▾`))
-      .when(startable.length > 1, (el) => el.child(this.button(t, "review-all", `Review all ${startable.length}`,
-        (cx) => { for (const [repo, item] of startable) this.start(repo, item, cx, { stay: true }); })));
+      .child(this.headerControl(t, "rv-refresh", "↻", checkedLine(queue, checking, shared(NEXT_KEY)),
+        () => setShared(REFRESH_KEY, Date.now()), { on: checking }))
+      .child(this.headerControl(t, "rv-more", "⋯", "Sort, fit, or review all", () => {
+        const actions = (shared(HEIGHT_KEY) != null ? 1 : 0) + (startablePairs().length > 1 ? 1 : 0);
+        const items = SORTS.length * 31 + (actions ? 9 + actions * 31 : 0);
+        openOverlay({ mod: MOD_NAME, kind: "popup", width: 200, height: 10 + items, props: { menu: { list: true } } });
+      }));
 
-    // One list across repos in the chosen order, muted PRs last.
-    const sort = sortOf();
-    const pairs = repos
-      .flatMap((repo) => repo.items.map((item) => [repo, item]))
-      .filter(([repo, item]) => listed(item, sessionFor(repo.name, item.number)))
-      .sort(sort.compare);
+    const pairs = listedPairs(repos);
     const isQuiet = ([repo, item]) => quiet.has(`${repo.name}#${item.number}`);
-    const rows = pairs.filter((p) => !isQuiet(p)).map(([repo, item]) => this.row(t, repo, item));
-    const mutedRows = pairs.filter(isQuiet).map(([repo, item]) => this.row(t, repo, item, { isMuted: true }));
-    const mutedSection = mutedRows.length === 0 ? null : v_flex().gap(2)
-      .child(div().px(10).pb(2).text_size(12).font_semibold().text_color(t.dim).child("Muted"))
-      .children(mutedRows);
+    const rows = pairs.filter((p) => !isQuiet(p)).map(([repo, item]) => this.sidebarRow(t, repo, item, shortName));
+    const mutedPairs = pairs.filter(isQuiet);
 
-    const errors = repos.filter((repo) => repo.error).map((repo) => h_flex().id(`err-${repo.key}`).gap(8).px(10)
-      .text_size(12).tooltip(repo.error)
-      .child(div().text_color(t.muted).child(repo.name))
-      .child(div().truncate().text_color(t.blocked).child("couldn't read the queue")));
+    const errors = repos.filter((repo) => repo.error).map((repo) => div().id(`err-${repo.key}`).px(8).py(3).truncate()
+      .text_size(11.5).text_color(t.dim).tooltip(repo.error)
+      .child(`⚠ ${shortName(repo.name)}: couldn't read the queue`));
 
-    const empty = v_flex().gap(4).px(10).pt(8)
-      .child(div().text_color(t.muted).child(
-        queue ? "Nothing is waiting for your review." : checking ? "Checking the queue…" : "The queue hasn't been checked yet."))
-      .when(repos.length > 0, (el) => el.child(div().text_size(12).text_color(t.dim)
-        .child(`Watching ${repos.map((r) => r.name).join(", ")}`)));
+    // Before the first check, a line says so. After it, an empty queue is just
+    // the header with its 0, so the block takes no more room than it needs.
+    const note = queue ? null : div().px(8).py(3).text_size(11.5).text_color(t.dim)
+      .child(checking ? "Checking the queue…" : "Not checked yet.");
 
-    return v_flex().id("reviews").size_full().bg(t.background).p(16).gap(14).text_size(13)
-      .overflow_y_scrollbar()
+    const mutedToggle = mutedPairs.length === 0 ? null : h_flex().id("rv-muted").flex_none().px(8).h(24).items_center()
+      .text_size(11.5).text_color(t.dim).cursor_pointer()
+      .hover((s) => s.text_color(t.foreground))
+      .on_click((_e, cx) => { this.mutedOpen = !this.mutedOpen; cx.notify(); })
+      .child(`${this.mutedOpen ? "▾" : "▸"} Muted (${mutedPairs.length})`);
+    const mutedRows = this.mutedOpen
+      ? mutedPairs.map(([repo, item]) => this.sidebarRow(t, repo, item, shortName, { isMuted: true }))
+      : [];
+
+    const filled = Boolean(note) || errors.length > 0 || rows.length > 0 || Boolean(mutedToggle);
+    // The content column is what's measured: the scrolling area around it
+    // takes the block's height, and measuring that would chase its own resize.
+    const content = v_flex().id("rv-content").flex_none().px(8).when(filled, (el) => el.pb(8))
+      .when(Boolean(note), (el) => el.child(note))
+      .children(errors)
+      .children(rows)
+      .when(Boolean(mutedToggle), (el) => el.child(mutedToggle))
+      .children(mutedRows)
+      .on_size_change((size, cx) => this.fitContent(size, cx));
+
+    return v_flex().size_full().min_h(0).bg(t.chrome).border_t(1).border_color(t.border).text_size(13)
       .child(header)
-      .when(errors.length > 0, (el) => el.child(v_flex().gap(4).children(errors)))
-      .child(rows.length ? v_flex().gap(2).children(rows) : empty)
-      .when(Boolean(mutedSection), (el) => el.child(mutedSection));
+      .child(v_flex().id("rv-list").flex_1().min_h(0).overflow_y_scrollbar().child(content));
   }
 
-  // --- Row menu ---------------------------------------------------------------------
+  // In the sidebar's narrow rail: the count, or a dim R at zero, with a red dot
+  // in front while a session needs me. A click unfolds the sidebar.
+  renderRail(cx) {
+    this.observe(false);
+    this.sizeBlock(RAIL_PX, cx);
+    const t = theme();
+    const waits = sessions().some((s) => stage(t, s).waits);
+    const count = listedCount();
+    const tip = `${count ? plural(count, "review") : "No reviews"} waiting${waits ? "; a session needs you" : ""}`;
+    return h_flex().id("rv-rail").size_full().justify_center().items_center().gap(4)
+      .bg(t.chrome).border_t(1).border_color(t.border).text_size(11.5).cursor_pointer()
+      .hover((s) => s.bg(t.hover))
+      .tooltip(tip)
+      .on_click(() => unfoldSidebar())
+      .when(waits, (el) => el.child(div().size(6).rounded(3).bg(t.blocked)))
+      .child(div().text_color(count ? t.foreground : t.dim).child(count ? String(count) : "R"));
+  }
+
+  // A Reviews tab left open from before the list moved to the sidebar.
+  renderLeftover() {
+    const t = theme();
+    return v_flex().size_full().justify_center().items_center().p(16).bg(t.background)
+      .child(div().text_size(13).text_color(t.muted)
+        .child("Reviews now show in the sidebar of the personal layout. Close this tab."));
+  }
+
+  // --- Menus ------------------------------------------------------------------------
 
   renderMenu() {
     const t = theme();
-    const { key, url, sort } = this.menu;
+    const { key, url, list } = this.menu;
     const done = () => closeOverlay(props()?.overlay);
     let items;
-    if (sort) {
+    const actions = [];
+    if (list) {
       const on = sortOf().id;
       items = SORTS.map((s) => [`${s.id === on ? "✓ " : "   "}${s.label}`, () => setShared(SORT_KEY, s.id)]);
+      // Back to fitting the list, after a drag. The sidebar copy resizes.
+      if (shared(HEIGHT_KEY) != null) actions.push(["Fit to list", () => setShared(HEIGHT_KEY, null)]);
+      // Starting needs the sidebar copy, which handles the request.
+      const startable = startablePairs().length;
+      if (startable > 1) actions.push([`Review all ${startable}`, () => setShared(START_ALL_KEY, Date.now())]);
     } else {
       const isMuted = muted().has(key);
       items = [
@@ -744,9 +828,15 @@ export default class Reviews extends View {
         done();
         cx.stop_propagation();
       })
-      .children(items.map(([label, action], i) => h_flex().id(`mi-${i}`).h(31).px(8).rounded(7).items_center()
-        .text_color(t.foreground).hover((s) => s.bg(t.hover))
-        .on_click(() => { done(); action(); })
-        .child(label)));
+      .children(items.map(([label, act], i) => this.menuItem(t, `mi-${i}`, label, () => { done(); act(); })))
+      .when(actions.length > 0, (el) => el.child(div().my(4).h(1).bg(t.border)))
+      .children(actions.map(([label, act], i) => this.menuItem(t, `ma-${i}`, label, () => { done(); act(); })));
+  }
+
+  menuItem(t, id, label, onClick) {
+    return h_flex().id(id).h(31).flex_none().px(8).rounded(7).items_center()
+      .text_color(t.foreground).hover((s) => s.bg(t.hover))
+      .on_click(onClick)
+      .child(label);
   }
 }
