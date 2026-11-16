@@ -2,13 +2,10 @@
 # WorktreeCreate hook. Claude Code would otherwise make its worktrees in
 # <repo>/.claude/worktrees on a worktree-<name> branch; this hands creation to
 # wt, so Claude's worktrees land in <repo>/.worktrees/<name> on a plain <name>
-# branch like every other worktree. Claude takes the last line of stdout as the
-# path, and wt add prints only that path there, with its messages on stderr. A
-# non-zero exit fails the creation, which is the right outcome when wt refuses.
-#
-# WT_BASE in the environment, when set, is the ref a new branch is cut from;
-# otherwise wt cuts it from freshly fetched origin/<default>. /drive-implementation
-# starts each task agent with `WT_BASE=<PR branch> claude --worktree <task branch>`.
+# branch, cut from freshly fetched origin/<default> with no upstream, like
+# every other worktree. Claude takes the last line of stdout as the path, and
+# wt add prints only that path there, with its messages on stderr. A non-zero
+# exit fails the creation, which is the right outcome when wt refuses.
 #
 # The hook replaces Claude's own git worktree add entirely, so Claude no longer
 # copies .worktreeinclude files; wt's per-repo wt.setup is the place for that.
@@ -27,7 +24,4 @@ cwd="$(printf '%s' "$input" | jq -r '.cwd // empty')"
 }
 [ -z "$cwd" ] || cd "$cwd"
 
-if [ -n "${WT_BASE:-}" ]; then
-  exec wt add "$name" --base "$WT_BASE"
-fi
 exec wt add "$name"
