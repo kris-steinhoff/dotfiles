@@ -22,11 +22,10 @@ The posting schema is in [references/posting.md](references/posting.md); read it
 
 ## Starting
 
-1. Run directly, open with the PR's summary: run the `summarize-github-pr` skill and send its output, every line as markdown, as your first message. A caller that has its own view of the PR skips this.
-2. Run `scripts/feedback.py <n> --agent-marker "Posted on behalf of"`. If its `viewer` is not its `author`, say so and ask before going on, since you'd be posting as the author.
-3. In `respond` mode, go to [`respond <n>`](#respond-n).
-4. Get a checkout of the PR's head branch, up to date with the remote. Use the current one if it's on that branch and has no changes of its own; otherwise stop and ask the user to start this session in one with `claude --worktree <head branch>`, since the sandbox won't let you make a worktree you can commit in. A caller that makes code changes its own way needs no checkout. If you can't push to the head branch, as with a fork that doesn't allow edits, say so and stop.
-5. Take stock: the unanswered comments from `feedback.py`, and `gh pr view <n> --json mergeable,mergeStateStatus,statusCheckRollup,isDraft,reviewDecision`. Handle what is already waiting, as below, then watch.
+1. Run `scripts/feedback.py <n> --agent-marker "Posted on behalf of"`. If its `viewer` is not its `author`, say so and ask before going on, since you'd be posting as the author.
+2. In `respond` mode, go to [`respond <n>`](#respond-n).
+3. Get a checkout of the PR's head branch, up to date with the remote. Use the current one if it's on that branch and has no changes of its own; otherwise stop and ask the user to start this session in one with `claude --worktree <head branch>`, since the sandbox won't let you make a worktree you can commit in. A caller that makes code changes its own way needs no checkout. If you can't push to the head branch, as with a fork that doesn't allow edits, say so and stop.
+4. Take stock: the unanswered comments from `feedback.py`, and `gh pr view <n> --json mergeable,mergeStateStatus,statusCheckRollup,isDraft,reviewDecision`. Handle what is already waiting, as below, then watch.
 
 ## Watching
 
@@ -105,7 +104,7 @@ Without confirmation, tell the user in a line what was posted, with the links `p
 
 Open with a one-line count, such as `3 replies to Ada and 1 to Copilot`. Give each item its own question, showing the reviewer's comment and the draft reply, with `Include` and `Exclude`; the question tool's free-text option lets the user rewrite one. Send them together, in as few calls as the question tool allows. Mark a bot's items, so the user can skip them quickly, and mark an undecided item, where nothing settles the reply, so the user decides it.
 
-Then show everything that will post, where each reply lands, and whose review will be re-requested, opening with the summary's table from `summarize-github-pr`, and ask for confirmation before posting. Never take the per-item rulings as that confirmation.
+Then show everything that will post, where each reply lands, and whose review will be re-requested, opening with the PR's number, title, and URL, and ask for confirmation before posting. Never take the per-item rulings as that confirmation.
 
 A caller that asks on a page rather than in the session asks the same things in its own format.
 

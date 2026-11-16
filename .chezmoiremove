@@ -276,3 +276,5 @@
 .codex/coordinator.config.toml
 .local/bin/mr-review
 .local/bin/git-create-draft-mr
+.agents/skills/summarize-github-pr
+.claude/skills/summarize-github-pr

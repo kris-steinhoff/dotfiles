@@ -14,10 +14,6 @@ A bare `<n>` means `review <n>`, unless the authenticated user is the PR's autho
 
 This skill may be invoked directly or by any agent. Both GitHub scripts below, and the schema of everything posted, are in [references/posting.md](references/posting.md); read it before reading a PR's threads or posting.
 
-## Open with the summary
-
-The PR's summary is how the user tells which PR is in front of them, so every review opens with it: before reading anything else about the PR, run the `summarize-github-pr` skill and send its output, every line as markdown, as your first message.
-
 ## Review the PR
 
 Run `review <n>` inline, in the session that invokes it: review the PR as this section describes, then [triage with the user](#triage-with-the-user) and [post](#post).
@@ -104,7 +100,7 @@ Keep each question concise: what the item is and its concrete consequence. For a
 
 Derive the GitHub event from the included items: any Blocker, whether my own finding or an Agree with another reviewer, means `REQUEST_CHANGES`; otherwise use `APPROVE`. A Follow-up never changes the event by itself. If nothing remains included, the review is an approval. When the review found nothing to triage, go straight to the confirmation.
 
-After triage, show everything that will post and explicitly ask for confirmation before posting: the event, the included findings, the replies, and the threads to be resolved. Open the confirmation with the summary's table (number and title, author and URL, ready time and stack) copied from the PR's summary, running `summarize-github-pr` for it if this session hasn't, so the user can see which PR it is posting to. If the user declines, revise or stop as directed. Never infer posting approval from the earlier per-item rulings.
+After triage, show everything that will post and explicitly ask for confirmation before posting: the event, the included findings, the replies, and the threads to be resolved. Open the confirmation with the PR's number, title, author, and URL, so the user can see which PR it is posting to. If the user declines, revise or stop as directed. Never infer posting approval from the earlier per-item rulings.
 
 ## Post
 

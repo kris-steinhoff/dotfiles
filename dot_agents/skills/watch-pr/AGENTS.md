@@ -10,4 +10,4 @@ It exists so that agents stop writing their own watches, which repeated the same
 - A CI watch pins one commit, waits for its checks to appear, and needs two finished polls in a row, so a late-starting suite is not missed.
 - Failed calls are retried and never read as the event. A `gh pr checks --watch` piped through another command hides its exit status, and once reported success after a network error killed it mid-run.
 
-Other skills reimplement parts of these rules rather than sharing code: `github-pr`'s `feedback.py` flags activity with the unanswered-activity rule, and `summarize-github-pr` skips the empty reviews GitHub records for thread replies. A change to either rule here should be carried to them; `feedback.py` takes `--agent-marker` too.
+Other skills reimplement parts of these rules rather than sharing code: `github-pr`'s `feedback.py` flags activity with the unanswered-activity rule. A change to either rule here should be carried to them; `feedback.py` takes `--agent-marker` too.
