@@ -94,13 +94,13 @@ Every branch this plan makes starts with `run/main.slug`, so a person can list t
 - A task's branch is the plan's slug, the task's id in lowercase, and a few words of its title, such as nxc-162-household-editing-t3-validation.
 - A round of fixes on an open PR is the PR's branch and a few words naming the round, such as nxc-162-household-editing-api-review-fixes.
 
-Every branch is checked out in its own worktree, made with `wt add` from the repository's main checkout, and never in the main checkout itself. A PR's worktree is cut from its base, the base branch or the branch of the PR it stacks on, when its first task starts, and lasts until the PR merges or closes: tasks merge into it there, and its pushes go from there. A task's or a round's worktree is cut from its PR's branch with `wt add <branch> --base <PR branch>`, and is removed once it merges. When the repository's instructions name another way to make worktrees, follow them, keeping these names.
+A PR's branch is cut from its base, the base branch or the branch of the PR it stacks on, when its first task starts, and is never checked out. A task's or a round's branch is cut from its PR's branch and checked out in its own worktree, never in the main checkout. It lands by merging its PR's branch into itself, rerunning its `verify` there, and then fast-forwarding the PR's branch to it, so the PR's branch only ever moves forward. When the repository's instructions name another way to make worktrees, follow them, keeping these names.
 
 ## Working the tasks
 
 A task is ready when it is `pending`, every task in its `depends_on` is `merged` or `dropped`, and every question in it is answered. Take ready tasks in `order`.
 
-Each task gets its own branch off its PR's branch, in its own worktree, as Branches and worktrees says. Move its `status` as it goes: `in_progress` from the start of the work until review passes, then `merged` with an `outcome`. Nobody reviews their own work.
+Each task gets its own branch off its PR's branch, in its own worktree, and lands as Branches and worktrees says. Move its `status` as it goes: `in_progress` from the start of the work until review passes, then `merged` with an `outcome`. Nobody reviews their own work.
 
 Push a PR's branch and open it as a draft when its first task merges, and mark it ready for review when its tasks are all merged and its checks pass. If you aren't allowed to mark it ready, that is a person's step (see Questions and decisions), and the PR stays in review meanwhile. Only the user merges a PR.
 

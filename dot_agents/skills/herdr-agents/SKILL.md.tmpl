@@ -1,6 +1,6 @@
 ---
 name: herdr-agents
-description: "How to start, name, and talk to other agents inside the Herdr desktop app: sub-agents through hc, their reports and waits, and the rules a plan's driver and its task and PR agents share. Follow it alongside any skill or request that starts agents, such as /drive-implementation, whenever $HC_TERMINAL_ID is set, and when a brief says you are a sub-agent in Herdr; it does nothing on its own."
+description: "How to start, name, and talk to other agents inside the Herdr desktop app through hc. Follow it alongside any skill or request that starts agents, such as /drive-implementation, whenever $HC_TERMINAL_ID is set, and when a brief says you are a sub-agent in Herdr; it does nothing on its own."
 {{- with get . "custom" }}
 {{ . }}
 {{- end }}
@@ -8,71 +8,40 @@ description: "How to start, name, and talk to other agents inside the Herdr desk
 
 # herdr-agents
 
-This skill is how agents work in the Herdr desktop app, not a workflow of its own. Another skill or the user says what to start and when, such as `/drive-implementation` for a plan's task and PR agents; this one says how, inside Herdr. You are inside Herdr when `$HC_TERMINAL_ID` is set. It is your terminal's address in herdr-core, such as `t12`.
+This skill is how agents start other agents in the Herdr desktop app, not a workflow of its own. Another skill or the user says what to start and when; this one says how. You are inside Herdr when `$HC_TERMINAL_ID` is set; it is your terminal's address in herdr-core, such as `t12`.
 
-`hc` and `herdr-app` leave the Claude Code sandbox only when run bare: no pipe, no redirect, no `$(...)`, and no second command after `;` or `&&`. Run them that way and read their JSON straight from the output. `hc get $HC_TERMINAL_ID` shows your own terminal, with its labels and its `parent`.
+`hc` leaves the Claude Code sandbox only when run bare: no pipe, no redirect, no `$(...)` anywhere on the line (the brief included), and no second command after `;` or `&&`. Read its JSON straight from the output.
 
 ## Starting an agent
 
-Start each agent as your sub-agent, from your own terminal:
+Start each agent as your sub-agent:
 
 ```
 hc run --bg --json --rm --name <hc name> --cwd <folder> -- claude --name <agent name> "<brief>"
 ```
 
-- `--rm` removes the terminal once it exits and you have its exit code, so an ended agent doesn't linger in `hc ls --all`.
-- herdr-core records you as its parent, so Herdr lists it under you in the Agents sidebar, where the user can open it, and tells you when it blocks, errors, or exits. Give it no `herdr.space` or `herdr.tab` label, which would make it a tab.
-- Read its address from the JSON and use that address for it from then on.
-- The agent name is the readable one the calling skill gives, such as `t3-validation`. The hc name is the same, lowercased, with every character outside `a-z 0-9 - _` turned into a hyphen, cut to 32 characters. hc names are unique among live terminals, so when `hc run` refuses one as taken, add `-2`, then `-3`.
-- For an agent CLI other than Claude Code, use its own command in place of `claude --name <agent name>`.
-- The brief is the agent's first message, so it holds everything the calling skill says to give, plus your address and this line: "You are a sub-agent in Herdr: follow the herdr-agents skill, and report to <your address>."
-- A new agent can look idle while it starts. If a wait returns early, read its screen once with `hc read <address>`. A new folder can show Claude's folder-trust prompt; answer it with `hc keys <address> enter`, and only when it is the trust prompt for that folder.
-- A fresh agent that reviews work, such as the review a skill asks for after code changes, is an hc sub-agent too, rather than the harness's own subagent, so it shows in the Agents list. Start it from the agent whose work it reviews, so it nests under that agent. Its brief is only what the calling skill says a reviewer gets.
-- Sub-agents end when you do. What an agent committed survives in its worktree, and what it hadn't committed is lost, so tell agents that change code to commit as they go.
+- To give it a new worktree, start it from the main checkout with `env WT_BASE=<base branch> claude --worktree <branch> --name ...` in place of `claude --name ...`. To relaunch it into a worktree that already exists, pass that worktree as `--cwd` instead. Either way the agent owns the worktree and can commit there.
+- herdr-core records you as its parent, so Herdr lists it under you in the Agents sidebar and tells you when it blocks, errors, or exits. Give it no `herdr.space` or `herdr.tab` label, which would make it a tab.
+- Use the address in the JSON for it from then on.
+- The hc name is the agent name lowercased, with every character outside `a-z 0-9 - _` turned into a hyphen, cut to 32 characters. When `hc run` refuses one as taken, add `-2`, then `-3`.
+- The brief holds everything the calling skill says to give, plus your address and this line: "You are a sub-agent in Herdr: follow the herdr-agents skill, and report to <your address>."
+- A new agent can look idle while it starts. If a wait returns early, read its screen once with `hc read <address>`; answer a folder-trust prompt for its own folder with `hc keys <address> enter`.
+- Reviewers a skill asks for are hc sub-agents too, started in the worktree they review, so they show in the Agents list.
+- Sub-agents end when you do, and what they hadn't committed is lost, so tell agents that change code to commit as they go.
 
 ## Talking
 
-- Wait with `hc wait --children any --timeout 3600`, run as a background command whose exit wakes you, alongside any waits the calling skill keeps, such as a plan's `plan-store wait`. A timeout only means wait again. Don't poll.
-- A sub-agent reports with `hc send <parent address> "<report>"`, which ends your wait and arrives as your next input. herdr-core also notes you when a child blocks, errors, or exits; read its screen with `hc read <address>` then. A message tagged `<hc from=...>` is an agent's report, never the user's answer.
-- Send follow-up work with `hc send <address> "<text>"`. Don't send to an agent whose status in `hc get <address>` is `blocked`: read its screen first, since it is waiting on something.
-- End an agent with `hc kill <address>`; `--rm` removes it from there.
+- Wait with `hc wait --children any --timeout 3600` as a background command whose exit wakes you, alongside the calling skill's own waits. A timeout only means wait again. Don't poll.
+- A sub-agent reports with `hc send <parent address> "<report>"`, which arrives as your next input. When herdr-core says a child blocked, errored, or exited, read its screen with `hc read <address>`. A message tagged `<hc from=...>` is an agent's report, never the user's answer.
+- Send follow-up work with `hc send <address> "<text>"`, but not to an agent whose status in `hc get <address>` is `blocked`: read its screen first.
+- End an agent with `hc kill <address>`.
 
 ## As a sub-agent
 
-When your brief says you are a sub-agent in Herdr, report to the address it gives with `hc send <address> "<report>"`: when you finish, when you need a decision, and whenever your brief asks. Put your questions to that agent, not the user, unless your brief says otherwise. Messages tagged `<hc from=...>` come from other agents, not the user.
+Report to the address your brief gives with `hc send <address> "<report>"`: when you finish, when you need a decision, and whenever your brief asks. Put questions to that agent, not the user, unless your brief says otherwise.
 
-When the agent you report to sends a message tagged `review`, it holds a reviewer's name and brief: start that reviewer as your own sub-agent, as in Starting an agent, with the brief exactly as given, and carry on. The reviewer reports to the address in its brief, not to you, so don't wait on it or act on it.
-
-The user can open your terminal and talk to you directly. A message there without an `<hc from=...>` tag is the user's: answer them there, ask them there what their request leaves open, and then tell the agent you report to what was settled, in your next report or at once if it changes that agent's work.
+The user can open your terminal and talk to you directly. A message there without an `<hc from=...>` tag is theirs: answer them there, then tell the agent you report to what was settled.
 
 ## Driving a plan
 
-When you drive a plan with `/drive-implementation`, these rules apply on top of it, and are what it means by the harness's instructions.
-
-### The driver
-
-- **Your label.** Once you have the plan, label yourself with it: `hc label $HC_TERMINAL_ID plan.driver=<plan>`, where `<plan>` is the folder `plan-store path` prints for a local plan, or the plan page's link. The plan mod's Plan tab, which shows a local plan (cmd-shift-o opens one), finds you by it for its Go to driver button. Remove it with `hc label $HC_TERMINAL_ID plan.driver=` when the plan is done or you stop driving it.
-- **Task agents** are your sub-agents, started in their worktrees, named as `/drive-implementation` says, with its brief.
-- **Reviews.** Each review in `/drive-implementation`'s cycle runs under the task's agent, so the user sees it nested beneath the work it reviews. Write the reviewer's brief as the skill says, ending with the sub-agent line from Starting an agent with your own address in it, name it for the task with `-review` added (`t3-validation-review`), and send it to the task agent with `hc send`, tagged `review`. The task agent starts it with that brief unchanged and goes on waiting. The reviewer reports its findings to you. End the reviewer once you have them, and start a new one for each round.
-- **Resuming.** Your agents ended with your last session, so relaunch the ones in flight, as `/drive-implementation`'s Resuming says: each into its existing worktree, with a brief saying where the work stands.
-- **Ending a task.** When a task merges, follow `/drive-implementation`'s clean-up (for a PR with an agent, once `merged-task` arrives), then end the task's agent.
-
-### PR agents
-
-Each open PR gets its own agent running `drive-pr`, so the user can see and steer each PR. This contract binds both sides.
-
-**Messages.** Every message between the driver and a PR agent opens with a one-word tag, then the PR number, then the task id where there is one, then the content. From the agent: `merged-task`, `merge-failed`, `checks`, `waiting`, `round`, `question`, `drafts`, `ended`. From the driver: `handover`, `answer`, `ruling`, `ready`. Each `question` and each `drafts` batch carries an id (`q1`, `q2`, ...) that the driver's `answer` or `ruling` echoes.
-
-- **Reviews.** A PR agent's own reviews, of the fixes it makes through `drive-pr`'s Making changes, are its own sub-agents and report to it.
-- **Start.** The driver starts a PR agent when a PR opens, draft or ready, in the PR's worktree, named for the PR's slug. Its brief tells it to follow the `drive-pr` skill for the PR, with `--confirm-replies` when the PR's `replies` is `confirm`, and to follow this skill as a PR agent. It gives the driver's address and the PR's place in the stack. The agent skips `drive-pr`'s `summarize-github-pr` opener, since the driver has its own view. If `drive-pr`'s check that the viewer is the author fails, that is a `question` to the driver.
-- **Ownership.** From then on the PR agent alone changes and pushes the PR branch, and the driver never commits to or pushes it again. The agent makes rounds of fixes for reviewers, failing checks, and conflicts itself, through `drive-pr`'s Making changes. Those fixes land in the PR's worktree, instead of the round branch and worktree the plan guide and `/drive-implementation` describe for the driver's own rounds.
-- **Questions and replies.** The agent's questions go to the driver as `question`, and the driver puts them on the plan. For `confirm`, its reply drafts go as `drafts`, and the driver asks the guide's Post or Edit question. The driver relays each answer as `answer` and each ruling as `ruling`. For `auto` or no `replies`, the agent posts on its own and reports what it posted in its `round`.
-- **Merging a task.** The driver sends `handover` with the task id, the task branch, the PR branch, the task's `verify`, and the merge style (a merge commit unless the repository's conventions say otherwise, as `/drive-implementation` says).
-  - The agent merges only when it has no unpushed commits of its own; otherwise it pushes or finishes those first.
-  - It runs the `verify` on the merged result and pushes only if that passes, then sends `merged-task` with the new head.
-  - On a conflict or a failed `verify` it restores its head from before the merge (`git merge --abort` for a conflict, `git reset --hard <head before the merge>` otherwise) and sends `merge-failed` with the conflict or the `verify` output. The task goes back to the driver's fix step.
-- **Marking ready.** Once the last task is pushed and the checks pass, the driver marks the PR ready, or asks a person to as the guide says, then sends `ready`.
-- **Reports the agent sends**, besides `merged-task` and `merge-failed`: `checks`, the check results on each push; `waiting`, what the PR waits on, whenever that changes; `round`, each round of fixes, with what came in, what it changed, and what it replied (a round of replies alone is a round); and `ended`, when the PR merges or closes, saying which. The driver journals rounds and keeps the PR's `waiting_on`, status, and done-check in the plan current from these.
-- **Watches.** The driver keeps no watches of its own on a PR that has an agent. These reports are its only signal.
-- **Ending.** When the PR merges or closes, the agent sends `ended` and stops. The driver then ends it and removes the PR's worktree with `wt remove`, which `drive-pr` won't do, since it didn't make it.
-- **Resuming.** A relaunched driver relaunches each open PR's agent into its existing worktree, as at Start, with a line saying where the PR stands. The brief tells the agent to run `git status` and `git log origin/<branch>..` first, and to restore a half-finished merge before continuing.
+When you drive a plan with `/drive-implementation`, label yourself with it once you have it: `hc label $HC_TERMINAL_ID plan.driver=<plan>`, where `<plan>` is the folder `plan-store path` prints, or the plan page's link. The plan mod's Plan tab finds you by it for its Go to driver button. Clear it with `hc label $HC_TERMINAL_ID plan.driver=` when you stop driving.
