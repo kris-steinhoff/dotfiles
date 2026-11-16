@@ -17,6 +17,10 @@ These were checked in a scratch repository in November 2026: an agent started wi
 
 Driving a PR is its own skill, `drive-pr`, because it is just as useful for a PR no plan made. The driver runs it for each open PR in its own session, with questions in the plan and code changes made by fix-round agents through the same cycle as tasks. Each PR's `replies` field says whether replies need the owner's confirmation; the default is `auto`. Driving starts when a PR opens rather than when it's marked ready, because a draft can fall behind its base too, and auto mode may refuse `gh pr ready`, which makes marking it ready a person's step. A plan is `done` only once every PR has merged or closed.
 
+## Herdr
+
+In Herdr every agent is an `hc` sub-agent of the driver, so the Agents list nests task agents and reviewers under it, and herdr-core reports when one blocks or exits. How to use `hc` comes from its own manual (`hc --skill`), which the global instructions point at; the skill adds only the start command that gives a task agent its own worktree, and the `plan.driver` label the plan mod's Go to driver button looks for (`dot_config/herdr-app/AGENTS.md`).
+
 ## Resuming
 
 The plan is the only record. A resume reconciles it with the worktrees, agents, and PRs, and relaunches whatever was in flight, since sub-agents end with their session. On a local plan, `plan-store wait` runs alongside the other waits, so an edit made outside the session wakes the driver as a comment does on a plan page.

@@ -278,3 +278,5 @@
 .local/bin/git-create-draft-mr
 .agents/skills/summarize-github-pr
 .claude/skills/summarize-github-pr
+.agents/skills/herdr-agents
+.claude/skills/herdr-agents

@@ -18,7 +18,7 @@ Follow the guide's Starting work, then keep going until every PR has merged or c
 
 A pass: start the tasks that are ready, handle what the running agents report, land each reviewed task on its PR branch, then look again. Run up to three tasks at once when they look independent, judging from the code with `touches` as a hint. Wait for reports; they wake the session, so don't poll.
 
-In the Herdr desktop app (`$HC_TERMINAL_ID` is set), start and talk to agents as the `herdr-agents` skill says.
+In Herdr (`$HC_TERMINAL_ID` is set), start every agent, reviewers included, as your `hc` sub-agent so it shows nested under you, and tell it in its brief to report with `hc send` to your address. A task agent's start command is `hc run --bg --rm --name <agent name> --cwd <main checkout> -- env WT_BASE=<PR branch> claude --worktree <task branch> --name <agent name> "<brief>"`. Label yourself with the plan, `hc label $HC_TERMINAL_ID plan.driver=<plan>`, where `<plan>` is the folder `plan-store path` prints or the plan page's link, so the plan mod's Go to driver button finds you, and clear it (`plan.driver=`) when you stop. An `hc kill` that answers `not_found` means the agent had already ended.
 
 ## Branches and worktrees
 

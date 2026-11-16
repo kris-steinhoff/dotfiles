@@ -4,7 +4,7 @@
 // Read-only, and live: it rereads the plan's folder whenever something in it
 // changes. Questions are answered in the driver's session, so an open one
 // offers a way there. The driver is the live terminal whose `plan.driver`
-// label is this plan's folder, which the herdr-agents skill has it set.
+// label is this plan's folder, which /drive-implementation has it set.
 import { div, PathBuilder } from "gpui-kit";
 import { h_flex, v_flex, ScrollHandle } from "gpui-base";
 import { exec, notify, run, settings, terminals, theme, watchFolder } from "herdr";

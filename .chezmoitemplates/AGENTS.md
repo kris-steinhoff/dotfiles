@@ -6,10 +6,10 @@ This file covers the partials that make up each harness's always-loaded instruct
 
 Claude and Codex each read a single always-loaded instruction file (`~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md`). Shared global content lives in the partials here, so one edit updates every surface that includes it. Each harness file is a thin `.tmpl` that includes the partials that apply to it, one `template` action per line:
 
-| Harness                     | Sections included               |
-| --------------------------- | ------------------------------- |
-| `dot_claude/CLAUDE.md.tmpl` | `communication` + `claude-code` |
-| `dot_codex/AGENTS.md.tmpl`  | `communication` + `codex`       |
+| Harness                     | Sections included                         |
+| --------------------------- | ----------------------------------------- |
+| `dot_claude/CLAUDE.md.tmpl` | `communication` + `herdr` + `claude-code` |
+| `dot_codex/AGENTS.md.tmpl`  | `communication` + `herdr` + `codex`       |
 
 The harness files are `.tmpl`, not `.md`, so the `prettier` pre-commit hook (which runs with `proseWrap: never`) leaves their one-include-per-line layout alone; that layout matters because the render joins the sections with the blank lines between them. The partials themselves are prose `.md` and stay prettier-managed. This is why there is no wrapper partial that includes the others: a `.md` composition file would get its include lines collapsed onto one line by prettier.
 
@@ -18,6 +18,7 @@ The global harnesses do not include a persona. Codex's skills need no wiring bec
 ## Partials
 
 - **`communication.md`** is how to write for a human who has an AI agent at hand, and how to ask the user anything so the answer takes a keystroke or a click. It carries the posting rule: agents post messages to people on the user's behalf only through a skill built for that kind of posting (today `github-pr` and `drive-pr`), and where no skill covers the target they draft the message for the user instead. Adding a posting skill is what grants the permission, so the rule itself needs no edit per target.
+- **`herdr.md`** says to use `hc` when running inside Herdr, so agents and slow commands show where the user can see and steer them, and points at `hc --skill`, herdr-core's own manual, rather than restating it, so it stays current as Herdr changes.
 - **`posting-attribution.md`** is the attribution line every posting skill puts on what it posts. Each one renders it with `includeTemplate` piped through `trim` (see `dot_agents/skills/github-pr/AGENTS.md`), so the line stays in one place.
 - **`codex.md`** holds Codex-only rules; its reasons are in `dot_codex/README.md`.
 - **`claude-code.md`** holds Claude Code mechanics that would be noise elsewhere, described below.
