@@ -18,7 +18,14 @@ Follow the guide's Starting work, then keep going until every PR has merged or c
 
 A pass: start the tasks that are ready, handle what the running agents report, land each reviewed task on its PR branch, then look again. Run up to three tasks at once when they look independent, judging from the code with `touches` as a hint. Wait for reports; they wake the session, so don't poll.
 
-In Herdr (`$HC_TERMINAL_ID` is set), start every agent, reviewers included, as your `hc` sub-agent so it shows nested under you, and tell it in its brief to report with `hc send` to your address. A task agent's start command is `hc run --bg --rm --name <agent name> --cwd <main checkout> -- env WT_BASE=<PR branch> claude --worktree <task branch> --name <agent name> "<brief>"`. Label yourself with the plan, `hc label $HC_TERMINAL_ID plan.driver=<plan>`, where `<plan>` is the folder `plan-store path` prints or the plan page's link, so the plan mod's Go to driver button finds you, and clear it (`plan.driver=`) when you stop. An `hc kill` that answers `not_found` means the agent had already ended.
+## In Herdr
+
+When `$HC_TERMINAL_ID` is set and `hc` is available, run the work as Herdr agents so the user sees it as a tree: each task agent under you, and each review under the task it reviews. Your address is `$HC_TERMINAL_ID`'s value, such as `t12`; write it out literally in commands. Every brief tells the agent to report with `hc send <your address>`.
+
+- **Task agents** are your children: `hc run --bg --rm --parent <your address> --name <agent name> --cwd <main checkout> -- env WT_BASE=<PR branch> claude --worktree <task branch> --name <agent name> "<brief>"`. A fix round's agent starts the same way.
+- **Reviews** are started by you, as children of the task agent: `hc run --bg --rm --no-notify --parent <task agent address> --name <agent name>-review --cwd <task worktree> -- claude --name <agent name>-review "<review brief>"`. `--no-notify` keeps notes about the reviewer from interrupting the implementer. It isn't your child, so wait on it with `hc wait <reviewer address>` alongside your other waits, and end it with `hc kill` once you have its findings. Start a new one for each round.
+- **Your label**: `hc label $HC_TERMINAL_ID plan.driver=<plan>`, where `<plan>` is the folder `plan-store path` prints or the plan page's link, so the plan mod's Go to driver button finds you. Clear it (`plan.driver=`) when you stop.
+- An `hc kill` that answers `not_found` means the agent had already ended.
 
 ## Branches and worktrees
 

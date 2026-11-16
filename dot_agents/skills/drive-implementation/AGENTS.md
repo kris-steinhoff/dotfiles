@@ -19,7 +19,7 @@ Driving a PR is its own skill, `drive-pr`, because it is just as useful for a PR
 
 ## Herdr
 
-In Herdr every agent is an `hc` sub-agent of the driver, so the Agents list nests task agents and reviewers under it, and herdr-core reports when one blocks or exits. How to use `hc` comes from its own manual (`hc --skill`), which the global instructions point at; the skill adds only the start command that gives a task agent its own worktree, and the `plan.driver` label the plan mod's Go to driver button looks for (`dot_config/herdr-app/AGENTS.md`).
+In Herdr the work runs as a tree the owner can follow in the Agents list: task agents are the driver's `hc` children, and each review is a child of the task agent it reviews. The driver still starts every review and receives its findings, because it decides what goes back to the implementer, and an implementer that started its own reviewer could steer the review; `--parent` lets the driver start it under the task agent anyway. `--no-notify` keeps herdr-core's notes about the reviewer out of the implementer's input, so the driver waits on the reviewer by address, since it isn't the driver's child. How to use `hc` comes from its own manual (`hc --skill`), which the global instructions point at; the skill adds only the start command that gives a task agent its own worktree, and the `plan.driver` label the plan mod's Go to driver button looks for (`dot_config/herdr-app/AGENTS.md`).
 
 ## Resuming
 
