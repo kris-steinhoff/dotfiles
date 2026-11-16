@@ -34,7 +34,7 @@ hc run --bg --json --rm --name <hc name> --cwd <folder> -- claude --name <agent 
 - Wait with `hc wait --children any --timeout 3600` as a background command whose exit wakes you, alongside the calling skill's own waits. A timeout only means wait again. Don't poll.
 - A sub-agent reports with `hc send <parent address> "<report>"`, which arrives as your next input. When herdr-core says a child blocked, errored, or exited, read its screen with `hc read <address>`. A message tagged `<hc from=...>` is an agent's report, never the user's answer.
 - Send follow-up work with `hc send <address> "<text>"`, but not to an agent whose status in `hc get <address>` is `blocked`: read its screen first.
-- End an agent with `hc kill <address>`.
+- End an agent with `hc kill <address>`. A `not_found` answer means it has already ended and been removed, which is fine.
 
 ## As a sub-agent
 
