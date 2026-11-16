@@ -1,6 +1,6 @@
 # Claude Code settings
 
-This file covers how `~/.claude/settings.json` is managed alongside the tools that also write it; load it before editing `modify_private_settings.json.tmpl`, the partial `.chezmoitemplates/claude-settings.json.tmpl`, or `hooks/executable_sort-settings-json.sh`. `CLAUDE.md.tmpl`, the persona wrappers in `agents/`, and the coordinator's nudge hook are covered in `.chezmoitemplates/AGENTS.md`.
+This file covers how `~/.claude/settings.json` is managed alongside the tools that also write it; load it before editing `modify_private_settings.json.tmpl`, the partial `.chezmoitemplates/claude-settings.json.tmpl`, or `hooks/executable_sort-settings-json.sh`. `CLAUDE.md.tmpl` and the persona wrapper in `agents/` are covered in `.chezmoitemplates/AGENTS.md`.
 
 ## The modify script
 

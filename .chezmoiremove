@@ -257,3 +257,22 @@
 # these the old mods linger on machines that applied them.
 .config/herdr-app/mods/drive
 .config/herdr-app/mods/drive-tabs
+
+# The skills bankruptcy of 2026-11-15 cut these skills, the coordinator persona,
+# the GitLab helpers, and the delegation section. Without these they linger on
+# machines that applied them.
+.agents/skills/jira
+.claude/skills/jira
+.agents/skills/summarize-jira-ticket
+.claude/skills/summarize-jira-ticket
+.agents/skills/markdown-formatting
+.claude/skills/markdown-formatting
+.agents/skills/implement
+.claude/skills/implement
+.agents/skills/gitlab-push-mr
+.claude/skills/gitlab-push-mr
+.claude/agents/coordinator.md
+.claude/hooks/coordinator-delegation-nudge.sh
+.codex/coordinator.config.toml
+.local/bin/mr-review
+.local/bin/git-create-draft-mr

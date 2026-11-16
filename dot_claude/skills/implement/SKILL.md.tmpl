@@ -1,7 +1,0 @@
-{{- $model := ternary "opus" "sonnet" (eq (get . "agentBudget") "generous") -}}
-{{- $custom := printf `context: fork
-agent: general-purpose
-background: false
-argument-hint: "<change to implement>"
-model: %s` $model -}}
-{{- includeTemplate "dot_agents/skills/implement/SKILL.md.tmpl" (merge (dict "custom" $custom) .) -}}

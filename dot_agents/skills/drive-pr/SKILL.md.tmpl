@@ -78,7 +78,7 @@ Make the fixes together, then reply to everything you decided in one batch, as d
 Unless the caller makes changes its own way, each change goes like this:
 
 1. Before starting, fetch and fast-forward the head branch. If someone else pushed and your local work has diverged from theirs, stop and ask rather than overwrite anything.
-2. Make the change and run the tests that cover it. Hand substantial work to a subagent with a self-contained brief, such as the `implement` skill, when the harness has one.
+2. Make the change and run the tests that cover it. Hand substantial work to a subagent with a self-contained brief when the harness has one.
 3. Have it reviewed by a reviewer that didn't write it: the `review` skill in a fresh subagent, given the intent and the commits since the last push. Fix its Blockers and review again. A clean merge of the base or a rerun needs no review.
 4. Commit by the repository's conventions and push with a plain `git push`. Batch the fixes for one round of comments into one push, so the PR runs CI once and reviewers get one notification.
 

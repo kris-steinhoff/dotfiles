@@ -1,6 +1,6 @@
 # summarize-github-pr
 
-`summarize-github-pr` shows one PR's metadata in a fixed shape, so a person getting oriented can tell PRs apart at a glance. Any agent can reach for it, and `github-pr` opens every review with it, and `drive-pr` every session it runs directly. It stays general rather than shaped for a caller, to be tuned when a real use needs more. `summarize-jira-ticket` is its Jira counterpart and shares its table.
+`summarize-github-pr` shows one PR's metadata in a fixed shape, so a person getting oriented can tell PRs apart at a glance. Any agent can reach for it, and `github-pr` opens every review with it, and `drive-pr` every session it runs directly. It stays general rather than shaped for a caller, to be tuned when a real use needs more.
 
 ## Getting it printed
 

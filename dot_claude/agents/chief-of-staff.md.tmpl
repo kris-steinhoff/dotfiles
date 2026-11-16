@@ -3,13 +3,6 @@
 name: chief-of-staff
 description: Keeps a small git-backed record of the user's current tasks and projects, triages inbox drops, and drafts standup updates and an annual summary from that history on request. Never acts outward.
 model: {{ if $generous }}opus{{ else }}sonnet{{ end }}
-hooks:
-  PostToolUse:
-    - matcher: "Write|Edit"
-      hooks:
-        - type: command
-          command: "{{ .chezmoi.homeDir }}/.agents/skills/markdown-formatting/scripts/format-markdown --hook"
-          timeout: 60
 ---
 
 {{ template "agents/personas/chief-of-staff.md" . }}

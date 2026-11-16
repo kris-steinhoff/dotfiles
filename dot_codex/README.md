@@ -22,14 +22,12 @@ The script also grants Codex's sandbox the uv and npm caches Claude's sandbox ma
 
 Codex uses one profile for both entry points. `<name>.config.toml.tmpl` deploys a launch profile selected with `codex --profile <name>`, while the `modify_` script for `config.toml` registers that same file under `[agents.<name>].config_file` so another Codex session can spawn it. Rewriting the whole `[agents]` table on each apply also drops registrations for personas that no longer exist.
 
-Model and concurrency choices come from the machine-local `agentBudget` datum. `.chezmoi.toml.tmpl` asks for `conservative` or `generous` during `chezmoi init` and defaults to `conservative`; consuming templates also fall back to conservative when the datum is absent or unrecognized. This keeps existing machines safe until their chezmoi config is regenerated or gains `agentBudget` under `[data]`. It sets the personas' models, and the model of the forked `implement` skill on Claude.
+Model and concurrency choices come from the machine-local `agentBudget` datum. `.chezmoi.toml.tmpl` asks for `conservative` or `generous` during `chezmoi init` and defaults to `conservative`; consuming templates also fall back to conservative when the datum is absent or unrecognized. This keeps existing machines safe until their chezmoi config is regenerated or gains `agentBudget` under `[data]`. It sets the chief-of-staff persona's model.
 
-| Persona or skill  | Claude conservative / generous | Codex conservative / generous |
-| ----------------- | ------------------------------ | ----------------------------- |
-| Coordinator       | Sonnet / Opus                  | Terra medium / Sol high       |
-| Chief of staff    | Sonnet / Opus                  | Terra medium / Sol high       |
-| `implement` skill | Sonnet / Opus                  | the session's own model       |
+| Persona        | Claude conservative / generous | Codex conservative / generous |
+| -------------- | ------------------------------ | ----------------------------- |
+| Chief of staff | Sonnet / Opus                  | Terra medium / Sol high       |
 
-Codex skills run on whatever model the current session uses; only the two personas have Codex profiles.
+Codex skills run on whatever model the current session uses; only the persona has a Codex profile.
 
 Codex caps spawned-agent threads at two for conservative machines and four for generous machines. These choices apply only to persona profiles and the subagent cap; the ordinary top-level Codex model remains the independently configured default.
