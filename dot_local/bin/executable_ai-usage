@@ -10,7 +10,7 @@ environment, then queries their respective usage endpoints. It supports Claude,
 ChatGPT (via Codex), and OpenRouter, and renders whichever limit windows each
 account reports.
 
-On a terminal it refreshes in place until interrupted. `--once` prints a
+On a terminal it refreshes full-screen until interrupted. `--once` prints a
 single snapshot and exits. `--json` prints each provider's raw payload, and
 `--json windows` prints every service's windows in one normalized shape for
 a script that compares them.
@@ -1102,7 +1102,11 @@ def run_live(services: list[str], interval: int) -> None:
     if fd is not None:
         tty.setcbreak(fd)
     try:
-        with Live(console=console, auto_refresh=False, screen=False) as live:
+        # The alternate screen, so every frame repaints the whole screen. Drawn
+        # in place, a resize reflows the previous frame and Rich's cursor-up
+        # redraw misses it, leaving a stale copy behind (Herdr's peek resizes
+        # the terminal as it opens).
+        with Live(console=console, auto_refresh=False, screen=True) as live:
             try:
                 while True:
                     entries = {service: load_service(service, interval, force) for service in services}
