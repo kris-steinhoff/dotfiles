@@ -114,15 +114,6 @@ function checkedLine(queue, checking, next) {
   return `${updated} · next in ${left < 60_000 ? "<1m" : `${Math.ceil(left / 60_000)}m`}`;
 }
 
-// The header's short note beside the refresh control: "Checking…" while a
-// check runs, else how long ago the last one finished. Nothing before the first.
-function checkedNote(queue, checking) {
-  if (checking) return "Checking…";
-  if (!queue?.checked_at) return null;
-  const ago = Date.now() - queue.checked_at;
-  return ago < 60_000 ? "Checked just now" : `Checked ${span(ago)} ago`;
-}
-
 // Orders for the list; each compares two [repo, item] pairs.
 const opened = ([, item]) => Date.parse(item.created_at) || 0;
 const lines = ([, item]) => (item.size?.additions ?? 0) + (item.size?.deletions ?? 0);
@@ -731,13 +722,11 @@ export default class Reviews extends View {
     const shortName = shortNamer(repos);
     const quiet = muted();
     const count = listedCount();
-    const checkedText = checkedNote(queue, checking);
 
     const header = h_flex().px(16).h(41).pt(14).pb(5).flex_none().gap(6).items_center()
       .child(div().text_size(11.5).font_medium().text_color(t.dim).child("Reviews"))
       .child(div().text_size(11.5).text_color(count ? t.foreground : t.dim).child(String(count)))
       .child(div().flex_1())
-      .when(Boolean(checkedText), (el) => el.child(div().min_w(0).truncate().text_size(11.5).text_color(t.muted).child(checkedText)))
       .child(this.headerControl(t, "rv-refresh", "↻", checkedLine(queue, checking, shared(NEXT_KEY)),
         () => setShared(REFRESH_KEY, Date.now()), { on: checking }))
       .child(this.headerControl(t, "rv-more", "⋯", "Sort, or review all", () => {
