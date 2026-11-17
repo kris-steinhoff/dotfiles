@@ -18,7 +18,7 @@ The argument is a plan: a directory holding `meta/guide.json`, a slug with a dir
 
 Follow the guide's Starting work, then keep going until every PR has merged or closed, or nothing can move without a person. Don't stop to report progress, and don't ask about anything the plan, the code, or the repository's instructions settle.
 
-A pass: start the tasks that are ready, handle what the running agents report, land each reviewed task on its PR branch, then look again. Run up to three tasks at once when they look independent, judging from the code with `touches` as a hint. Wait with `hc wait --children any --timeout 3600` as a background command, alongside the waits below; a report or a child's state change wakes you, so don't poll.
+A pass: start the tasks that are ready, handle what the running agents report, land each reviewed task on its PR branch, then look again. Run up to three tasks at once when they look independent, judging from the code with `touches` as a hint. Wait with `hc wait --children any --timeout 3600` as a background command, alongside the waits below; a report or a child's state change wakes you, so don't poll. Keep one of each wait running: a wake from anything else, such as the user's reply or another wait ending, leaves the rest running, so start a wait again only after it has exited.
 
 Label yourself with the plan, `hc label <your address> plan.driver=<plan>`, where `<plan>` is the folder `plan-store path` prints or the plan page's link, so the plan mod's Go to driver button finds you. Clear it (`plan.driver=`) when you stop.
 
