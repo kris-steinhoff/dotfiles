@@ -189,6 +189,12 @@ alias pcra="pre-commit run --all-files"
 # inside fenced blocks and a width forced here would reflow that too.
 alias mdfmt='npx --yes prettier@3.3.3 --prose-wrap never --write'
 
+# chezmoi
+alias ca='chezmoi apply'
+alias cav='chezmoi apply --verbose'
+alias cu='chezmoi update'
+alias cuv='chezmoi update --verbose'
+
 # Docker
 alias dc='docker compose'
 alias dco='docker compose'
