@@ -416,7 +416,6 @@ export default class Reviews extends View {
     this.scanned = false; // whether this copy has read the queue itself since it started
     this.closing = new Set(); // sessions being closed
     this.selected = null; // "owner/repo#n"
-    this.pendingPeek = null; // a new session to peek at once Herdr lists it
     this.shown = null; // the block's height when the copy last looked
     this.pending = []; // { px, at }: resizes asked for and not yet shown, oldest first
     this.kept = null; // a height asked for that Herdr held at another; not asked again
@@ -474,12 +473,6 @@ export default class Reviews extends View {
       this.handledStartAll = all;
       for (const [repo, item] of startablePairs()) this.start(repo, item, cx, { stay: true });
     }
-    // A session just started is peeked at once Herdr lists it.
-    const pending = this.pendingPeek;
-    if (pending && terminals().some((t) => t.address === pending)) {
-      this.pendingPeek = null;
-      cx.spawn(async () => peek(pending));
-    }
   }
 
   // Tells me when a session turns to needing me or finishes, since sessions
@@ -526,8 +519,7 @@ export default class Reviews extends View {
     if (!stay) this.selected = `${repo.name}#${item.number}`;
     cx.spawn(async (cx) => {
       try {
-        const address = await startSession(repo, item);
-        if (address && !stay) this.pendingPeek = address;
+        await startSession(repo, item);
       } catch (e) {
         notify({ title: `Couldn't start #${item.number}`, body: String(e?.message ?? e), level: "error" });
       }
