@@ -6,12 +6,17 @@
   written, since a file holding only these keys would replace every default.
   cmd-shift-o opens the plan mod's picker of local plans. cmd-m and cmd-a are
   Herdr 0.1.16 defaults (minimize, select all in a terminal) that an edited
-  file doesn't get on its own.
+  file doesn't get on its own. Rename tab and rename space move from F2 and
+  shift-F2 (which need Fn on a MacBook) to cmd-e and cmd-shift-e; the F2
+  entries are dropped so they don't linger beside the new ones.
 */ -}}
 {{- if .chezmoi.stdin -}}
 {{- $k := fromJson .chezmoi.stdin -}}
 {{- $k = setValueAtPath "global.cmd-shift-o" "mod.open:plan" $k -}}
 {{- $k = setValueAtPath "global.cmd-m" "window.minimize" $k -}}
 {{- $k = setValueAtPath "terminal.cmd-a" "terminal.select_all" $k -}}
+{{- $k = set $k "global" (omit (index $k "global") "f2" "shift-f2") -}}
+{{- $k = setValueAtPath "global.cmd-e" "tab.rename" $k -}}
+{{- $k = setValueAtPath "global.cmd-shift-e" "space.rename" $k -}}
 {{ toPrettyJson "  " $k -}}
 {{- end -}}
