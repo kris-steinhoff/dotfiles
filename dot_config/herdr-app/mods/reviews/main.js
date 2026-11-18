@@ -261,6 +261,14 @@ function listed(item, session) {
 const muted = () => new Set(shared(MUTED_KEY) ?? []);
 const autoMuted = () => shared(AUTO_MUTED_KEY) ?? {};
 
+// A muted PR folds away, except while its session waits on me: a session I
+// started that needs me always shows, so the Dock badge never counts a row
+// hidden in the fold. It folds again once the session stops waiting.
+function folded(repo, item, quiet = muted()) {
+  return quiet.has(`${repo.name}#${item.number}`)
+    && sessionFor(repo.name, item.number)?.status !== "blocked";
+}
+
 // By hand, from a row's menu. Either way the mute is no longer the automatic one.
 function setMuted(key, on) {
   const keys = muted();
@@ -343,11 +351,11 @@ function listedPairs(repos) {
     .sort(sortOf().compare);
 }
 
-// What the sidebar header and rail count: listed PRs that aren't muted.
+// What the sidebar header and rail count: listed PRs that aren't folded.
 function listedCount() {
   const quiet = muted();
   return listedPairs(shared(QUEUE_KEY)?.repos ?? [])
-    .filter(([repo, item]) => !quiet.has(`${repo.name}#${item.number}`)).length;
+    .filter(([repo, item]) => !folded(repo, item, quiet)).length;
 }
 
 // What Review all starts: new, unmuted PRs without a session.
@@ -727,7 +735,7 @@ export default class Reviews extends View {
       }));
 
     const pairs = listedPairs(repos);
-    const isQuiet = ([repo, item]) => quiet.has(`${repo.name}#${item.number}`);
+    const isQuiet = ([repo, item]) => folded(repo, item, quiet);
     const rows = pairs.filter((p) => !isQuiet(p)).map(([repo, item]) => this.sidebarRow(t, repo, item, shortName));
     const mutedPairs = pairs.filter(isQuiet);
 
