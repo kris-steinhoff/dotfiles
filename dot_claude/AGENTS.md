@@ -25,6 +25,10 @@ The partial is a template for one reason: a machine can add its own sandbox writ
 
 `sandbox.excludedCommands` lets a few tools run outside the sandbox when called bare. Herdr's two command-line tools, `hc` and `herdr-app`, are there because agents in Herdr start sub-agents and set terminal labels with them (the global instructions' Herdr section), and inside the sandbox both fail with `Operation not permitted`: `hc` can't open its core lock under `~/.local/state/herdr-core`, and `herdr-app` can't reach `~/.config/herdr-app/herdr-app.sock` (`herdr-app check` hangs rather than failing). Excluding them means a session can start any program outside the sandbox through `hc run` or `herdr-app do`. I accepted that, since sessions default to auto mode (`permissions.defaultMode` in the partial), which still reviews each call.
 
+## Certificate checks in the sandbox
+
+`sandbox.network.allowMachLookup` includes `com.apple.trustd.agent`, the macOS trust service, so Go tools such as `gh` can verify TLS certificates inside the sandbox. Go checks a certificate against the file in `SSL_CERT_FILE` when that is set, and otherwise asks trustd. A machine whose shell profile exports `SSL_CERT_FILE` (a corporate proxy's CA bundle, say) hides the problem in sessions started from that shell. A session started by `hc run` gets herdr-core's launchd environment instead, which never reads the profile, so without this entry every `gh` call there failed with `x509: OSStatus -26276`. Allowing the lookup gives sandboxed commands one more system service to talk to, which I accepted so that certificate checks don't depend on how a session was started.
+
 ## Herdr's agent-state hook
 
 The Herdr app needs no hook here: agents report their status to herdr-core through the terminal itself (OSC 7501, per the app's own `~/.config/herdr-app/AGENTS.md`), so this machine has neither the hook file nor its `settings.json` entry. The rest of this section is about the terminal Herdr.
