@@ -166,8 +166,8 @@ export class PlanView {
 
   // --- Header -------------------------------------------------------------------
 
-  // Pinned above the scrolling column. `side`: the graph has its own column.
-  header(t, plan, side) {
+  // Pinned above the scrolling column.
+  header(t, plan) {
     const r = plan.run;
     const count = progress(plan);
     const share = (n) => (count.live ? (n / count.live) * 100 : 0);
@@ -177,19 +177,16 @@ export class PlanView {
         .child(v_flex().flex_1().min_w(0).gap(3)
           .child(div().text_size(20).font_semibold().line_height(1.25).child(r.title || "Plan"))
           .child(div().text_size(12).text_color(t.dim).child(["Implementation plan", r.slug].filter(Boolean).join(" · "))))
-        .child(this.chip(t, RUN_STATUS, runStatus(plan), true)))
+        .child(h_flex().flex_none().gap(8).items_center()
+          .when(Boolean(d), (el) => el.child(this.button(t, "go-driver", "Go to driver", () => this.goToDriver(d), d.blocked)
+            .when(d.blocked, (el) => el.tooltip("The driver is waiting on you."))))
+          .child(this.chip(t, RUN_STATUS, runStatus(plan), true))))
       .when(count.live > 0, (el) => el
         .child(h_flex().h(6).w_full().rounded(3).overflow_hidden().bg(t.border)
           .child(div().h_full().w(`${share(count.merged)}%`).bg(t.done))
           .child(div().h_full().w(`${share(count.in_progress)}%`).bg(t.working)))
         .child(div().text_size(12).text_color(t.muted)
-          .child(`${count.merged} done, ${count.in_progress} in progress, of ${count.live} tasks`))
-        .when(!side, (el) => el
-          .child(h_flex().child(this.button(t, "graph-toggle", `${this.graphOpen ? "Hide" : "Show"} task dependency graph`,
-            (cx) => { this.graphOpen = !this.graphOpen; cx.notify(); })))))
-      .when(Boolean(d), (el) => el.child(h_flex().gap(8).items_center()
-        .child(this.button(t, "go-driver", "Go to driver", () => this.goToDriver(d), d.blocked))
-        .when(d.blocked, (el) => el.child(div().text_size(12.5).text_color(t.blocked).child("The driver is waiting on you.")))));
+          .child(`${count.merged} done, ${count.in_progress} in progress, of ${count.live} tasks`)));
   }
 
   // --- Handover and questions ---------------------------------------------------
@@ -347,9 +344,14 @@ export class PlanView {
     const out = [];
     const add = (el, gap = 24) => out.push([el, gap]);
     this.cardIndex = new Map();
+    // Without a column of its own, the graph opens at the top of this one.
+    if (!side && tasks.length) {
+      add(h_flex().child(this.button(t, "graph-toggle", `${this.graphOpen ? "Hide" : "Show"} task dependency graph`,
+        (cx) => { this.graphOpen = !this.graphOpen; cx.notify(); })));
+    }
     if (!side && this.graphOpen && tasks.length) {
       add(div().id("graph-inline").w_full().overflow_x_scrollbar()
-        .on_click((_e, cx) => { this.selected = null; cx.notify(); }).child(this.graph(t, plan)));
+        .on_click((_e, cx) => { this.selected = null; cx.notify(); }).child(this.graph(t, plan)), 12);
     }
     if (r.handover) add(this.handover(t, r.handover));
     add(this.attention(t, plan));
@@ -489,7 +491,7 @@ export class PlanView {
     const clear = (_e, cx) => { this.selected = null; cx.notify(); };
     return root
       .child(div().w_full().flex_none().border_b(1).border_color(t.border)
-        .child(frame(v_flex()).pt(18).pb(14).child(this.header(t, plan, side))))
+        .child(frame(v_flex()).pt(18).pb(14).child(this.header(t, plan))))
       .child(frame(h_flex()).flex_1().min_h(0).gap(side ? GAP : 0)
         .when(side, (el) => el.child(v_flex().id("plan-graph").flex_none().w(GRAPH_W).h_full().overflow_y_scrollbar()
           .pt(20).pb(32).gap(12).on_click(clear)
