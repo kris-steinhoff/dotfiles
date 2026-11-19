@@ -169,7 +169,7 @@ export default class AiUsage extends View {
 
   tooltip(s, ws, now) {
     const lines = ws.map((w) => {
-      const parts = [`${w.label}: ${Math.round(w.used_percent)}%`];
+      const parts = [`${w.label}: ${Math.floor(w.used_percent)}%`];
       const a = ahead(w);
       if (a !== null && a * w.window_seconds >= 60) parts.push(`on pace again in ${duration(a * w.window_seconds * 1000)}`);
       const reset = untilReset(w.resets_at, now);

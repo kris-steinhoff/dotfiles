@@ -601,9 +601,14 @@ def amount_text(w: Window) -> Text:
         if w.show_remaining:
             return Text(f"${limit - used:,.2f} left", style=f"bold {color}")
         return Text(f"${used:,.2f} / ${limit:,.2f}", style=color)
+    # Usage rounds down, so a limit never looks more spent than it is
+    # ($537.87 of $1,000 is 53%), and matches the Herdr mod's tooltip. "Left"
+    # is the rest, so the two always add up to 100. Rounding to 4 places first
+    # keeps float noise like 28.999999999999996 from flooring to 28.
+    used = math.floor(round(w.pct, 4))
     if w.show_remaining:
-        return Text(f"{100.0 - w.pct:.0f}% left", style=f"bold {color}")
-    return Text(f"{w.pct:.0f}% used", style=f"bold {color}")
+        return Text(f"{100 - used}% left", style=f"bold {color}")
+    return Text(f"{used}% used", style=f"bold {color}")
 
 
 def reset_text(resets_at: str | None) -> Text:
@@ -1153,7 +1158,10 @@ def windows_json(service: str, entry: Cached) -> dict:
             windows.append({
                 "key": w.key,
                 "label": w.label,
-                "used_percent": round(w.pct, 1),
+                # Enough places that the Herdr mod's tooltip, which rounds down
+                # as amount_text does, never sees 53.97 as 54.0, but still
+                # rounded so float noise doesn't floor 29% to 28.
+                "used_percent": round(w.pct, 4),
                 "window_seconds": w.window_seconds,
                 "resets_at": w.resets_at,
                 "ahead_of_pace": round(ahead, 4) if ahead is not None else None,
