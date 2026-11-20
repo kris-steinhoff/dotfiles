@@ -5,13 +5,14 @@
 // changes. Questions are answered in the driver's session, so an open one
 // offers a way there. The driver is the live terminal whose `plan.driver`
 // label is this plan's folder, which /drive-implementation has it set.
-import { div, PathBuilder } from "gpui-kit";
-import { h_flex, v_flex, ScrollHandle } from "gpui-base";
+import { div, PathBuilder, svg } from "gpui-kit";
+import { h_flex, v_flex, ScrollHandle, TextView } from "gpui-base";
 import { exec, notify, run, settings, terminals, theme, watchFolder } from "herdr";
 import {
   CHECK_MARK, G, PR_STATUS, RUN_STATUS, TASK_STATUS, after, ago, arr, byLine, graphLayout, journal, loadPlan, openQuestions,
   prChain, prName, prNumber, progress, runStatus, sortedPrs, sortedTasks, waits, wrapTitle,
 } from "./plan.js";
+import { projectRoot, shortPath } from "./find.js";
 
 const REFRESH_MS = 30_000; // also keeps the "5 min ago" times current
 const NARROW = 640; // below this, a task's field names sit above their values
@@ -21,6 +22,9 @@ const GAP = 40; // between the graph's column and the plan's
 const SIDE_BY_SIDE = 1100; // from this width the graph has its own column beside the plan
 const FLASH_MS = 1200; // how long a card stays highlighted after its id is picked in the graph
 const TITLE_CHARS = 17; // a graph node's title line
+const COPIED_MS = 1500; // how long the copy button shows its check
+
+const escape = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 export class PlanView {
   // `demo`: a plan to show instead of reading `dir` (DEMO in main.js).
@@ -36,11 +40,17 @@ export class PlanView {
     this.flash = null; // { id, on }: the card highlighted after a jump from the graph
     this.cardIndex = new Map(); // task id -> its card's place in the scrolling column
     this.width = 1000;
+    this.copied = null; // set while the copy button shows its check
+    this.shown = demo ? `./${dir.split("/").slice(-2).join("/")}` : shortPath(dir, null); // the path the header shows
   }
 
   init(cx) {
     this.scroll = ScrollHandle.new();
     if (this.demo) return;
+    cx.spawn(async (cx) => {
+      this.shown = shortPath(this.dir, await projectRoot(this.dir));
+      cx.notify();
+    });
     this.reload(cx);
     cx.timer.every(REFRESH_MS, (cx) => this.reload(cx));
     cx.spawn(async (cx) => {
@@ -87,6 +97,19 @@ export class PlanView {
     else run("agent.focus", { terminal: d.address });
   }
 
+  copyPath(cx) {
+    cx.write_to_clipboard(this.dir);
+    const copied = {};
+    this.copied = copied;
+    cx.notify();
+    cx.spawn(async (cx) => {
+      await cx.sleep(COPIED_MS);
+      if (this.copied !== copied) return;
+      this.copied = null;
+      cx.notify();
+    });
+  }
+
   open(url) {
     if (this.demo) notify({ title: "Demo", body: `Would open ${url}` });
     else exec("open", [url]);
@@ -123,16 +146,23 @@ export class PlanView {
       .on_click((_e, cx) => { cx.stop_propagation(); this.open(url); }).child(text);
   }
 
-  // Paragraphs, as the guide writes long fields: blank lines between them.
-  prose(t, text, color = t.foreground) {
-    const paras = String(text ?? "").split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
-    return v_flex().gap(8).text_color(color).line_height(1.5).children(paras.map((p) => div().child(p)));
+  // Text that can be selected and copied. Plain gpui-kit text can't be, so
+  // anything worth copying goes through a TextView, which takes its font, size
+  // and color from its parent. It wraps rather than truncating.
+  text(id, s) {
+    return TextView.html(id, `<span>${escape(s)}</span>`).selectable(true);
   }
 
-  bullets(t, items, { mono = false } = {}) {
-    return v_flex().gap(4).children(items.map((s) => h_flex().gap(8).items_start()
+  // Paragraphs, as the guide writes long fields: blank lines between them.
+  prose(t, id, text, color = t.foreground) {
+    const paras = String(text ?? "").split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+    return v_flex().gap(8).text_color(color).line_height(1.5).children(paras.map((p, i) => div().child(this.text(`${id}-${i}`, p))));
+  }
+
+  bullets(t, id, items, { mono = false } = {}) {
+    return v_flex().gap(4).children(items.map((s, i) => h_flex().gap(8).items_start()
       .child(div().flex_none().text_color(t.dim).child("•"))
-      .child((mono ? this.mono(t) : div()).flex_1().min_w(0).line_height(1.45).child(String(s)))));
+      .child((mono ? this.mono(t) : div()).flex_1().min_w(0).line_height(1.45).child(this.text(`${id}-${i}`, s)))));
   }
 
   time(t, id, iso) {
@@ -175,8 +205,14 @@ export class PlanView {
     return v_flex().gap(10)
       .child(h_flex().gap(12).items_start()
         .child(v_flex().flex_1().min_w(0).gap(3)
-          .child(div().text_size(20).font_semibold().line_height(1.25).child(r.title || "Plan"))
-          .child(div().text_size(12).text_color(t.dim).child(["Implementation plan", r.slug].filter(Boolean).join(" · "))))
+          .child(div().text_size(20).font_semibold().line_height(1.25).child(this.text("title", r.title || "Plan")))
+          .child(h_flex().gap(4).items_center().text_size(12).text_color(t.dim)
+            .child(div().min_w(0).child(this.text("subtitle", `Implementation plan · ${this.shown}`)))
+            .child(div().id("copy-path").flex_none().size(18).flex().items_center().justify_center().rounded(4).cursor_pointer()
+              .hover((s) => s.bg(t.hover).text_color(t.foreground))
+              .tooltip(this.copied ? "Copied" : "Copy full path")
+              .on_click((_e, cx) => { cx.stop_propagation(); this.copyPath(cx); })
+              .child(svg(this.copied ? "mods/workspace-chrome/check.svg" : "mods/plan/copy.svg").size(12)))))
         .child(h_flex().flex_none().gap(8).items_center()
           .when(Boolean(d), (el) => el.child(this.button(t, "go-driver", "Go to driver", () => this.goToDriver(d), d.blocked)
             .when(d.blocked, (el) => el.tooltip("The driver is waiting on you."))))
@@ -193,36 +229,37 @@ export class PlanView {
 
   handover(t, h) {
     return this.section(t, "Ready for your review", null, this.card(t, "handover")
-      .when(Boolean(h.summary), (el) => el.child(this.prose(t, h.summary)))
+      .when(Boolean(h.summary), (el) => el.child(this.prose(t, "handover-summary", h.summary)))
       .when(Boolean(h.branch || h.pr_url), (el) => el.child(h_flex().gap(12).flex_wrap().text_size(12).text_color(t.muted)
-        .when(Boolean(h.branch), (el) => el.child(this.mono(t).child(h.branch)))
+        .when(Boolean(h.branch), (el) => el.child(this.mono(t).child(this.text("handover-branch", h.branch))))
         .when(Boolean(h.pr_url), (el) => el.child(this.link(t, "handover-pr", h.pr_url, h.pr_url)))))
       .children([["look_first", "Look at first"], ["risks", "Least sure of"]].filter(([k]) => arr(h[k]).length)
-        .map(([k, label]) => v_flex().gap(4).child(this.label(t, label)).child(this.bullets(t, arr(h[k]))))));
+        .map(([k, label]) => v_flex().gap(4).child(this.label(t, label)).child(this.bullets(t, `handover-${k}`, arr(h[k]))))));
   }
 
   // A question's card, open (on Needs attention) or answered (in the journal).
   question(t, q, open) {
     const opts = arr(q.options);
-    return this.card(t, `q-${q.id}${open ? "" : "-closed"}`)
+    const id = `q-${q.id}${open ? "" : "-closed"}`;
+    return this.card(t, id)
       .when(open, (el) => el.border_color(t.blocked + "80"))
       .child(h_flex().gap(10).items_start()
-        .child(div().flex_1().min_w(0).font_semibold().line_height(1.35).child(q.title || q.id))
+        .child(div().flex_1().min_w(0).font_semibold().line_height(1.35).child(this.text(`${id}-title`, q.title || q.id)))
         .child(this.mono(t).flex_none().text_color(t.dim).child(q.id + (q.task ? ` · ${q.task}` : ""))))
-      .when(Boolean(q.context), (el) => el.child(this.prose(t, q.context, t.muted)))
-      .when(opts.length > 0, (el) => el.child(v_flex().gap(4).children(opts.map((o) => {
+      .when(Boolean(q.context), (el) => el.child(this.prose(t, `${id}-context`, q.context, t.muted)))
+      .when(opts.length > 0, (el) => el.child(v_flex().gap(4).children(opts.map((o, i) => {
         const rec = o.label === q.recommendation;
         return h_flex().gap(8).items_start()
           .child(div().flex_none().text_color(rec ? t.accent : t.dim).child(rec ? "★" : "•"))
           .child(v_flex().flex_1().min_w(0).gap(1)
             .child(div().text_color(rec ? t.foreground : t.muted).when(rec, (el) => el.font_medium())
-              .child(o.label + (rec ? " (recommended)" : "")))
-            .when(Boolean(o.cost), (el) => el.child(div().text_size(12).text_color(t.dim).child(o.cost))));
+              .child(this.text(`${id}-option-${i}`, o.label + (rec ? " (recommended)" : ""))))
+            .when(Boolean(o.cost), (el) => el.child(div().text_size(12).text_color(t.dim).child(this.text(`${id}-option-${i}-cost`, o.cost)))));
       }))))
-      .when(!opts.length && Boolean(q.recommendation), (el) => el.child(div().text_color(t.muted).child(`Recommended: ${q.recommendation}`)))
-      .when(!open, (el) => el.child(this.prose(t, `${q.status === "withdrawn" ? "Withdrawn" : "Answer"}: ${q.answer || ""}`)))
+      .when(!opts.length && Boolean(q.recommendation), (el) => el.child(div().text_color(t.muted).child(this.text(`${id}-recommendation`, `Recommended: ${q.recommendation}`))))
+      .when(!open, (el) => el.child(this.prose(t, `${id}-answer`, `${q.status === "withdrawn" ? "Withdrawn" : "Answer"}: ${q.answer || ""}`)))
       .child(h_flex().gap(12).text_size(12).text_color(t.dim)
-        .when(open && Boolean(q.blocks), (el) => el.child(div().flex_1().min_w(0).child(`Holding up: ${q.blocks}`)))
+        .when(open && Boolean(q.blocks), (el) => el.child(div().flex_1().min_w(0).child(this.text(`${id}-blocks`, `Holding up: ${q.blocks}`))))
         .when(!(open && q.blocks), (el) => el.child(div().flex_1()))
         .child(this.time(t, `q-${q.id}-${open ? "asked" : "answered"}`, open ? q.asked_at : q.answered_at)));
   }
@@ -233,8 +270,8 @@ export class PlanView {
     return this.section(t, "Needs attention", open.length || null,
       open.length === 0 ? this.quiet(t, "Nothing needs attention right now.")
         : h_flex().gap(10).items_center().text_size(12.5).text_color(t.muted)
-          .child(div().flex_1().min_w(0).child(d ? "The driver asks these in its own session; answer them there."
-            : `The driver asks these in its own session; none is running. /drive-implementation ${this.dir.split("/").pop()} starts one.`))
+          .child(div().flex_1().min_w(0).child(this.text("attention-note", d ? "The driver asks these in its own session; answer them there."
+            : `The driver asks these in its own session; none is running. /drive-implementation ${this.dir.split("/").pop()} starts one.`)))
           .when(Boolean(d), (el) => el.child(this.button(t, "go-driver-ask", "Answer in the driver", () => this.goToDriver(d), true))),
       ...open.map((q) => this.question(t, q, true)));
   }
@@ -243,13 +280,13 @@ export class PlanView {
 
   doneWhen(t, checks) {
     if (!checks.length) return this.quiet(t, "Not written yet.");
-    return v_flex().gap(8).children(checks.map((c) => {
+    return v_flex().gap(8).children(checks.map((c, i) => {
       const [mark, tone] = CHECK_MARK[c.state] ?? CHECK_MARK.unchecked;
       return h_flex().gap(10).items_start()
         .child(div().flex_none().w(14).font_semibold().text_color(this.tone(t, tone)).child(mark))
         .child(v_flex().flex_1().min_w(0).gap(2)
-          .child(div().line_height(1.45).child(c.text ?? ""))
-          .when(Boolean(c.note), (el) => el.child(div().text_size(12).text_color(t.dim).line_height(1.4).child(c.note))));
+          .child(div().line_height(1.45).child(this.text(`done-${i}`, c.text ?? "")))
+          .when(Boolean(c.note), (el) => el.child(div().text_size(12).text_color(t.dim).line_height(1.4).child(this.text(`done-${i}-note`, c.note)))));
     }));
   }
 
@@ -260,7 +297,7 @@ export class PlanView {
     const ref = (p) => div().text_color(["merged", "closed"].includes(p.status) ? t.dim : t.accent).child(prName(p));
     return this.section(t, "Pull requests", prs.length > 1 ? prs.length : null,
       ...(chain ? [h_flex().gap(6).flex_wrap().items_center().text_size(12.5)
-        .child(this.mono(t).text_color(t.muted).child(chain.base))
+        .child(this.mono(t).text_color(t.muted).child(this.text("pr-chain-base", chain.base)))
         .children(chain.chain.flatMap((p) => [div().text_color(t.dim).child("←"), ref(p)]))] : []),
       ...prs.map((p) => {
         const number = prNumber(p);
@@ -269,15 +306,15 @@ export class PlanView {
           .when(Boolean(p.summary), (el) => el.tooltip(p.summary))
           .child(h_flex().gap(10).items_center()
             .when(Boolean(number), (el) => el.child(this.link(t, `pr-${p.id}-link`, number, p.url)))
-            .child(div().flex_1().min_w(0).font_semibold().truncate().child(p.title || ""))
+            .child(div().flex_1().min_w(0).font_semibold().child(this.text(`pr-${p.id}-title`, p.title || "")))
             .child(this.chip(t, PR_STATUS, p.status)))
           .when(["open", "draft"].includes(p.status) && Boolean(p.waiting_on), (el) => el.child(h_flex().gap(8).items_start().text_size(12.5)
             .child(this.label(t, "Waiting on").flex_none())
-            .child(div().flex_1().min_w(0).text_color(t.blocked).child(p.waiting_on))))
+            .child(div().flex_1().min_w(0).text_color(t.blocked).child(this.text(`pr-${p.id}-waiting`, p.waiting_on)))))
           .when(Boolean(p.branch || p.base), (el) => el.child(h_flex().gap(12).flex_wrap().text_size(12).text_color(t.dim)
-            .when(Boolean(p.branch), (el) => el.child(this.mono(t).child(p.branch)))
+            .when(Boolean(p.branch), (el) => el.child(this.mono(t).child(this.text(`pr-${p.id}-branch`, p.branch))))
             .when(Boolean(below), (el) => el.child(h_flex().gap(4).child("stacks on").child(ref(below))))
-            .when(!below && Boolean(p.base), (el) => el.child(h_flex().gap(4).child("based on").child(this.mono(t).text_color(t.muted).child(p.base))))));
+            .when(!below && Boolean(p.base), (el) => el.child(h_flex().gap(4).child("based on").child(this.mono(t).text_color(t.muted).child(this.text(`pr-${p.id}-base`, p.base)))))));
       }));
   }
 
@@ -296,19 +333,20 @@ export class PlanView {
     const pr = task.pr ? plan.prs.find((p) => p.id === task.pr) : null;
     const deps = after(plan, task);
     const epics = arr(task.epics);
+    const id = `t-${task.id}`;
     const fields = [
       epics.length && this.field(t, epics.length > 1 ? "Epics" : "Epic", v_flex().gap(2).children(epics.map((k) =>
         h_flex().gap(4).child(r.jira_browse_url ? this.link(t, `t-${task.id}-epic-${k}`, k, r.jira_browse_url + k) : div().child(k))
           .when(Boolean(r.epics?.[k]), (el) => el.child(div().text_color(t.dim).child(`· ${r.epics[k]}`)))))),
-      task.approach && this.field(t, "Approach", this.prose(t, task.approach)),
-      arr(task.touches).length && this.field(t, "Likely touches", this.bullets(t, arr(task.touches), { mono: true })),
-      task.verify && this.field(t, "Verified by", this.prose(t, task.verify)),
+      task.approach && this.field(t, "Approach", this.prose(t, `${id}-approach`, task.approach)),
+      arr(task.touches).length && this.field(t, "Likely touches", this.bullets(t, `${id}-touches`, arr(task.touches), { mono: true })),
+      task.verify && this.field(t, "Verified by", this.prose(t, `${id}-verify`, task.verify)),
       (deps.tasks.length || deps.questions.length) && this.field(t, "After", v_flex().gap(2)
-        .when(deps.tasks.length > 0, (el) => el.child(div().child(deps.tasks.join(", "))))
+        .when(deps.tasks.length > 0, (el) => el.child(div().child(this.text(`${id}-after`, deps.tasks.join(", ")))))
         .children(deps.questions.map((q) => div().text_color(q.open ? t.blocked : t.muted)
-          .child(`${q.id} · ${q.title} (${q.open ? "open" : "answered"})`)))),
-      task.pr && this.field(t, "PR", div().child([pr && prNumber(pr), pr?.title].filter(Boolean).join(" · ") || task.pr)),
-      task.outcome && this.field(t, "Outcome", this.prose(t, task.outcome)),
+          .child(this.text(`${id}-after-${q.id}`, `${q.id} · ${q.title} (${q.open ? "open" : "answered"})`))))),
+      task.pr && this.field(t, "PR", div().child(this.text(`${id}-pr`, [pr && prNumber(pr), pr?.title].filter(Boolean).join(" · ") || task.pr))),
+      task.outcome && this.field(t, "Outcome", this.prose(t, `${id}-outcome`, task.outcome)),
     ].filter(Boolean);
     const toggle = () => { if (open) this.openTasks.delete(task.id); else this.openTasks.add(task.id); };
     const flash = this.flash?.id === task.id ? this.flash : null;
@@ -318,20 +356,24 @@ export class PlanView {
       .when(Boolean(flash), (el) => el.child(div().absolute().top(0).left(0).size_full().rounded(8)
         .border(2).border_color(t.accent).bg(t.accent + "1f")
         .opacity(flash.on ? 1 : 0).transition("opacity", { duration: FLASH_MS - 200, easing: "ease-out" })))
-      .child(v_flex().id(`t-${task.id}-head`).gap(6).p(14).cursor_pointer().rounded(8).hover((s) => s.bg(t.hover))
-        .on_click((_e, cx) => { toggle(); cx.notify(); })
-        .child(h_flex().gap(8).items_center()
-          .child(div().flex_none().w(10).text_size(10).text_color(t.dim).child(open ? "▾" : "▸"))
-          .child(this.mono(t).flex_none().text_color(t.dim).child(task.id))
-          .child(div().flex_1().min_w(0).font_semibold().truncate().child(task.title || ""))
+      // Only the chevron and id fold the card, so the title and goal can be selected.
+      .child(v_flex().gap(6).p(14)
+        .child(h_flex().gap(8).items_start()
+          .child(h_flex().id(`${id}-fold`).flex_none().gap(8).items_center().h(19).px(4).ml(-4).rounded(4).cursor_pointer()
+            .hover((s) => s.bg(t.hover)).tooltip(open ? "Hide details" : "Show details")
+            .on_click((_e, cx) => { toggle(); cx.notify(); })
+            .child(div().flex_none().w(10).text_size(10).text_color(t.dim).child(open ? "▾" : "▸"))
+            .child(this.mono(t).flex_none().text_color(t.dim).child(task.id)))
+          .child(div().flex_1().min_w(0).font_semibold().line_height(1.45).child(this.text(`${id}-title`, task.title || "")))
           .child(this.chip(t, TASK_STATUS, task.status)))
-        .when(Boolean(task.goal), (el) => el.child(div().pl(18).text_color(t.muted).line_height(1.45).child(task.goal)))
+        .when(Boolean(task.goal), (el) => el.child(div().pl(18).text_color(t.muted).line_height(1.45).child(this.text(`${id}-goal`, task.goal))))
         .when(holds.length > 0, (el) => el.child(h_flex().pl(18).gap(8).items_start().text_size(12.5)
           .child(this.label(t, "Waiting on").flex_none())
-          .child(v_flex().flex_1().min_w(0).gap(2).text_color(t.blocked).children(holds.map((h) => div().child(h.text)))))))
+          .child(v_flex().flex_1().min_w(0).gap(2).text_color(t.blocked)
+            .children(holds.map((h, i) => div().child(this.text(`${id}-waits-${i}`, h.text))))))))
       .when(open, (el) => el.child(v_flex().gap(12).px(14).pb(14).pt(12).ml(18).border_t(1).border_color(t.border)
         .children(fields)
-        .when(Boolean(task.branch), (el) => el.child(this.mono(t).text_color(t.dim).child(task.branch)))
+        .when(Boolean(task.branch), (el) => el.child(this.mono(t).text_color(t.dim).child(this.text(`${id}-branch`, task.branch))))
         .when(!fields.length && !task.branch, (el) => el.child(this.quiet(t, "Not planned in detail yet.")))));
   }
 
@@ -356,9 +398,9 @@ export class PlanView {
     if (r.handover) add(this.handover(t, r.handover));
     add(this.attention(t, plan));
     add(this.part(t, "Plan"), 30);
-    add(this.section(t, "Approach", null, r.approach ? this.prose(t, r.approach)
+    add(this.section(t, "Approach", null, r.approach ? this.prose(t, "approach", r.approach)
       : this.quiet(t, "The approach appears here once the code has been read.")), 18);
-    if (r.delivery) add(this.section(t, "Delivery", null, this.prose(t, r.delivery)));
+    if (r.delivery) add(this.section(t, "Delivery", null, this.prose(t, "delivery", r.delivery)));
     add(this.section(t, "Done when", null, this.doneWhen(t, arr(r.done_check))));
     if (plan.prs.length) add(this.prs(t, plan));
     add(this.section(t, "Tasks", tasks.length || null));
@@ -367,11 +409,11 @@ export class PlanView {
       this.cardIndex.set(task.id, out.length);
       add(this.task(t, plan, task), 10);
     }
-    if (arr(r.out_of_scope).length) add(this.section(t, "Out of scope", null, this.bullets(t, arr(r.out_of_scope))));
-    if (arr(r.risks).length) add(this.section(t, "Risks", null, this.bullets(t, arr(r.risks))));
+    if (arr(r.out_of_scope).length) add(this.section(t, "Out of scope", null, this.bullets(t, "out-of-scope", arr(r.out_of_scope))));
+    if (arr(r.risks).length) add(this.section(t, "Risks", null, this.bullets(t, "risks", arr(r.risks))));
     add(this.journal(t, plan), 30);
     add(div().text_size(11.5).text_color(t.dim).line_height(1.45)
-      .child(`Read from ${this.dir}. Agents work this plan by the guide stored with it, at meta/guide.`), 26);
+      .child(this.text("footer", `Read from ${this.dir}. Agents work this plan by the guide stored with it, at meta/guide.`)), 26);
     out[0][1] = 20;
     return out;
   }
@@ -454,7 +496,7 @@ export class PlanView {
       .children(items.map((j, i) => h_flex().gap(14).items_start()
         .child(div().flex_none().w(84).pt(1).child(this.time(t, `j-${i}`, j.at)))
         .child(v_flex().flex_1().min_w(0).gap(4)
-          .child(div().line_height(1.45).child(j.text ?? ""))
+          .child(div().line_height(1.45).child(this.text(`j-${i}-text`, j.text ?? "")))
           .when(Boolean(j.by), (el) => el.child(div().text_size(11.5).text_color(t.dim).child(byLine(j.by))))
           .children(j.asked.map((q) => {
             const key = `${j.at}-${q.id}`; // not the row, which moves as entries arrive

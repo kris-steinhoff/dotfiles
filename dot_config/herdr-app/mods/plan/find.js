@@ -31,6 +31,23 @@ async function mainCheckout(folder) {
   return common.endsWith("/.git") ? common.slice(0, -5) : top;
 }
 
+// The project `folder` is in, its repo's main checkout, or null outside a repo.
+export async function projectRoot(folder) {
+  try {
+    return await mainCheckout(folder);
+  } catch {
+    return null;
+  }
+}
+
+// `dir` as a person reads it: ./ inside `root`, ~/ inside home, else absolute.
+export function shortPath(dir, root) {
+  if (root && dir.startsWith(`${root}/`)) return `./${dir.slice(root.length + 1)}`;
+  const h = home();
+  if (h && (dir === h || dir.startsWith(`${h}/`))) return `~${dir.slice(h.length)}`;
+  return dir;
+}
+
 // The folder with symlinks resolved, or null when there is none.
 async function realDir(folder) {
   try {
