@@ -24,6 +24,7 @@ const FLASH_MS = 1200; // how long a card stays highlighted after its id is pick
 const TITLE_CHARS = 17; // a graph node's title line
 const COPIED_MS = 1500; // how long the copy button shows its check
 
+const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-");
 const escape = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 export class PlanView {
@@ -177,17 +178,18 @@ export class PlanView {
   section(t, title, count, ...children) {
     return v_flex().gap(10)
       .child(h_flex().gap(8).items_center().text_size(15).font_semibold()
-        .child(title)
+        .child(this.text(`section-${slug(title)}`, title))
         .when(count != null && count !== "", (el) => el.child(div().text_size(12).font_normal().text_color(t.dim).child(String(count)))))
       .children(children);
   }
 
   part(t, title) {
-    return div().pt(8).pb(4).border_b(1).border_color(t.border).text_size(11.5).font_semibold().text_color(t.dim).child(title.toUpperCase());
+    return div().pt(8).pb(4).border_b(1).border_color(t.border).text_size(11.5).font_semibold().text_color(t.dim)
+      .child(this.text(`part-${slug(title)}`, title.toUpperCase()));
   }
 
   label(t, text) {
-    return div().text_size(11.5).font_semibold().text_color(t.dim).child(text);
+    return div().text_size(11.5).font_semibold().text_color(t.dim).child(this.text(`label-${slug(text)}`, text));
   }
 
   quiet(t, text) {
@@ -222,7 +224,7 @@ export class PlanView {
           .child(div().h_full().w(`${share(count.merged)}%`).bg(t.done))
           .child(div().h_full().w(`${share(count.in_progress)}%`).bg(t.working)))
         .child(div().text_size(12).text_color(t.muted)
-          .child(`${count.merged} done, ${count.in_progress} in progress, of ${count.live} tasks`)));
+          .child(this.text("progress", `${count.merged} done, ${count.in_progress} in progress, of ${count.live} tasks`))));
   }
 
   // --- Handover and questions ---------------------------------------------------
@@ -538,7 +540,7 @@ export class PlanView {
         .when(side, (el) => el.child(v_flex().id("plan-graph").flex_none().w(GRAPH_W).h_full().overflow_y_scrollbar()
           .pt(20).pb(32).gap(12).on_click(clear)
           .child(h_flex().gap(8).items_center().h(24)
-            .child(div().text_size(11.5).font_semibold().text_color(t.dim).child("TASK DEPENDENCIES"))
+            .child(div().text_size(11.5).font_semibold().text_color(t.dim).child(this.text("graph-heading", "TASK DEPENDENCIES")))
             .child(div().flex_1())
             .when(Boolean(this.selected), (el) => el.child(this.button(t, "graph-clear", "Clear", (cx) => { this.selected = null; cx.notify(); }))))
           .child(this.graph(t, plan))))
